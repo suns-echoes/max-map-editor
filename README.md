@@ -63,13 +63,14 @@ Here’s a sneak peek at some of the features planned for the M.A.X. Map Editor:
 ... only time will tell what other features might be.
 
 
-▵
+
+[⮝](#)
 
 ## ▰ Preparing development environment
 
 ### ▰ Setting up IDE
 
-#### ----▰ VSCode
+#### ▰ VSCode
 
 To prevent collision with Vite CSS processing mechanism files containing
 web components styles have the `.style` extension. To allow IDE
@@ -80,7 +81,8 @@ to understand what they are, do the following:
 3. Add new entry item `*.style` with `css` value.
 
 
-▵
+
+[⮝](#)
 
 ### ▰ Setting up Linux (Debian / Ubuntu)
 
@@ -90,11 +92,11 @@ to understand what they are, do the following:
 >
 > `Rust` https://www.rust-lang.org/tools/install
 
-#### ----▰ Prerequisites
+#### ▰ Prerequisites
 
 `Ubuntu 18 (or later)` or `Debian 11 (or later)`
 
-#### ----▰ Installing Tauri dependencies
+#### ▰ Installing Tauri dependencies
 
 ```sh
 sudo apt update
@@ -109,13 +111,13 @@ sudo apt install libwebkit2gtk-4.0-dev \
     librsvg2-dev
 ```
 
-#### ----▰ Installing Rust
+#### ▰ Installing Rust
 
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-#### ----▰ Installing Node.js LTS v20 (or later)
+#### ▰ Installing Node.js LTS v20 (or later)
 
 The official website:
 
@@ -125,12 +127,18 @@ or Node Version Manager:
 
 > https://github.com/nvm-sh/nvm
 
+#### ▰ Installing node/js dependencies
 
-▵
+```sh
+npm install
+```
+
+
+[⮝](#)
 
 ## ▰ Building project
 
-#### ----▰ Building full application
+#### ▰ Building full application
 
 Run this command in the project root folder using the native terminal
 (i.e.: VSCode terminal will not work)
@@ -148,7 +156,7 @@ Generated assets:
 3. The RPM: `./rpm/tauri-app-X.Y.Z-1.x86_64.rpm`
 
 
-#### ----▰ Building frontend only
+#### ▰ Building frontend only
 
 Run this command in project root folder:
 
@@ -159,11 +167,12 @@ npm run build
 The build output directory: `./app/dist/`
 
 
-▵
+
+[⮝](#)
 
 ## ▰ Developing project
 
-#### ----▰ Development build for full application
+### ▰ Development build for full application
 
 Run this command in the project root folder using the native terminal
 (i.e., the VSCode terminal will not work):
@@ -183,7 +192,7 @@ Frontend (GUI) will be available at http://localhost:1420/ ¹
 >   by the Tauri backend.
 
 
-#### ----▰ Development build for frontend only
+### ▰ Development build for frontend only
 
 Run this command in the project root folder:
 
@@ -199,18 +208,41 @@ Frontend (GUI) will be available at http://localhost:1420/ ¹
 >   by the Tauri backend.
 
 
-▵
+
+[⮝](#)
+
+## ▰ Testing project
+
+### ▰ Running unit tests
+
+```sh
+npm run test
+```
+
+### ▰ Running unit test coverage
+
+```sh
+npm run coverage
+```
+
+
+
+[⮝](#)
 
 ## ▰ License
 
 ### M.A.X. Game Map Editor
 
-Copyright 2024 Aneta Suns, under ISC license.
+Licensed under MIT
+
+Copyright © 2024 Aneta Suns
 
 
 ### M.A.X. License
 
-M.A.X. COPYRIGHT (C) 1996 INTERPLAY PRODUCTIONS. ALL RIGHTS RESERVED.
+M.A.X. COPYRIGHT © 1996 INTERPLAY PRODUCTIONS. ALL RIGHTS RESERVED.
 INTERPLAY PRODUCTIONS IS THE EXCLUSIVE LICENSEE AND DISTRIBUTOR.
 
-▵
+
+
+[⮝](#)
