@@ -227,6 +227,13 @@ ul {
 .log-message {
 	color: #0e0;
 	text-shadow: -1px -1px 8px #0e08;
+
+	h2 {
+		margin: 1em;
+		font-size: 1em;
+		color: #6f0;
+		text-shadow: -1px -1px 8px #6f08;
+	}
 }
 
 .log-panel {
