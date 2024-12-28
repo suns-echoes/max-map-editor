@@ -1,0 +1,94 @@
+{
+	"CSa": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSb": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSc": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSd": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSe": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSf": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSg": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSh": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSi": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSj": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSk": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSl": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CSm": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"CLa": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"INSERT_MOUNTAINS_A_HERE": null,
+	"INSERT_MOUNTAINS_B_HERE": null,
+	"CHa": {
+		"hasVariants": true,
+		"type": "obstruction",
+		"transformable": true,
+		"useMaskColor": true
+	}
+}

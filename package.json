@@ -1,29 +1,29 @@
 {
   "name": "max-game-map-editor",
   "private": true,
-  "version": "0.0.0",
-  "description": "M.A.X. Game Map Editor",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "cd app && vite",
-    "build": "cd app && tsc && vite build",
-    "preview": "cd app && vite preview",
-    "tauri": "cd app && tauri"
-  },
-  "author": "Aneta Suns",
-  "homepage": "https://suns-echoes.github.io/max-game-map-editor/",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/suns-echoes/max-game-map-editor"
-  },
-  "license": "MIT",
-  "dependencies": {
-    "@tauri-apps/api": "1.6.0"
-  },
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+	"test": "node --no-warnings --enable-source-maps --import ./ts-node.loader.js --import ./node-test.loader.js --test ./src/**/*.test.ts",
+	"coverage": "node --no-warnings --experimental-test-coverage --enable-source-maps --import ./ts-node.loader.js --import ./node-test.loader.js --test ./src/**/*.test.ts"
+},
   "devDependencies": {
-    "@tauri-apps/cli": "1.6.2",
-    "@types/node": "22.5.4",
-    "vite": "5.4.7",
-    "typescript": "5.6.2"
+    "@suns-echoes/ts-types": "2.1.0",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/cli": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-fs": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "@types/node": "22.8.1",
+    "ts-node": "10.9.2",
+    "typescript": "5.7.2",
+    "vite": "5.4.10"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-updater": "^2.3.0"
   }
 }

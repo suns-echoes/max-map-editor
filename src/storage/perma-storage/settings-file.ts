@@ -1,0 +1,85 @@
+import { fs } from '^utils/fs/fs.ts';
+import { deepAssignEqual } from '^utils/object-utils/deep-assign-equal.ts';
+
+
+interface SettingsFileData {
+	debug: {
+		showDevTools: boolean,
+	},
+	window: {
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+		maximized: boolean,
+	},
+	max: {
+		path: string,
+	},
+	setup: boolean,
+}
+
+
+export const SettingsFile = new class SettingsFile {
+	async sync() {
+		if (this.#loaded) {
+			await this.#write();
+		} else {
+			await this.#initialize();
+		}
+	}
+
+	getAll(): SettingsFileData {
+		return this.#data;
+	}
+
+	get<T extends keyof SettingsFileData>(key: T): SettingsFileData[T] {
+		return this.#data[key];
+	}
+
+	set(values: PartialDeep<SettingsFileData>): this {
+		this.#needSync = deepAssignEqual(this.#data, values);
+		return this;
+	}
+
+	#data: SettingsFileData = {
+		debug: {
+			showDevTools: false,
+		},
+		window: {
+			x: screen.width / 2 - 400,
+			y: screen.height / 2 - 300,
+			width: 800,
+			height: 600,
+			maximized: false,
+		},
+		max: {
+			path: '',
+		},
+		setup: true,
+	};
+
+	#needSync = false;
+	#loaded = false;
+
+	async #initialize() {
+		if (!(await fs.appData.exists('./settings.json'))) {
+			this.#needSync = true;
+			await this.#write();
+		} else {
+			await this.#load();
+		}
+		this.#loaded = true;
+	}
+
+	async #load() {
+		this.#data = await fs.appData.readJSONFile('./settings.json');
+	}
+
+	async #write() {
+		if (this.#needSync) {
+			await fs.appData.writeJSONFile('./settings.json', this.#data);
+			this.#needSync = false;
+		}
+	}
+};

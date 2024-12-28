@@ -1,0 +1,21 @@
+@import "./global.css";
+
+
+html, body {
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	font-size: 18px;
+	font-family: "MAX Square", Arial, Helvetica, sans-serif;
+	text-rendering: optimizeSpeed;
+
+	background: black;
+
+	* {
+		color: inherit;
+		font-family: inherit;
+		font-size: 1em;
+	}
+}

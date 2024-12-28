@@ -86,11 +86,13 @@ to understand what they are, do the following:
 
 ### ▰ Setting up Linux (Debian / Ubuntu)
 
-> **References:**
+> **Tauri v2**
 >
-> `Tauri v1` https://tauri.app/v1/guides/getting-started/prerequisites#setting-up-linux
+> https://v2.tauri.app/start/
+
+> **Rust**
 >
-> `Rust` https://www.rust-lang.org/tools/install
+> https://www.rust-lang.org/tools/install
 
 #### ▰ Prerequisites
 
@@ -100,13 +102,13 @@ to understand what they are, do the following:
 
 ```sh
 sudo apt update
-sudo apt install libwebkit2gtk-4.0-dev \
+sudo apt install libwebkit2gtk-4.1-dev \
     build-essential \
     curl \
     wget \
     file \
+    libxdo-dev \
     libssl-dev \
-    libgtk-3-dev \
     libayatana-appindicator3-dev \
     librsvg2-dev
 ```
@@ -147,7 +149,7 @@ Run this command in the project root folder using the native terminal
 npm run tauri build
 ```
 
-The build output directory: `./app/src-tauri/target/release/bundle/`
+The build output directory: `./src-tauri/target/release/bundle`
 
 Generated assets:
 
@@ -164,7 +166,7 @@ Run this command in project root folder:
 npm run build
 ```
 
-The build output directory: `./app/dist/`
+The build output directory: `./dist/`
 
 
 

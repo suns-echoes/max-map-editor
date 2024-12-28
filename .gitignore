@@ -1,4 +1,4 @@
 ~temp/
-app/dist/
-app/src-tauri/target
+dist/
+src-tauri/target
 node_modules/

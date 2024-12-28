@@ -1,0 +1,40 @@
+@font-face {
+	font-family: "MAX Pixel";
+	src: url("/fonts/max_pixel.ttf") format("truetype");
+	font-weight: normal;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "MAX Regular";
+	src: url("/fonts/max_regular.ttf") format("truetype");
+	font-weight: normal;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "MAX Square";
+	src: url("/fonts/max_square.ttf") format("truetype");
+	font-weight: normal;
+	font-style: normal;
+}
+
+
+* {
+	box-sizing: border-box;
+	cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+
+	color: inherit;
+	font: inherit;
+}
+
+
+button {
+	cursor: pointer;
+}
+
+input:active, input:focus, button:active, button:focus {
+	outline: none;
+}

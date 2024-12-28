@@ -1,0 +1,7 @@
+{
+	"WTR": {
+		"hasVariants": true,
+		"type": "WATER",
+		"transformable": "sync"
+	}
+}

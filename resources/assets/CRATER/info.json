@@ -1,0 +1,15 @@
+{
+	"name": "Crater tile pack",
+	"description": "Tile set based on original crater maps.",
+	"version": "0.1",
+	"date": "2024-11-02",
+	"contents": [
+		"palettes",
+		"tile passage data",
+		"transformable shore tiles",
+		"transformable sand land tiles",
+		"crater tiles",
+		"rock tiles",
+		"hill tiles"
+	]
+}
