@@ -1,3 +1,7 @@
+import { appDataDir, appLocalDataDir, resourceDir } from '@tauri-apps/api/path';
+import { saveMainWindowParams } from '^actions/main-window/save-main-window-params.ts';
+import { showSetupScreen } from '^actions/setup-screen/show-setup-screen.ts';
+import { showMainWindow } from '^actions/main-window/show-main-window.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
 import { isES2024Supported } from '^utils/debug/is-es2024-supported.ts';
@@ -6,7 +10,6 @@ import { sleep } from '^utils/flow-control/sleep.ts';
 
 import globalStyle from './styles/global.style';
 import style from './styles/index.style';
-import { appDataDir, appLocalDataDir, resourceDir } from '@tauri-apps/api/path';
 
 
 document.head.appendChild(globalStyle);
@@ -37,10 +40,10 @@ await sleep(2000);
 //
 if (SettingsFile.get('setup')) {
 	await printDebugInfo('entering setup screen');
-	await(await import('^actions/setup-screen/show-setup-screen')).showSetupScreen();
+	await showSetupScreen();
 	await printDebugInfo('exiting setup screen');
 	await printDebugInfo('saving window params...');
-	await(await import('^actions/main-window/save-main-window-params')).saveMainWindowParams();
+	await saveMainWindowParams();
 	await printDebugInfo('window params saved');
 }
 
@@ -48,7 +51,7 @@ if (SettingsFile.get('setup')) {
 // MAIN WINDOW
 //
 await printDebugInfo('opening main view');
-await (await import('^actions/main-window/show-main-window.ts')).showMainWindow();
+await showMainWindow();
 
 
 
