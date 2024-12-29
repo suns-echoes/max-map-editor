@@ -16,6 +16,12 @@
 					"path": "$APPDATA/**"
 				},
 				{
+					"path": "$APPLOCALDATA"
+				},
+				{
+					"path": "$APPLOCALDATA/**"
+				},
+				{
 					"path": "$RESOURCE"
 				},
 				{
@@ -33,8 +39,12 @@
 		"core:window:allow-set-size",
 		"core:window:allow-unmaximize",
 		"fs:default",
+		"fs:allow-appdata-read-recursive",
 		"fs:allow-appdata-write-recursive",
+		"fs:allow-applocaldata-read-recursive",
+		"fs:allow-applocaldata-write-recursive",
 		"fs:allow-resource-read-recursive",
+		"fs:allow-resource-write-recursive",
 		"fs:allow-mkdir",
 		"fs:allow-read",
 		"fs:allow-write",

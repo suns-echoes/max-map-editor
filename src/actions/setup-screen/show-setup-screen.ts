@@ -15,8 +15,11 @@ export async function showSetupScreen() {
 	const currentWindow = getCurrentWindow();
 
 	await currentWindow.setSize(
-		new PhysicalSize(width, height).toLogical(await currentWindow.scaleFactor())
+		new PhysicalSize(width, height)
 	);
+
+	console.log('innerSize', (await currentWindow.innerSize()).width, 'x', (await currentWindow.innerSize()).height);
+	console.log('outerSize', (await currentWindow.outerSize()).width, 'x', (await currentWindow.outerSize()).height);
 
 	await currentWindow.setPosition(
 		new PhysicalPosition((window.screen.width - width) / 2, (window.screen.height - height) / 2)

@@ -63,7 +63,7 @@ export const SettingsFile = new class SettingsFile {
 	#loaded = false;
 
 	async #initialize() {
-		if (!(await fs.appData.exists('./settings.json'))) {
+		if (!(await fs.appLocalDataDir.exists('./settings.json'))) {
 			this.#needSync = true;
 			await this.#write();
 		} else {
@@ -73,12 +73,12 @@ export const SettingsFile = new class SettingsFile {
 	}
 
 	async #load() {
-		this.#data = await fs.appData.readJSONFile('./settings.json');
+		this.#data = await fs.appLocalDataDir.readJSONFile('./settings.json');
 	}
 
 	async #write() {
 		if (this.#needSync) {
-			await fs.appData.writeJSONFile('./settings.json', this.#data);
+			await fs.appLocalDataDir.writeJSONFile('./settings.json', this.#data);
 			this.#needSync = false;
 		}
 	}

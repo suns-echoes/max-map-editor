@@ -6,19 +6,23 @@ import { sleep } from '^utils/flow-control/sleep.ts';
 
 import globalStyle from './styles/global.style';
 import style from './styles/index.style';
+import { appDataDir, appLocalDataDir, resourceDir } from '@tauri-apps/api/path';
 
 
 document.head.appendChild(globalStyle);
 document.head.appendChild(style);
 
-console.log((import.meta as any).env);
-console.log(window.__ENV__);
+console.log('env', (import.meta as any).env);
+console.log('env', (import.meta as any).env?.VITE_ENV?.build_version);
 
 
 await printDebugInfo('M.A.X. Game Map Editor');
 // await printDebugInfo('version: ' + window.__ENV__.build_version);
 await printDebugInfo(isWebGL2Supported() ? 'WebGL 2.0 supported' : 'WebGL 2.0 not supported');
 await printDebugInfo(isES2024Supported() ? 'ES2024 supported' : 'ES2024 not supported');
+await printDebugInfo('$APPDATA: ' + await appDataDir());
+await printDebugInfo('$APPLOCALDATA: ' + await appLocalDataDir());
+await printDebugInfo('$RESOURCE: ' + await resourceDir());
 await printDebugInfo('loading settings...');
 
 await SettingsFile.sync();
@@ -29,7 +33,7 @@ console.info('Settings:', SettingsFile.getAll());
 
 await printDebugInfo('should display setup? ' + SettingsFile.get('setup'));
 
-await sleep(3000);
+await sleep(2000);
 
 //
 // SETUP
