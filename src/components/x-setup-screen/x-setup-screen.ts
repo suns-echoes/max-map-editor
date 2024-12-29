@@ -1,4 +1,5 @@
 import template from './x-setup-screen.html';
+import globalStyle from '../../styles/global.style';
 import style from './x-setup-screen.style';
 
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
@@ -6,6 +7,7 @@ import { openFolderDialog } from '^utils/dialogs/open-folder-dialog.ts';
 import { RustAPI } from '^utils/rust-api.ts';
 
 
+template.content.appendChild(globalStyle);
 template.content.appendChild(style);
 
 export class XSetupScreen extends HTMLElement {

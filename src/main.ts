@@ -4,11 +4,19 @@ import { isES2024Supported } from '^utils/debug/is-es2024-supported.ts';
 import { isWebGL2Supported } from '^utils/debug/is-webgl2-supported.ts';
 import { sleep } from '^utils/flow-control/sleep.ts';
 
-console.log(window.__ENV__.build_version);
+import globalStyle from './styles/global.style';
+import style from './styles/index.style';
+
+
+document.head.appendChild(globalStyle);
+document.head.appendChild(style);
+
+console.log((import.meta as any).env);
+console.log(window.__ENV__);
 
 
 await printDebugInfo('M.A.X. Game Map Editor');
-await printDebugInfo('version: ' + window.__ENV__.build_version);
+// await printDebugInfo('version: ' + window.__ENV__.build_version);
 await printDebugInfo(isWebGL2Supported() ? 'WebGL 2.0 supported' : 'WebGL 2.0 not supported');
 await printDebugInfo(isES2024Supported() ? 'ES2024 supported' : 'ES2024 not supported');
 await printDebugInfo('loading settings...');
