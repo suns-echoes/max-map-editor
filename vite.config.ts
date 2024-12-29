@@ -16,6 +16,10 @@ export default defineConfig(async (config: UserConfig) => ({
 	root: '.',
 	publicDir: 'src/static',
 
+	define: {
+		'__ENV__': exposedENV,
+	},
+
 	build: {
 		cssMinify: false,
 		minify: false,

@@ -155,7 +155,6 @@ Generated assets:
 
 1. The AppImage: `./appimage/tauri-app_X.Y.Z_amd64.AppImage`
 2. The DEB: `./deb/tauri-app_X.Y.Z_amd64.deb`
-3. The RPM: `./rpm/tauri-app-X.Y.Z-1.x86_64.rpm`
 
 
 #### ▰ Building frontend only
