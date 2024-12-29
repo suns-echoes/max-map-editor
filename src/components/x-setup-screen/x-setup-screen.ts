@@ -5,6 +5,7 @@ import style from './x-setup-screen.style';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { openFolderDialog } from '^utils/dialogs/open-folder-dialog.ts';
 import { RustAPI } from '^utils/rust-api.ts';
+import { printDebugInfo } from '^utils/debug/debug.ts';
 
 
 template.content.appendChild(globalStyle);
@@ -12,12 +13,14 @@ template.content.appendChild(style);
 
 export class XSetupScreen extends HTMLElement {
 	constructor() {
+		printDebugInfo('XSetupScreen::constructor');
 		super();
 		const shadowRoot = this.attachShadow({ mode: 'open' });
         shadowRoot.appendChild(template.content.cloneNode(true));
 	}
 
 	connectedCallback() {
+		printDebugInfo('XSetupScreen::connectedCallback');
 		(async () => {
 			const shadowRoot = this.shadowRoot!;
 			const maxPathInput = shadowRoot.getElementById<HTMLInputElement>('setup--max-path');
@@ -65,4 +68,5 @@ export class XSetupScreen extends HTMLElement {
 	ondone: (() => void) | null = null;
 }
 
+printDebugInfo('registering "x-setup-screen" web component');
 customElements.define('x-setup-screen', XSetupScreen);

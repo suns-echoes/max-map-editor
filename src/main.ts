@@ -36,13 +36,18 @@ await sleep(2000);
 // SETUP
 //
 if (SettingsFile.get('setup')) {
+	await printDebugInfo('entering setup screen');
 	await(await import('^actions/setup-screen/show-setup-screen')).showSetupScreen();
+	await printDebugInfo('exiting setup screen');
+	await printDebugInfo('saving window params...');
 	await(await import('^actions/main-window/save-main-window-params')).saveMainWindowParams();
+	await printDebugInfo('window params saved');
 }
 
 //
 // MAIN WINDOW
 //
+await printDebugInfo('opening main view');
 await (await import('^actions/main-window/show-main-window.ts')).showMainWindow();
 
 
