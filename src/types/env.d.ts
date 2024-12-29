@@ -1,5 +1,6 @@
-interface Window {
-	__ENV__: {
-		build_version: string,
-	},
+import { exposedENV } from '../../vite.exposed.env.ts';
+
+
+declare global {
+	var __ENV__: typeof exposedENV;
 }

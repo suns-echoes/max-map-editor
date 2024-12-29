@@ -12,12 +12,9 @@ import { appDataDir, appLocalDataDir, resourceDir } from '@tauri-apps/api/path';
 document.head.appendChild(globalStyle);
 document.head.appendChild(style);
 
-console.log('env', (import.meta as any).env);
-console.log('env', (import.meta as any).env?.VITE_ENV?.build_version);
-
 
 await printDebugInfo('M.A.X. Game Map Editor');
-// await printDebugInfo('version: ' + window.__ENV__.build_version);
+await printDebugInfo('version: ' + __ENV__.build_version);
 await printDebugInfo(isWebGL2Supported() ? 'WebGL 2.0 supported' : 'WebGL 2.0 not supported');
 await printDebugInfo(isES2024Supported() ? 'ES2024 supported' : 'ES2024 not supported');
 await printDebugInfo('$APPDATA: ' + await appDataDir());

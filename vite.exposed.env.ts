@@ -1,7 +1,7 @@
 // import { getName, getTauriVersion, getVersion } from '@tauri-apps/api/app';
 
 
-export const exposedENV: Record<string, any> = {
+export const exposedENV = {
 	// app_name: await getName(),
 	// app_version: await getVersion(),
 	// tauri_version: await getTauriVersion(),
@@ -9,6 +9,6 @@ export const exposedENV: Record<string, any> = {
 	// Update:
 	// ./src-tauri/tauri.conf.json:package.version
 	// ./src-tauri/Cargo.toml:version
-	build_version: process.env.npm_package_version,
+	build_version: process.env.npm_package_version!,
 
 };

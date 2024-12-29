@@ -17,7 +17,7 @@ export default defineConfig(async (config: UserConfig) => ({
 	publicDir: 'src/static',
 
 	define: {
-		'__ENV__': exposedENV,
+		'__ENV__': JSON.stringify(exposedENV),
 	},
 
 	build: {
