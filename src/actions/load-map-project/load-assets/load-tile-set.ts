@@ -1,5 +1,5 @@
-import { resolveResource } from '@tauri-apps/api/path';
-import { readTextFile } from '@tauri-apps/plugin-fs';
+import { resolveResource } from '^tauri-apps/api/path.ts';
+import { readTextFile } from '^tauri-apps/plugin-fs.ts';
 import { hexToUint8 } from '^utils/array-buffers/hex-to-uint8.ts';
 import { Perf } from '^utils/perf/perf.ts';
 

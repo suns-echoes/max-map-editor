@@ -1,3 +1,5 @@
+import { isTauri } from '^tauri/is-tauri.ts';
+import { printDebugInfo } from '^utils/debug/debug.ts';
 import { fs } from '^utils/fs/fs.ts';
 import { deepAssignEqual } from '^utils/object-utils/deep-assign-equal.ts';
 
@@ -22,7 +24,12 @@ interface SettingsFileData {
 
 export const SettingsFile = new class SettingsFile {
 	async sync() {
-		if (this.#loaded) {
+		await printDebugInfo('Settings::sync');
+
+		if (!isTauri) {
+			this.#data.setup = false;
+			return;
+		} else if (this.#loaded) {
 			await this.#write();
 		} else {
 			await this.#initialize();

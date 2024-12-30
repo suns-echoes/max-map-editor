@@ -3,6 +3,8 @@ import { mat4_createIdentity } from '^utils/math/mat4.ts';
 
 
 export class WebGL2 {
+	TILE_SIZE_LIMIT = 4096 * 2; // TODO: Move this to settings.json
+
 	constructor(canvas: HTMLCanvasElement) {
 		const gl = canvas.getContext('webgl2');
 		if (!gl) {
@@ -100,7 +102,7 @@ export class WebGL2 {
 
 	getTileCapability(): WglTileCapability {
 		const tileSize = 64 ** 2;
-		const maxTextureSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE);
+		const maxTextureSize = Math.min(this.TILE_SIZE_LIMIT, this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE));
 		const maxTextureUnits = this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS) - 2;
 
 		const tilesPerCol = maxTextureSize;

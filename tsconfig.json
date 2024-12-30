@@ -24,10 +24,14 @@
 		"baseUrl": ".",
 		"paths": {
 			"^actions/*": ["src/actions/*"],
+			"^consts/*": ["src/consts/*"],
 			"^components/*": ["src/components/*"],
 			"^events/*": ["src/events/*"],
+			"^tauri-apps/*": ["src/utils/tauri/@tauri-apps/*"],
+			"^tauri/*": ["src/utils/tauri/*"],
 			"^types/*": ["src/types/*"],
 			"^utils/*": ["src/utils/*"],
+			"^state/*": ["src/state/*"],
 			"^storage/*": ["src/storage/*"],
 			"^styles/*": ["src/styles/*"],
 			"^src/*": ["src/*"]

@@ -1,9 +1,9 @@
-import { AppSignals } from '^src/state/app-signals.ts';
+import { AppEvents } from '^events/app-events.ts';
 import { debounce } from '^utils/flow-control/debounce.ts';
 
 
 window.addEventListener('resize', debounce(function () {
-	AppSignals.windowResizeSignal.set({
+	AppEvents.windowResizeSignal.set({
 		innerWidth: window.innerWidth,
 		innerHeight: window.innerHeight,
 	});

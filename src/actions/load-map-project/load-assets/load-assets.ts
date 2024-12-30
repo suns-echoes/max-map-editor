@@ -1,9 +1,9 @@
-import { AppState } from '^src/state/app-state.ts';
+import { effect } from '^utils/reactive/effect.ts';
+import { Perf } from '^utils/perf/perf.ts';
+import { AppState } from '^state/app-state.ts';
 import { loadMap } from './load-map.ts';
 import { loadPalette } from './load-palette.ts';
 import { loadTileSet } from './load-tile-set.ts';
-import { effect } from '^utils/reactive/effect.ts';
-import { Perf } from '^utils/perf/perf.ts';
 
 
 export async function loadAssets(mapProject: MapProject) {

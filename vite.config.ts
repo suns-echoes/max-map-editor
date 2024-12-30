@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path, { dirname, join } from 'node:path';
 
-import { defineConfig, Plugin, UserConfig } from 'vite';
+import { defineConfig, Plugin, UserConfig, ViteDevServer } from 'vite';
 
 import { exposedENV } from './vite.exposed.env.ts';
 
@@ -40,8 +40,12 @@ export default defineConfig(async (config: UserConfig) => ({
 	resolve: {
 		alias: {
 			'^actions': path.resolve(__dirname, './src/actions'),
+			'^consts': path.resolve(__dirname, './src/consts'),
 			'^components': path.resolve(__dirname, './src/components'),
 			'^events': path.resolve(__dirname, './src/events'),
+			'^tauri-apps': path.resolve(__dirname, './src/utils/tauri/@tauri-apps'),
+			'^tauri': path.resolve(__dirname, './src/utils/tauri'),
+			'^state': path.resolve(__dirname, './src/state'),
 			'^types': path.resolve(__dirname, './src/types'),
 			'^utils': path.resolve(__dirname, './src/utils'),
 			'^storage': path.resolve(__dirname, './src/storage'),
@@ -54,10 +58,32 @@ export default defineConfig(async (config: UserConfig) => ({
 		{
 			/**
 			 * The role of this plugin is to provide support
+			 * for resolving resource files in development mode
+			 * when the Tauri API is not available.
+			 */
+			name: 'resolve-resource',
+
+			configureServer(server: ViteDevServer) {
+				server.middlewares.use((req, res, next) => {
+					const url = req.url ?? '';
+					if (!url.startsWith('/resolve-resource/')) {
+						return next();
+					}
+					const path = url.substring('resolve-resource/'.length);
+					const fileData = readFileSync('.' + path, 'utf8');
+					res.setHeader('Access-Control-Allow-Origin', '*');
+					res.writeHead(200, { 'Content-Type': 'text/plain' });
+					res.write(fileData);
+					res.end();
+				})
+			}
+		},
+		{
+			/**
+			 * The role of this plugin is to provide support
 			 * for importing web component HTML templates
 			 * and their styles from CSS files.
 			 */
-
 			name: 'web-component-templates',
 			enforce: 'pre',
 

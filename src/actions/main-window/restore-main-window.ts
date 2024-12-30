@@ -1,10 +1,13 @@
-import { getCurrentWindow, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
+import { getCurrentWindow, PhysicalPosition, PhysicalSize } from '^tauri-apps/api/window.ts';
 
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { RustAPI } from '^utils/rust-api.ts';
+import { printDebugInfo } from '^utils/debug/debug.ts';
 
 
 export async function restoreMainWindow() {
+	await printDebugInfo('restoreMainWindow');
+
 	const settings = SettingsFile.getAll();
 
 	if (settings.debug.showDevTools) {
@@ -24,6 +27,4 @@ export async function restoreMainWindow() {
 	if (settings.window.maximized) {
 		currentWindow.maximize();
 	}
-
-	console.log('Window restored');
 }

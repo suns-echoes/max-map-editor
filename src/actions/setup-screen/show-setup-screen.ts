@@ -1,13 +1,14 @@
 import { getCurrentWindow, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
+import { printDebugInfo } from '^utils/debug/debug.ts';
+
+import type { XSetupScreen } from '^components/x-setup-screen/x-setup-screen.ts';
 import '^components/x-setup-screen/x-setup-screen.ts';
-import type { XSetupScreen as XSetupScreenT } from '^components/x-setup-screen/x-setup-screen.ts';
 
 
 export async function showSetupScreen() {
+	await printDebugInfo('entering setup screen');
+
 	const endSetup = Promise.withResolvers<void>();
-
-	console.log('>> Show setup window.');
-
 
 	const width = 640;
 	const height = 460;
@@ -18,6 +19,7 @@ export async function showSetupScreen() {
 		new PhysicalSize(width, height)
 	);
 
+	// TODO: #18 Fix setup window size
 	console.log('innerSize', (await currentWindow.innerSize()).width, 'x', (await currentWindow.innerSize()).height);
 	console.log('outerSize', (await currentWindow.outerSize()).width, 'x', (await currentWindow.outerSize()).height);
 
@@ -25,7 +27,7 @@ export async function showSetupScreen() {
 		new PhysicalPosition((window.screen.width - width) / 2, (window.screen.height - height) / 2)
 	);
 
-	const xSetupScreen = document.createElement<XSetupScreenT>('x-setup-screen');
+	const xSetupScreen = document.createElement<XSetupScreen>('x-setup-screen');
 
 	document.body.appendChild(xSetupScreen);
 

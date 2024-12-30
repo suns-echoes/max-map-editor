@@ -1,5 +1,5 @@
-import { MAP_LAYERS } from '^src/consts/map-consts.ts';
-import { AppState } from '^src/state/app-state.ts';
+import { MAP_LAYERS } from '^consts/map-consts.ts';
+import { AppState } from '^state/app-state.ts';
 import { Perf } from '^utils/perf/perf.ts';
 import { effect } from '^utils/reactive/effect.ts';
 

@@ -2,13 +2,15 @@ import vertexShaderSource from './wgl-map.vs';
 import fragmentShaderSource from './wgl-map.fs';
 import { Perf } from '^utils/perf/perf.ts';
 import { WebGL2 } from '^utils/webgl2/webgl2.ts';
-import { MAP_LAYERS } from '^src/consts/map-consts.ts';
+import { MAP_LAYERS } from '^consts/map-consts.ts';
 import { mat4_createIdentity, mat4_identity, mat4_scale, mat4_translate } from '^utils/math/mat4.ts';
 import { lookAt } from '^utils/math/3d.ts';
+import { printDebugInfo } from '^utils/debug/debug.ts';
 
 
 export class WglMap extends WebGL2 {
 	constructor(canvas: HTMLCanvasElement) {
+		printDebugInfo('WglMap::constructor');
 		super(canvas);
 
 		this.tileCapability = this.getTileCapability();
@@ -30,6 +32,8 @@ export class WglMap extends WebGL2 {
 		this.createMapMeshBuffer();
 
 		this.clear();
+
+		printDebugInfo('WglMap::constructor done');
 	}
 
 	onCanvasResize() {

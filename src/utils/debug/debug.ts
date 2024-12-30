@@ -6,5 +6,5 @@ export async function printDebugInfo(message: string) {
 	pre.textContent = message;
 	(document.getElementsByClassName('debug-info')[0] as HTMLElement).appendChild(pre);
 	console.info(message);
-	return sleep(500);
+	return sleep(50);
 }
