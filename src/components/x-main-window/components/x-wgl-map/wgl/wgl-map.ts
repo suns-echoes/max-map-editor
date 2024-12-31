@@ -20,8 +20,6 @@ export class WglMap extends WebGL2 {
 		const program = this.createProgram(vertexShaderSource, fragmentShaderSource);
 		this.gl.useProgram(program);
 
-		// this.gl.pixelStorei(this.gl.UNPACK_FLIP_Y_WEBGL, true);
-
 		this.getUniformLocations(program);
 
 		this.initViewport();
@@ -32,6 +30,9 @@ export class WglMap extends WebGL2 {
 		this.createMapMeshBuffer();
 
 		this.clear();
+
+		this.gl.enable(this.gl.BLEND);
+		this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
 
 		printDebugInfo('WglMap::constructor done');
 	}
@@ -80,7 +81,6 @@ export class WglMap extends WebGL2 {
 		this.camera[0] += dx / this.mapModelWidth * this.factor * 2 / zoomLevel;
 		this.camera[1] -= dy / this.mapModelHeight * this.factor * 2 / zoomLevel;
 
-
 		const view = mat4_createIdentity();
 		mat4_translate(view, this.viewMatrix, this.camera);
 
@@ -102,7 +102,7 @@ export class WglMap extends WebGL2 {
 		}
 		this.mapModelWidth = width * 64;
 		this.mapModelHeight = height * 64;
-		this.textures[this.MAP_TEXTURE] = this.createTexture(this.MAP_TEXTURE, mapData, width, height * MAP_LAYERS, this.gl.RGBA);
+		this.textures[this.MAP_TEXTURE] = this.createTexture(this.MAP_TEXTURE, mapData, width, height, this.gl.RGBA, '3d', MAP_LAYERS);
 		this.gl.uniform1i(this.uniformLocations.uMapTexture, this.MAP_TEXTURE);
 
 		this.initModel();
@@ -135,14 +135,27 @@ export class WglMap extends WebGL2 {
 	}
 
 	createMapMeshBuffer(): void {
-		this.buffers.mapMesh = this.createBuffer(new Float32Array([
-			 1,  1, 0, // ◤ 🡭
-			-1,  1, 0, // ◤ 🡬
-			-1, -1, 0, // ◤ 🡯
-			 1,  1, 0, // ◢ 🡭
-			-1, -1, 0, // ◢ 🡯
-			 1, -1, 0, // ◢ 🡮
-		]), this.attributeLocations.aPosition, 3);
+		const mapMeshData = new Float32Array([
+			 1,  1,  0, // ◤ 🡭
+			-1,  1,  0, // ◤ 🡬
+			-1, -1,  0, // ◤ 🡯
+			 1,  1,  0, // ◢ 🡭
+			-1, -1,  0, // ◢ 🡯
+			 1, -1,  0, // ◢ 🡮
+	   	]);
+		for (let i = 0; i < MAP_LAYERS; i++) {
+			this.buffers[`mapMesh${i}`] = this.createBuffer(mapMeshData, this.attributeLocations.aMapPosition, 3);
+		}
+	}
+
+	render() {
+		this.buffers.mapMesh0.use();
+		this.gl.uniform1f(this.uniformLocations.uMapLayer, 0);
+		this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
+
+		this.buffers.mapMesh1.use();
+		this.gl.uniform1f(this.uniformLocations.uMapLayer, 1);
+		this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
 	}
 
 	PALETTE_TEXTURE = 0;
@@ -162,6 +175,7 @@ export class WglMap extends WebGL2 {
 		uView: null!,
 		uProjection: null!,
 		uCursor: null!,
+		uMapLayer: null!,
 		uPaletteTexture: null!,
 		uMapTexture: null!,
 		uTilesTexture0: null!,
@@ -171,7 +185,7 @@ export class WglMap extends WebGL2 {
 	};
 
 	attributeLocations: Record<string, GLint> = {
-		aPosition: 0,
+		aMapPosition: 0,
 		aTexCoord: 1,
 	};
 }
