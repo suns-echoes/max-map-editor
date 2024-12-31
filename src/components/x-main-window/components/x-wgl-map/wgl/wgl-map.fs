@@ -3,11 +3,9 @@ precision highp float;
 precision highp sampler2DArray;
 
 in vec2 vTexCoord;
-in float vMapLayer;
 
 uniform vec2 uCursor;
-
-// uniform float uMapLayer;
+uniform float uMapLayer;
 
 uniform sampler2D uPaletteTexture;
 uniform sampler2DArray uMapTexture;
@@ -16,6 +14,15 @@ uniform sampler2D uTilesTexture0;
 out vec4 outColor;
 
 void main() {
+	// if (uMapLayer == 1.0) {
+	// 	outColor = vec4(1.0, 1.0, 0.0, 1.0);
+	// 	return;
+	// }
+	// if (uMapLayer == 0.0) {
+	// 	outColor = vec4(0.0, 1.0, 0.0, 1.0);
+	// 	return;
+	// }
+
 	// Get map texture 2D size.
 	vec2 mapSize = vec2(textureSize(uMapTexture, 0).xy);
 	// Get tileSet 2D size. Tile data is 4096x1 pixels.
@@ -48,8 +55,14 @@ void main() {
 	//     5: !W (X flip, west facing up)
 	//     6: !S (X flip, south facing up)
 	//     7: !E (X flip, east facing up)
-	vec4 tileData = texture(uMapTexture, vec3(cell, vMapLayer)) * 255.0;
+	vec4 tileData = texture(uMapTexture, vec3(cell, uMapLayer)) * 255.0;
 	int flags = int(floor(tileData.a));
+
+	// Return transparent color if tile is empty.
+	if (flags == 255) {
+		outColor = vec4(0.0, 0.0, 0.0, 0.0);
+		return;
+	}
 
 	// Calculate the tile data offset.
 	float x = subCell.x;

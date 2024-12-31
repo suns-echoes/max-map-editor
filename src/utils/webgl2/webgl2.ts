@@ -76,6 +76,8 @@ export class WebGL2 {
 			glBuffer: buffer,
 			use: () => {
 				this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
+				// this.gl.enableVertexAttribArray(attributeLocation);
+				// this.gl.vertexAttribPointer(attributeLocation, size, this.gl.FLOAT, false, 0, 0);
 			},
 			destroy: () => this.gl.deleteBuffer(buffer),
 		};

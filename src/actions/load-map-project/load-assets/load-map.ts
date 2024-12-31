@@ -38,8 +38,14 @@ function parseMap(mapProject: MapProject, tiles: Tiles) {
 				for (let layer = 0; layer < cell.length; layer++) {
 					populateMapCell(cell[layer], tiles, map, mapSize * layer + i);
 				}
+				for (let layer = cell.length; layer < MAP_LAYERS; layer++) {
+					populateMapCell(null, tiles, map, mapSize * layer + i);
+				}
 			} else {
 				populateMapCell(cell, tiles, map, i);
+				for (let layer = 1; layer < MAP_LAYERS; layer++) {
+					populateMapCell(null, tiles, map, mapSize * layer + i);
+				}
 			}
 			i += 4;
 		}
@@ -50,7 +56,15 @@ function parseMap(mapProject: MapProject, tiles: Tiles) {
 	return map;
 }
 
-function populateMapCell(cell: string, tiles: Tiles, map: Uint8Array, i: number) {
+function populateMapCell(cell: string | null, tiles: Tiles, map: Uint8Array, i: number) {
+	if (!cell) {
+		map[i++] = 0;
+		map[i++] = 0;
+		map[i++] = 0;
+		map[i++] = 255;
+		return;
+	}
+
 	const [tileId, transformation = 'N'] = cell.split(':') as [string, TileTransformation];
 	const tile = tiles.get(tileId);
 
