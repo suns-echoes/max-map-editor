@@ -102,7 +102,7 @@ export class WglMap extends WebGL2 {
 		}
 		this.mapModelWidth = width * 64;
 		this.mapModelHeight = height * 64;
-		this.textures[this.MAP_TEXTURE] = this.createTexture(this.MAP_TEXTURE, mapData, width, height * MAP_LAYERS, this.gl.RGBA);
+		this.textures[this.MAP_TEXTURE] = this.createTexture(this.MAP_TEXTURE, mapData, width, height, this.gl.RGBA, '3d', MAP_LAYERS);
 		this.gl.uniform1i(this.uniformLocations.uMapTexture, this.MAP_TEXTURE);
 
 		this.initModel();
@@ -135,14 +135,26 @@ export class WglMap extends WebGL2 {
 	}
 
 	createMapMeshBuffer(): void {
-		this.buffers.mapMesh = this.createBuffer(new Float32Array([
-			 1,  1, 0, // ◤ 🡭
-			-1,  1, 0, // ◤ 🡬
-			-1, -1, 0, // ◤ 🡯
-			 1,  1, 0, // ◢ 🡭
-			-1, -1, 0, // ◢ 🡯
-			 1, -1, 0, // ◢ 🡮
-		]), this.attributeLocations.aPosition, 3);
+		for (let i = 0; i < MAP_LAYERS; i++) {
+			const z = i * -0.5;
+			this.buffers[`mapMesh${i}`] = this.createBuffer(new Float32Array([
+				 1,  1, z, // ◤ 🡭
+				-1,  1, z, // ◤ 🡬
+				-1, -1, z, // ◤ 🡯
+				 1,  1, z, // ◢ 🡭
+				-1, -1, z, // ◢ 🡯
+				 1, -1, z, // ◢ 🡮
+			]), this.attributeLocations.aMapMeshPosition, 3);
+		}
+	}
+
+	render() {
+		this.buffers.mapMesh0.use();
+		this.gl.vertexAttrib1f(this.attributeLocations.aMapLayer, 0);
+		this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
+		this.buffers.mapMesh1.use();
+		this.gl.vertexAttrib1f(this.attributeLocations.aMapLayer, 1);
+		this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
 	}
 
 	PALETTE_TEXTURE = 0;
@@ -171,7 +183,8 @@ export class WglMap extends WebGL2 {
 	};
 
 	attributeLocations: Record<string, GLint> = {
-		aPosition: 0,
+		aMapMeshPosition: 0,
 		aTexCoord: 1,
+		uMapLayer: 2,
 	};
 }

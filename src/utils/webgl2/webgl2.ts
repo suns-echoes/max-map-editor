@@ -39,7 +39,8 @@ export class WebGL2 {
 			if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
 				const info = gl.getShaderInfoLog(shader);
 				gl.deleteShader(shader);
-				throw new Error(`Fatal: Failed to compile shader: ${info}`);
+				const shaderType = type === gl.VERTEX_SHADER ? 'vertex' : 'fragment';
+				throw new Error(`Fatal: Failed to compile ${shaderType} shader: ${info}`);
 			}
 
 			return shader;
@@ -63,7 +64,7 @@ export class WebGL2 {
 		return program;
 	}
 
-	createBuffer(data: Float32Array, attributeLocation: number, size: number): WebGLBuffer {
+	createBuffer(data: Float32Array, attributeLocation: number, size: number): WebGL2BufferStruct {
 		const buffer = this.gl.createBuffer();
 
 		this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
@@ -71,26 +72,40 @@ export class WebGL2 {
 		this.gl.enableVertexAttribArray(attributeLocation);
 		this.gl.vertexAttribPointer(attributeLocation, size, this.gl.FLOAT, false, 0, 0);
 
-		return buffer;
+		return {
+			glBuffer: buffer,
+			use: () => {
+				this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
+			},
+			destroy: () => this.gl.deleteBuffer(buffer),
+		};
 	}
 
-	createTexture(textureUnit: GLenum, data: Uint8Array, width: number, height: number, format: GLenum): WebGLTexture {
+	createTexture(textureUnit: GLenum, data: Uint8Array, width: number, height: number, format: GLenum, target: '2d' | '3d' = '2d', depth: number = 1): WebGLTexture {
 		const texture = this.gl.createTexture();
 		if (!texture) {
 			throw new Error('Fatal: Failed to create texture');
 		}
 
+		const targetSampler = target === '3d'
+			? this.gl.TEXTURE_2D_ARRAY
+			: this.gl.TEXTURE_2D;
+
 		this.textures[textureUnit] = texture;
 
 		this.gl.activeTexture(this.gl.TEXTURE0 + textureUnit);
-		this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+		this.gl.bindTexture(targetSampler, texture);
 		this.gl.pixelStorei(this.gl.UNPACK_ALIGNMENT, 1);
-		this.gl.texImage2D(this.gl.TEXTURE_2D, 0, format, width, height, 0, format, this.gl.UNSIGNED_BYTE, data);
+		if (target === '3d') {
+			this.gl.texImage3D(targetSampler, 0, format, width, height, depth, 0, format, this.gl.UNSIGNED_BYTE, data);
+		} else {
+			this.gl.texImage2D(targetSampler, 0, format, width, height, 0, format, this.gl.UNSIGNED_BYTE, data);
+		}
 
-		this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
-		this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
-		this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-		this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+		this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+		this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+		this.gl.texParameteri(targetSampler, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+		this.gl.texParameteri(targetSampler, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
 
 		return texture;
 	}
@@ -122,7 +137,7 @@ export class WebGL2 {
 		return capabilities;
 	}
 
-	getUniformLocations(program: WebGLProgram) {
+	getUniformLocations(program: WebGLProgram): void {
 		for (const uniformName of Object.keys(this.uniformLocations)) {
 			const location = this.gl.getUniformLocation(program, uniformName);
 			if (!location) {
@@ -149,7 +164,7 @@ export class WebGL2 {
 			this.gl.deleteTexture(texture);
 		}
 		for (const buffer of Object.values(this.buffers)) {
-			this.gl.deleteBuffer(buffer);
+			buffer.destroy();
 		}
 		// this.gl.deleteRenderbuffer(someRenderbuffer);
 		// this.gl.deleteFramebuffer(someFramebuffer);
@@ -176,8 +191,15 @@ export class WebGL2 {
 		tilesTexHeight: 0,
 	};
 
-	buffers: Record<string, WebGLBuffer> = {};
+	buffers: Record<string, WebGL2BufferStruct> = {};
 	textures: WebGLTexture[] = [];
 	uniformLocations: Record<string, WebGLUniformLocation> = {};
 	attributeLocations: Record<string, GLint> = {};
+}
+
+
+type WebGL2BufferStruct = {
+	glBuffer: WebGLBuffer;
+	use: () => void;
+	destroy: () => void;
 }
