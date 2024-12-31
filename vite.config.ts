@@ -4,6 +4,7 @@ import path, { dirname, join } from 'node:path';
 import { defineConfig, Plugin, UserConfig, ViteDevServer } from 'vite';
 
 import { exposedENV } from './vite.exposed.env.ts';
+import { viteStyleTransform } from './vite.style.parser.ts';
 
 
 const vertexShaderProtocol = 'vs:';
@@ -156,19 +157,10 @@ export default defineConfig(async (config: UserConfig) => ({
 
 				else if (id.startsWith(styleProtocol)) {
 					const filePath = id.substring(styleProtocol.length, id.length - 3);
-					let code = readFileSync(filePath, 'utf8');
-
-					// Replace placeholders with exposed ENV variables.
-					code = code.replace(/\{\{env:([a-z0-9_]+)\}\}/gi, function (_, match) {
-						return exposedENV[match] ?? `console.error('ENV VAR NOT EXPOSED:', ${match})`;
-					});
-
-					code = `const style = document.createElement('style');
-					style.innerHTML = \`${code.replaceAll('\`', '\\\`')}\`;
-					export default style;`;
+					const code = readFileSync(filePath, 'utf8');
 
 					return {
-						code,
+						code: viteStyleTransform(code, id),
 					};
 				}
 
@@ -204,9 +196,7 @@ export default defineConfig(async (config: UserConfig) => ({
 				}
 
 				else if (id.endsWith('.style')) {
-					return `const style = document.createElement('style');
-				 		style.innerHTML = \`${code.replaceAll('\`', '\\\`')}\`;
-				 		export default style;`;
+					return viteStyleTransform(code, id);
 				}
 
 				else if (id.endsWith('.vs') || id.endsWith('.fs')) {

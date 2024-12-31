@@ -1,3 +1,6 @@
+@import "/src/styles/global.style";
+
+
 section.x-setup-screen {
 	position: fixed;
 	top: calc(50vh - (480px / 2));
@@ -56,6 +59,7 @@ section.x-setup-screen {
 			border-image-outset: 0px 0px 0px 0px;
 			border-image-repeat: stretch stretch;
 
+			cursor: text;
 			user-select: text;
 
 			&::selection {

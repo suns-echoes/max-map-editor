@@ -2,6 +2,7 @@ import { invoke as _invoke } from '@tauri-apps/api/core';
 import { isTauri } from '^tauri/is-tauri.ts';
 
 
+// @ts-ignore
 const invoke = isTauri ? _invoke : async <T>(cmd: string, data?: any, options?: any): Promise<T> => {
 	return Promise.resolve(undefined as any);
 };

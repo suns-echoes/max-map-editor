@@ -1,3 +1,6 @@
+@import "/src/styles/global.style";
+
+
 section.x-main-window {
 	position: absolute;
 	width: 100%;

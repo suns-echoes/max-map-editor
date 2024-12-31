@@ -1,5 +1,4 @@
 import template from './x-setup-screen.html';
-import globalStyle from '../../styles/global.style';
 import style from './x-setup-screen.style';
 
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
@@ -8,7 +7,6 @@ import { RustAPI } from '^utils/rust-api.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
 
 
-template.content.appendChild(globalStyle);
 template.content.appendChild(style);
 
 export class XSetupScreen extends HTMLElement {
@@ -39,7 +37,7 @@ export class XSetupScreen extends HTMLElement {
 			});
 
 			doneButton.addEventListener('click', async () => {
-				const path = maxPathInput.value;
+				const path = maxPathInput.value.replaceAll('\\', '/').replace(/^\.\//, '');
 
 				if (await RustAPI.checkMAXDir(path)) {
 					maxPathInput.classList.remove('invalid');

@@ -36,6 +36,20 @@ pub fn read_max_path_from_settings() {
 }
 
 fn is_max_dir_valid(path: String) -> bool {
+	let entries = match std::fs::read_dir(&path) {
+		Ok(entries) => entries,
+		Err(_) => return false,
+	};
+
+	let mut files_in_dir = Vec::new();
+	for entry in entries {
+		if let Ok(entry) = entry {
+			if let Some(file_name) = entry.file_name().to_str() {
+				files_in_dir.push(file_name.to_uppercase());
+			}
+		}
+	}
+
 	let files = [
 		"CRATER_1.WRL",
 		"CRATER_2.WRL",
@@ -62,15 +76,16 @@ fn is_max_dir_valid(path: String) -> bool {
 		"SNOW_5.WRL",
 		"SNOW_6.WRL",
 	];
+
 	for file in files.iter() {
-		let file_path = format!("{}/{}", path, file);
-		if !std::path::Path::new(&file_path).exists() {
+		if !files_in_dir.contains(&file.to_string()) {
 			unsafe {
 				MAX_DIR_VALID = false;
 			}
 			return false;
 		}
 	}
+
 	unsafe {
 		MAX_DIR_VALID = true;
 	}
