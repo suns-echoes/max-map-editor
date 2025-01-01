@@ -56,3 +56,9 @@ jobs:
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
+
+      -  name: Upload Artifacts
+         uses: actions/upload-artifact@v4
+         with:
+            name: ${{github.job}}
+            path: ${{steps.build_configuration.outputs.build_type}}/Artifacts
