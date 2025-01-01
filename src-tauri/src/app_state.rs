@@ -10,7 +10,6 @@ struct AppState {
 
 lazy_static! {
 	static ref APP_STATE: Mutex<AppState> = Mutex::new(AppState {
-		app_data_path: String::from(""),
 		app_local_data_path: String::from(""),
 		max_path: String::from(""),
 	});
