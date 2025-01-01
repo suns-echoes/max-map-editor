@@ -1,6 +1,7 @@
 #[cfg(debug_assertions)]
 use tauri::Manager;
 
+
 #[tauri::command]
 pub fn open_devtools(_app_handle: tauri::AppHandle) {
 	#[cfg(debug_assertions)] {
@@ -14,6 +15,7 @@ pub fn open_devtools(_app_handle: tauri::AppHandle) {
 	}
 }
 
+
 #[tauri::command]
 pub fn close_devtools(_app_handle: tauri::AppHandle) {
 	#[cfg(debug_assertions)] {
@@ -26,6 +28,7 @@ pub fn close_devtools(_app_handle: tauri::AppHandle) {
 		return ();
 	}
 }
+
 
 #[tauri::command]
 pub fn is_devtools_open(_app_handle: tauri::AppHandle) -> bool {

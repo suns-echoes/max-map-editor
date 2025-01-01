@@ -1,4 +1,4 @@
-import { isTauri } from '^tauri/is-tauri.ts';
+import { isTauri } from '@tauri-apps/api/core';
 import { printDebugInfo } from '^utils/debug/debug.ts';
 import { fs } from '^utils/fs/fs.ts';
 import { deepAssignEqual } from '^utils/object-utils/deep-assign-equal.ts';
@@ -26,7 +26,7 @@ export const SettingsFile = new class SettingsFile {
 	async sync() {
 		await printDebugInfo('Settings::sync');
 
-		if (!isTauri) {
+		if (!isTauri()) {
 			this.#data.setup = false;
 			return;
 		} else if (this.#loaded) {
@@ -83,10 +83,15 @@ export const SettingsFile = new class SettingsFile {
 		this.#data = await fs.appLocalDataDir.readJSONFile('./settings.json');
 	}
 
-	async #write() {
+	/**
+	 * @returns The `true` if data was written, `false` if not.
+	 */
+	async #write(): Promise<boolean> {
 		if (this.#needSync) {
 			await fs.appLocalDataDir.writeJSONFile('./settings.json', this.#data);
 			this.#needSync = false;
+			return true;
 		}
+		return false;
 	}
 };

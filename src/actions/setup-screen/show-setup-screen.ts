@@ -11,17 +11,13 @@ export async function showSetupScreen() {
 	const endSetup = Promise.withResolvers<void>();
 
 	const width = 640;
-	const height = 460;
+	const height = 480;
 
 	const currentWindow = getCurrentWindow();
 
 	await currentWindow.setSize(
 		new PhysicalSize(width, height)
 	);
-
-	// TODO: #18 Fix setup window size
-	console.log('innerSize', (await currentWindow.innerSize()).width, 'x', (await currentWindow.innerSize()).height);
-	console.log('outerSize', (await currentWindow.outerSize()).width, 'x', (await currentWindow.outerSize()).height);
 
 	await currentWindow.setPosition(
 		new PhysicalPosition((window.screen.width - width) / 2, (window.screen.height - height) / 2)
@@ -32,7 +28,7 @@ export async function showSetupScreen() {
 	document.body.appendChild(xSetupScreen);
 
 	xSetupScreen.ondone = function () {
-		console.log('<< Setup done.');
+		console.log('exiting setup screen');
 		document.body.removeChild(xSetupScreen);
 		endSetup.resolve();
 	}

@@ -1,20 +1,24 @@
-import { invoke as _invoke } from '@tauri-apps/api/core';
-import { isTauri } from '^tauri/is-tauri.ts';
+import { invoke as _invoke, isTauri } from '@tauri-apps/api/core';
 
 
 // @ts-ignore
-const invoke = isTauri ? _invoke : async <T>(cmd: string, data?: any, options?: any): Promise<T> => {
+const invoke = isTauri() ? _invoke : async <T>(cmd: string, data?: any, options?: any): Promise<T> => {
 	return Promise.resolve(undefined as any);
 };
 
 
 export const RustAPI = {
+	ERROR_PATH_DOES_NOT_EXIST: 'Path does not exist.',
+	ERROR_INVALID_MAX_PATH: 'Provided path is not a valid M.A.X. directory.',
+
 	openDevTools: (): Promise<void> => invoke('open_devtools'),
 	closeDevTools: (): Promise<void> => invoke('close_devtools'),
 	isDevToolsOpen: (): Promise<boolean> => invoke('is_devtools_open'),
 
+	validateMAXDir: (path: string): Promise<boolean> => invoke('validate_max_dir', { path }),
+	reloadMAXPath: (): Promise<boolean> => invoke('reload_max_path'),
+
 	updateMAXPath: (): Promise<boolean> => invoke('update_max_path'),
-	checkMAXDir: (path: string): Promise<boolean> => invoke('check_max_dir', { path }),
 
 	fileExists: (path: string): Promise<boolean> => invoke('file_exists', { path }),
 

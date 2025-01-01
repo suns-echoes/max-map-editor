@@ -1,11 +1,13 @@
+mod appstate;
+mod commands;
 mod devtools;
+// mod hash;
+mod logger;
 mod fs;
-mod hash;
-mod zip;
+mod settings_json;
+// mod zip;
 
-use tauri::Manager;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
 	tauri::Builder::default()
@@ -16,28 +18,33 @@ pub fn run() {
 			devtools::open_devtools,
 			devtools::close_devtools,
 			devtools::is_devtools_open,
-			fs::update_max_path,
-			fs::check_max_dir,
-			fs::file_exists,
-			fs::read_wrl_file,
-			fs::write_wrl_file,
-			hash::hash_md5,
-			zip::get_zip_file_list,
-			zip::load_zip_file_content
+			commands::validate_max_dir,
+			commands::reload_max_path,
+			// hash::hash_md5,
+			// zip::get_zip_file_list,
+			// zip::load_zip_file_content
 		])
-		.setup(|app| {
-			let app_handle = app.handle();
-			fs::update_app_data_path(format!(
-				"{}/{}",
-				app_handle
-					.path()
-					.data_dir()
-					.expect("failed to get app data path")
-					.to_string_lossy()
-					.to_string(),
-				app_handle.config().identifier
-			));
-			fs::read_max_path_from_settings();
+		.setup(|_app| {
+
+			// TODO: Update the app path in app state
+			// TODO: Update the M.A.X. path in app state (load from settings.json) - show setup dialog if not set or file is missing/broken
+			// TODO: Write file access system that allows file operations only inside M.A.X. directory OR projects directory (add projects directory to settings.json)
+
+			logger::create_file();
+
+			// let app_handle = app.handle();
+
+			// fs::update_app_data_path(format!(
+			// 	"{}/{}",
+			// 	app_handle
+			// 		.path()
+			// 		.data_dir()
+			// 		.expect("failed to get app data path")
+			// 		.to_string_lossy()
+			// 		.to_string(),
+			// 	app_handle.config().identifier
+			// ));
+			// fs::read_max_path_from_settings();
 			Ok(())
 		})
 		.run(tauri::generate_context!())

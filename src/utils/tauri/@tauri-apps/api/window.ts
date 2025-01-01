@@ -1,3 +1,4 @@
+import { isTauri } from '@tauri-apps/api/core';
 import {
 	getCurrentWindow as _getCurrentWindow,
 	PhysicalPosition as _PhysicalPosition,
@@ -6,10 +7,8 @@ import {
 	LogicalSize,
 } from '@tauri-apps/api/window';
 
-import { isTauri } from '^tauri/is-tauri.ts';
 
-
-const getCurrentWindow = isTauri ? _getCurrentWindow : () => ({
+const getCurrentWindow = isTauri() ? _getCurrentWindow : () => ({
 	// @ts-ignore
 	setSize: (size: LogicalSize | PhysicalSize) => Promise.resolve(undefined),
 	setPosition: () => Promise.resolve(),
@@ -17,7 +16,7 @@ const getCurrentWindow = isTauri ? _getCurrentWindow : () => ({
 	scaleFactor: () => Promise.resolve(1),
 });
 
-const LogicalPosition = isTauri ? _LogicalPosition : class LogicalPosition {
+const LogicalPosition = isTauri() ? _LogicalPosition : class LogicalPosition {
 	type: string = '';
 	x: number = 0;
 	y: number = 0;
@@ -27,7 +26,7 @@ const LogicalPosition = isTauri ? _LogicalPosition : class LogicalPosition {
 	toPhysical(scaleFactor: number): _PhysicalPosition { return new PhysicalPosition(0, 0); }
 };
 
-const PhysicalPosition = isTauri ? _PhysicalPosition : class PhysicalPosition {
+const PhysicalPosition = isTauri() ? _PhysicalPosition : class PhysicalPosition {
 	type: string = '';
 	x: number = 0;
 	y: number = 0;

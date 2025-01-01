@@ -1,5 +1,6 @@
 use md5;
 
+
 #[tauri::command]
 pub fn hash_md5(request: tauri::ipc::Request) -> String {
 	let tauri::ipc::InvokeBody::Raw(data) = request.body() else {

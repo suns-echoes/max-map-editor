@@ -17,11 +17,16 @@ export async function restoreMainWindow() {
 	const currentWindow = getCurrentWindow();
 
 	currentWindow.setSize(
-		new PhysicalSize(settings.window.width ?? 1280, settings.window.height ?? 920).toLogical(await currentWindow.scaleFactor())
+		new PhysicalSize(settings.window.width ?? 1280, settings.window.height ?? 920)
 	);
 
+	currentWindow.setSize(
+		new PhysicalSize(settings.window.width ?? 1280, settings.window.height ?? 920)
+	);
+
+
 	currentWindow.setPosition(
-		new PhysicalPosition(settings.window.x, settings.window.y).toLogical(await currentWindow.scaleFactor())
+		new PhysicalPosition(settings.window.x, settings.window.y)
 	);
 
 	if (settings.window.maximized) {

@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use zip::ZipArchive;
 
+
 #[tauri::command]
 pub fn get_zip_file_list(path: String) -> Result<Vec<(String, u64)>, String> {
 	let file = File::open(&path).map_err(|e| e.to_string())?;
@@ -17,6 +18,7 @@ pub fn get_zip_file_list(path: String) -> Result<Vec<(String, u64)>, String> {
 	Ok(file_info)
 }
 
+
 // #[tauri::command]
 // pub fn get_zip_file_list(path: String) -> Result<Vec<String>, String> {
 // 	let file = File::open(&path).map_err(|e| e.to_string())?;
@@ -31,6 +33,7 @@ pub fn get_zip_file_list(path: String) -> Result<Vec<(String, u64)>, String> {
 
 // 	Ok(file_names)
 // }
+
 
 #[tauri::command]
 pub fn load_zip_file_content(path: String) -> Result<Vec<String>, String> {

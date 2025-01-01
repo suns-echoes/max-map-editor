@@ -1,6 +1,6 @@
 [package]
 name = "max-game-map-editor"
-version = "0.1.9"
+version = "0.1.10"
 description = "M.A.X. Game Map Editor"
 authors = ["Aneta Suns"]
 edition = "2021"
@@ -18,6 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+lazy_static = "1.5.0"
 tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }

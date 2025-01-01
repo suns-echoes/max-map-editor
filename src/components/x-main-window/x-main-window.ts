@@ -7,6 +7,7 @@ import { printDebugInfo } from '^utils/debug/debug.ts';
 
 template.content.appendChild(style);
 
+
 export class XMainWindow extends HTMLElement {
 	constructor() {
 		printDebugInfo('XMainWindow::constructor');
@@ -23,6 +24,7 @@ export class XMainWindow extends HTMLElement {
 		})();
 	}
 }
+
 
 printDebugInfo('registering "x-main-window" web component');
 customElements.define('x-main-window', XMainWindow);

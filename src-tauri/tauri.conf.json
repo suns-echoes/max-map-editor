@@ -1,6 +1,6 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "max-game-map-editor",
+	"productName": "M.A.X. Game Map Editor",
 	"identifier": "max-game-map-editor",
 	"mainBinaryName": "max-game-map-editor",
 	"version": "../package.json",

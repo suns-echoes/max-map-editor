@@ -72,14 +72,13 @@ section.x-setup-screen {
 			}
 		}
 
-		#setup--error-message {
+		#setup--message-box {
 			width: 100%;
 			height: 80px;
 
 			margin-top: 12px;
 			padding: 15px;
 
-			color: #fc0000;
 			font-size: 0.8em;
 
 			border-image-source: url('/images/textarea.png');
@@ -94,6 +93,14 @@ section.x-setup-screen {
 
 			span {
 				display: none;
+			}
+
+			&.info {
+				color: #f0d8b8;
+			}
+
+			&.error {
+				color: #fc0000;
 			}
 		}
 
