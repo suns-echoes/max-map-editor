@@ -1,4 +1,4 @@
-use crate::appstate;
+use crate::app_state;
 use crate::fs;
 use crate::logger;
 use crate::settings_json;
@@ -32,8 +32,6 @@ pub fn validate_max_dir(path: String) -> Result<bool, String> {
 pub fn reload_max_path() -> Result<bool, String> {
 	logger::info(&format!("commands::reload_max_path"));
 
-	let mut app_state = appstate::APP_STATE.lock().unwrap();
-
 	let max_path = match settings_json::read_max_path_from_settings() {
 		Ok(path) => path,
 		Err(e) => {
@@ -47,7 +45,7 @@ pub fn reload_max_path() -> Result<bool, String> {
 		return Ok(false);
 	}
 
-	app_state.set_max_path(max_path.clone());
+	app_state::set_max_path(max_path.clone());
 
 	logger::info(&format!("commands::reload_max_path -> path: {}", max_path));
 	Ok(true)

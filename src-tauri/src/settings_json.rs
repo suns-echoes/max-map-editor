@@ -1,9 +1,10 @@
+use crate::app_state;
 use crate::fs;
 use crate::logger;
 
 
 pub fn read() -> Result<serde_json::Value, String> {
-	if !fs::file_exists("settings.json") {
+	if !fs::file_exists(&format!("{}/settings.json", app_state::get_app_local_data_path())) {
 		logger::error("settings_json::read -> Error: settings.json not found");
 		return Err("Error: settings.json not found".to_string());
 	}
@@ -34,10 +35,13 @@ pub fn read_max_path_from_settings() -> Result<String, String> {
 		Err(e) => return Err(e)
 	};
 
-	let max_path: String = settings["max"]["path"]
-		.as_str()
-		.expect("failed to get max.path property")
-		.to_string();
+	let max_path = match settings["max"]["path"].as_str() {
+		Some(path) => path.to_string(),
+		None => {
+			logger::error("failed to get max.path property");
+			return Err("failed to get max.path property".to_string());
+		}
+	};
 
 	Ok(max_path)
 }

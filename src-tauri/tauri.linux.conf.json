@@ -1,0 +1,10 @@
+{
+	"bundle": {
+		"linux": {
+			"deb": {
+				"desktopTemplate": "resources/linux/app.desktop",
+				"files": {}
+			}
+		}
+	}
+}

@@ -4,7 +4,6 @@ import { showSetupScreen } from '^actions/setup-screen/show-setup-screen.ts';
 import { showMainWindow } from '^actions/main-window/show-main-window.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
-import { sleep } from '^utils/flow-control/sleep.ts';
 
 import globalStyle from './styles/global.style';
 import style from './styles/index.style';
@@ -23,16 +22,12 @@ await printDebugInfo('$RESOURCE: ' + await resourceDir());
 
 
 await SettingsFile.sync();
-
-
 console.info('Settings:', SettingsFile.getAll());
-
-await sleep(500);
 
 //
 // SETUP
 //
-if (SettingsFile.get('setup')) {
+if (SettingsFile.get('setup') || !SettingsFile.get('max')?.path) {
 	await showSetupScreen();
 	await saveMainWindowParams();
 }
