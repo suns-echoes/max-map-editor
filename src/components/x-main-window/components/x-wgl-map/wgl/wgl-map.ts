@@ -158,6 +158,46 @@ export class WglMap extends WebGL2 {
 		this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
 	}
 
+	animationFrame_6fps: number = 0;
+	animationFrame_8fps: number = 0;
+	animationFrame_10fps: number = 0;
+	animationTimer_6fps: TimerID | null = null;
+	animationTimer_8fps: TimerID | null = null;
+	animationTimer_10fps: TimerID | null = null;
+	/** Common number for all animation frames count. */
+	animationFrameCycle: number = 7 * 6 * 5;
+	enableAnimation() {
+		if (this.animationTimer_6fps !== null) {
+			return;
+		}
+
+		this.animationTimer_6fps = setInterval(() => {
+			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_6fps, this.animationFrame_6fps++);
+			if (this.animationFrame_6fps >= this.animationFrameCycle) this.animationFrame_6fps = 0;
+			this.render();
+		}, 167);
+		this.animationTimer_8fps = setInterval(() => {
+			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_8fps, this.animationFrame_8fps++);
+			if (this.animationFrame_8fps >= this.animationFrameCycle) this.animationFrame_8fps = 0;
+			this.render();
+		}, 125);
+		this.animationTimer_10fps = setInterval(() => {
+			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_10fps, this.animationFrame_10fps++);
+			if (this.animationFrame_10fps >= this.animationFrameCycle) this.animationFrame_10fps = 0;
+			this.render();
+		}, 100);
+	}
+
+	disableAnimation() {
+		if (this.animationTimer_6fps === null) return;
+		clearInterval(this.animationTimer_6fps);
+		this.animationTimer_6fps = null;
+		clearInterval(this.animationTimer_8fps!);
+		this.animationTimer_8fps = null;
+		clearInterval(this.animationTimer_10fps!);
+		this.animationTimer_10fps = null;
+	}
+
 	PALETTE_TEXTURE = 0;
 	MAP_TEXTURE = 1;
 	TILES_TEXTURE0 = 2;
@@ -176,6 +216,9 @@ export class WglMap extends WebGL2 {
 		uProjection: null!,
 		uCursor: null!,
 		uMapLayer: null!,
+		uAnimationFrame_6fps: null!,
+		uAnimationFrame_8fps: null!,
+		uAnimationFrame_10fps: null!,
 		uPaletteTexture: null!,
 		uMapTexture: null!,
 		uTilesTexture0: null!,

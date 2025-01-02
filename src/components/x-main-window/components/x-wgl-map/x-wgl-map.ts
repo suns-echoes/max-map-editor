@@ -70,9 +70,7 @@ export class XWglMap extends HTMLElement {
 
 			wglMap.render();
 
-			setInterval(() => { console.log('render');
-				wglMap.render();
-			}, 100);
+			wglMap.enableAnimation();
 
 			makeCanvasInteractive(canvas, (dx, dy, dz) => {
 				wglMap.moveCamera(dx, dy, dz);

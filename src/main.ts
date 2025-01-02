@@ -1,3 +1,4 @@
+import { isTauri } from '@tauri-apps/api/core';
 import { appDataDir, appLocalDataDir, resourceDir } from '^tauri-apps/api/path';
 import { saveMainWindowParams } from '^actions/main-window/save-main-window-params.ts';
 import { showSetupScreen } from '^actions/setup-screen/show-setup-screen.ts';
@@ -27,7 +28,7 @@ console.info('Settings:', SettingsFile.getAll());
 //
 // SETUP
 //
-if (SettingsFile.get('setup') || !SettingsFile.get('max')?.path) {
+if (isTauri() && (SettingsFile.get('setup') || !SettingsFile.get('max')?.path)) {
 	await showSetupScreen();
 	await saveMainWindowParams();
 }
