@@ -20,7 +20,7 @@ export class AsyncSignal<T> {
 	static comparator(source: AsyncSignal<any>, referenceValue: any): AsyncSignalComparator {
 		const comparatorSignal = new AsyncSignal(source.equal(source.value, referenceValue)) as AsyncSignalComparator;
 		comparatorSignal.referenceValue = referenceValue;
-		source.observers.add(function () {
+		source.observers.add(async function () {
 			comparatorSignal.set(source.equal(source.value, comparatorSignal.referenceValue));
 		});
 		return comparatorSignal;
@@ -91,7 +91,7 @@ interface AsyncSignalOptions {
 	equal?: boolean | ((a: any, b: any) => boolean);
 }
 
-type AsyncSignalObserver<T> = (prevValue: T, newValue: T) => void;
+type AsyncSignalObserver<T> = (prevValue: T, newValue: T) => Promise<void>;
 
 interface AsyncSignalComparator extends AsyncSignal<boolean> {
 	referenceValue: any;

@@ -85,6 +85,7 @@ export class WglMap extends WebGL2 {
 		mat4_translate(view, this.viewMatrix, this.camera);
 
 		this.gl.uniformMatrix4fv(this.uniformLocations.uView, false, view);
+		this.render();
 	}
 
 	initPalette(paletteData: Uint8Array) {

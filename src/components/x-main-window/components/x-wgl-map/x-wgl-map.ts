@@ -68,13 +68,12 @@ export class XWglMap extends HTMLElement {
 
 			await signalValue(AppState.mapSize, function (size) { return size !== null; });
 
+			wglMap.enableAnimation();
 			wglMap.render();
 
-			wglMap.enableAnimation();
 
 			makeCanvasInteractive(canvas, (dx, dy, dz) => {
 				wglMap.moveCamera(dx, dy, dz);
-				wglMap.render();
 			});
 
 			effect([AppEvents.windowResizeSignal], function () {
