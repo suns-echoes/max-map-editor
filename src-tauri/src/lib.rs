@@ -1,10 +1,12 @@
 mod app_state;
 mod commands;
 mod devtools;
+mod fs;
 // mod hash;
 mod logger;
-mod fs;
 mod settings_json;
+mod stdio;
+mod time;
 // mod zip;
 
 use tauri::Manager;
@@ -27,7 +29,7 @@ pub fn run() {
 			// zip::load_zip_file_content
 		])
 		.setup(|app| {
-			eprintln!(">> Init application");
+			stdio::info("Application setup");
 
 			// TODO: Update the M.A.X. path in app state (load from settings.json) - show setup dialog if not set or file is missing/broken
 			// TODO: Write file access system that allows file operations only inside M.A.X. directory OR projects directory (add projects directory to settings.json)
@@ -51,6 +53,7 @@ pub fn run() {
 			// settings_json::read_max_path_from_settings();
 
 			logger::create_file();
+			logger::info("Application started");
 
 			Ok(())
 		})
