@@ -1,4 +1,4 @@
-import { resolveResource } from '^tauri-apps/api/path.ts';
+import { resolveTextResource } from '^tauri-apps/api/path.ts';
 
 import template from './x-wgl-map.html';
 import style from './x-wgl-map.style';
@@ -9,8 +9,8 @@ import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
 import { signalValue } from '^utils/reactive/signalValue.ts';
 import { AppEvents } from '^events/app-events.ts';
 import { effect } from '^utils/reactive/effect.ts';
-import { throttle } from '^utils/flow-control/throttle.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
+import { makeMapInteractive } from './utils/make-map-interactive.ts';
 
 
 template.content.appendChild(style);
@@ -29,39 +29,10 @@ export class XWglMap extends HTMLElement {
 		printDebugInfo('XWglMap::connectedCallback');
 
 		(async () => {
-			function makeCanvasInteractive(canvas: HTMLCanvasElement, onDrag: (dx: number, dy: number, dz: number) => void) {
-				canvas.addEventListener('mousedown', function (event) {
-					let lastX = event.offsetX;
-					let lastY = event.offsetY;
-
-					function onMouseMove(event: MouseEvent) {
-						const dx = event.offsetX - lastX;
-						const dy = event.offsetY - lastY;
-
-						lastX = event.offsetX;
-						lastY = event.offsetY;
-
-						onDrag(dx, dy, 0);
-					}
-
-					function onMouseUpOrLeave() {
-						canvas.removeEventListener('mousemove', onMouseMove);
-						canvas.removeEventListener('mouseup', onMouseUpOrLeave);
-					}
-
-					canvas.addEventListener('mousemove', onMouseMove);
-					canvas.addEventListener('mouseup', onMouseUpOrLeave);
-					canvas.addEventListener('mouseleave', onMouseUpOrLeave);
-				});
-
-				canvas.addEventListener('wheel', throttle(function (event) {
-					onDrag(0, 0, Math.sign(event.deltaY));
-				}, 50));
-			}
 			const shadowRoot = this.shadowRoot!;
 			const canvas = shadowRoot.querySelector('canvas')!;
 
-			await loadMapProject(await resolveResource('resources/maps/CRATER.template.json'));
+			await loadMapProject(await resolveTextResource('resources/maps/CRATER.template.json'));
 
 			const wglMap = new WglMap(canvas);
 			AppState.wglMap.set(wglMap);
@@ -71,9 +42,13 @@ export class XWglMap extends HTMLElement {
 			wglMap.enableAnimation();
 			wglMap.render();
 
-
-			makeCanvasInteractive(canvas, (dx, dy, dz) => {
-				wglMap.moveCamera(dx, dy, dz);
+			makeMapInteractive(canvas, (cursorX, cursorY, panDeltaX, panDeltaY, zoomDelta) => {
+				if (cursorX !== 0 || cursorY !== 0) {
+					wglMap.moveCursor(cursorX, cursorY);
+				}
+				else if (panDeltaX !== 0 || panDeltaY !== 0 || zoomDelta !== 0) {
+					wglMap.moveCamera(panDeltaX, panDeltaY, zoomDelta);
+				}
 			});
 
 			effect([AppEvents.windowResizeSignal], function () {

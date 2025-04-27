@@ -4,6 +4,7 @@ precision highp sampler2DArray;
 
 in vec2 vTexCoord;
 
+uniform float uZoom;
 uniform vec2 uCursor;
 uniform float uMapLayer;
 uniform int uAnimationFrame_6fps;
@@ -17,15 +18,6 @@ uniform sampler2D uTilesTexture0;
 out vec4 outColor;
 
 void main() {
-	// if (uMapLayer == 1.0) {
-	// 	outColor = vec4(1.0, 1.0, 0.0, 1.0);
-	// 	return;
-	// }
-	// if (uMapLayer == 0.0) {
-	// 	outColor = vec4(0.0, 1.0, 0.0, 1.0);
-	// 	return;
-	// }
-
 	// Get map texture 2D size.
 	vec2 mapSize = vec2(textureSize(uMapTexture, 0).xy);
 	// Get tileSet 2D size. Tile data is 4096x1 pixels.
@@ -38,12 +30,6 @@ void main() {
 
 	// Calculate the sub-cell coordinates.
 	vec2 subCell = floor(fract(vTexCoord * mapSize) * 64.0);
-
-	// Check if cursor is on cell.
-	if (uCursor == cellXY && (subCell.x < 2.0 || subCell.x > 61.0 || subCell.y < 2.0 || subCell.y > 61.0)) {
-		outColor = vec4(1.0, 1.0, 1.0, 1.0);
-		return;
-	}
 
 	// Get map cell data for tiling:
 	//   X = tile X offset in tiles texture
@@ -130,7 +116,19 @@ void main() {
 	}
 
 	// Get the color from palette texture.
-	vec4 color = texture(uPaletteTexture, vec2(paletteIndex / 255.0, 0.0));
+	vec4 color = texture(uPaletteTexture, vec2(paletteIndex / 255.0, 0.0)).rgba;
+
+	// Check if cursor is on cell.
+	float cursorFrameWidth = 4.0 * sqrt(2.0) / uZoom;
+	if (uCursor == cellXY && (
+		subCell.x - cursorFrameWidth < 0.0 ||
+		subCell.x + cursorFrameWidth > 63.0 ||
+		subCell.y - cursorFrameWidth < 0.0 ||
+		subCell.y + cursorFrameWidth > 63.0
+	)) {
+		float cursorAlpha = sin(float(uAnimationFrame_10fps) / 2.0) / 2.0 + 0.75;
+		color = mix(color, color * 2.0, cursorAlpha);
+	}
 
 	outColor = color;
 }

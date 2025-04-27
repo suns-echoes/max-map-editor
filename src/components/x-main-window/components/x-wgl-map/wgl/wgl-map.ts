@@ -1,5 +1,5 @@
-import vertexShaderSource from './wgl-map.vs';
-import fragmentShaderSource from './wgl-map.fs';
+import vertexShaderSource from './shaders/map.vs';
+import fragmentShaderSource from './shaders/map.fs';
 import { Perf } from '^utils/perf/perf.ts';
 import { WebGL2 } from '^utils/webgl2/webgl2.ts';
 import { MAP_LAYERS } from '^consts/map-consts.ts';
@@ -15,7 +15,6 @@ export class WglMap extends WebGL2 {
 
 		this.tileCapability = this.getTileCapability();
 		this.textures = new Array(this.tileCapability.maxTileTextures).fill(null);
-		console.info('Tile capability:', this.tileCapability);
 
 		const program = this.createProgram(vertexShaderSource, fragmentShaderSource);
 		this.gl.useProgram(program);
@@ -62,24 +61,46 @@ export class WglMap extends WebGL2 {
 
 	cursor: Vec2 = new Float32Array([56, 56]);
 	initCursor() {
+		this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
 		this.gl.uniform2fv(this.uniformLocations.uCursor, this.cursor);
 	}
 
-	moveCamera(dx: number, dy: number, dz: number) {
-		const cameraZOrigin = 1;
-		this.camera[2] += dz * Math.sqrt(cameraZOrigin - this.camera[2]) * 0.5;
+	mapPanX: number = 0;
+	mapPanY: number = 0;
 
-		// Limit camera zoom from "show whole map" to x2 zoom
-		if (this.camera[2] < -(this.factor - 1)) {
-			this.camera[2] = -(this.factor - 1);
-		} else if (this.camera[2] > 0.5) {
-			this.camera[2] = 0.5;
+	moveCursor(x: number, y: number) {
+		const cursorX = x - this.gl.canvas.width * 0.5 - this.mapPanX;
+		const cursorY = y - this.gl.canvas.height * 0.5 + this.mapPanY;
+		const invTileSizeAndZoom = 0.015625 / this.mapZoom;
+
+		this.cursor[0] = Math.floor(cursorX * invTileSizeAndZoom + this.mapWidth * 0.5);
+		this.cursor[1] = Math.floor(cursorY * invTileSizeAndZoom + this.mapHeight * 0.5);
+
+		this.gl.uniform2fv(this.uniformLocations.uCursor, this.cursor);
+		this.render();
+	}
+
+	moveCamera(dx: number, dy: number, dz: number) {
+		if (dz !== 0) {
+			const cameraZOrigin = 1;
+			this.camera[2] += dz * Math.sqrt(cameraZOrigin - this.camera[2]) * 0.5;
+
+			// Limit camera zoom from "show whole map" to x2 zoom
+			if (this.camera[2] < -(this.factor - 1)) {
+				this.camera[2] = -(this.factor - 1);
+			} else if (this.camera[2] > 0.5) {
+				this.camera[2] = 0.5;
+			}
+
+			this.mapZoom = 1 / (cameraZOrigin - this.camera[2]);
+			this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
 		}
 
-		const zoomLevel = 1 / (cameraZOrigin - this.camera[2]);
-
-		this.camera[0] += dx / this.mapModelWidth * this.factor * 2 / zoomLevel;
-		this.camera[1] -= dy / this.mapModelHeight * this.factor * 2 / zoomLevel;
+		const cameraPanCoefficient = this.factor * 2 / this.mapZoom;
+		this.mapPanX += dx;
+		this.mapPanY -= dy;
+		this.camera[0] = this.mapPanX / this.mapModelWidth * cameraPanCoefficient;
+		this.camera[1] = this.mapPanY / this.mapModelHeight * cameraPanCoefficient;
 
 		const view = mat4_createIdentity();
 		mat4_translate(view, this.viewMatrix, this.camera);
@@ -101,6 +122,8 @@ export class WglMap extends WebGL2 {
 		if (this.textures[this.MAP_TEXTURE]) {
 			this.gl.deleteTexture(this.mapTexture);
 		}
+		this.mapWidth = width;
+		this.mapHeight = height;
 		this.mapModelWidth = width * 64;
 		this.mapModelHeight = height * 64;
 		this.textures[this.MAP_TEXTURE] = this.createTexture(this.MAP_TEXTURE, mapData, width, height, this.gl.RGBA, '3d', MAP_LAYERS);
@@ -206,6 +229,9 @@ export class WglMap extends WebGL2 {
 	factor: number = 1;
 	camera: Vec3 = [0, 0, 0];
 
+	mapZoom: number = 1;
+	mapWidth: number = 0;
+	mapHeight: number = 0;
 	mapModelWidth: number = 0;
 	mapModelHeight: number = 0;
 
@@ -215,6 +241,7 @@ export class WglMap extends WebGL2 {
 		uModel: null!,
 		uView: null!,
 		uProjection: null!,
+		uZoom: null!,
 		uCursor: null!,
 		uMapLayer: null!,
 		uAnimationFrame_6fps: null!,

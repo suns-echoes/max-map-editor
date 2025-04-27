@@ -8,12 +8,12 @@ import { Signal } from './signal.class.ts';
  * @param triggers The array of signals that will trigger the callback function.
  * @param [options] The optional effect options.
  * @param [options.immediate] The optional effect options. Set to `true` to call the callback immediately after the effect is created. Default is `false`.
- * @param [options.batchUpdate] Optional effect options. Set to `true` to call the callback only once in the microtask queue. Default is `false`.
+ * @param [options.batchUpdates] Optional effect options. Set to `true` to call the callback only once in the microtask queue. Default is `false`.
  * @param [options.executor] Optional effect options. Set to a custom executor function to override the default behavior.
  * @returns The destroy function that will remove the effect and call the cleanup function if returned by callback.
  */
 export function effect(triggers: Array<Signal<any>>, callback: AnyFunction, options?: EffectOptions) {
-	const { immediate = false, batchUpdate = false, executor } = options || {};
+	const { immediate = false, batchUpdates = false, executor } = options || {};
 
 	function destroy() {
 		for (let i = 0; i < triggers.length; i++)
@@ -22,7 +22,7 @@ export function effect(triggers: Array<Signal<any>>, callback: AnyFunction, opti
 		cleanup?.();
 	}
 
-	const effectExecutor = executor?.(triggers, callback, destroy, batchUpdate) ?? createExecutor(callback, destroy, batchUpdate);
+	const effectExecutor = executor?.(triggers, callback, destroy, batchUpdates) ?? createExecutor(callback, destroy, batchUpdates);
 	let cleanup: (() => void) | undefined = undefined;
 
 	for (let i = 0; i < triggers.length; i++)
@@ -35,9 +35,9 @@ export function effect(triggers: Array<Signal<any>>, callback: AnyFunction, opti
 }
 
 
-function createExecutor(callback: AnyFunction, destroy: () => void, batchUpdate: boolean) {
+function createExecutor(callback: AnyFunction, destroy: () => void, batchUpdates: boolean) {
 	let cleanup: (() => void) | undefined = undefined;
-	if (batchUpdate) {
+	if (batchUpdates) {
 		let isPending = false;
 		return function () {
 			if (isPending) return;
@@ -72,7 +72,7 @@ effect.once = function (triggers: Signal<any>[], callback: AnyFunction, options?
  * @param triggers The array of signals that will trigger the callback function.
  * @param [options] The optional effect options.
  * @param [options.immediate] The optional effect options. Set to `true` to call the callback immediately after the effect is created. Default is `false`.
- * @param [options.batchUpdate] Optional effect options. Set to `true` to call the callback only once in the microtask queue. Default is `false`.
+ * @param [options.batchUpdates] Optional effect options. Set to `true` to call the callback only once in the microtask queue. Default is `false`.
  * @param [options.executor] Optional effect options. Set to a custom executor function to override the default behavior.
  * @returns The destroy function that will remove the effect and call the cleanup function if returned by callback.
  */
@@ -83,9 +83,9 @@ effect.onNonNullValues = function <const T extends Signal<any>[]>(triggers: T, c
 	});
 }
 
-function createOnNonNullValuesExecutor(triggers: Signal<any>[], callback: AnyFunction, destroy: () => void, batchUpdate: boolean) {
+function createOnNonNullValuesExecutor(triggers: Signal<any>[], callback: AnyFunction, destroy: () => void, batchUpdates: boolean) {
 	let cleanup: (() => void) | undefined = undefined;
-	if (batchUpdate) {
+	if (batchUpdates) {
 		let isPending = false;
 		return function () {
 			if (isPending) return;
@@ -122,7 +122,7 @@ function createOnNonNullValuesExecutor(triggers: Signal<any>[], callback: AnyFun
 
 
 /*
-	const { immediate = false, batchUpdate = false } = options || {};
+	const { immediate = false, batchUpdates = false } = options || {};
 
 	let executor: () => void = undefined!;
 	let cleanup: (() => void) | void = undefined;
@@ -135,7 +135,7 @@ function createOnNonNullValuesExecutor(triggers: Signal<any>[], callback: AnyFun
 		cleanup?.();
 	}
 
-	executor = batchUpdate
+	executor = batchUpdates
 		? function () {
 			if (pending) return;
 			pending = true;
@@ -182,6 +182,6 @@ type SignalNonNullValues<T> = {
 
 interface EffectOptions {
 	immediate?: boolean,
-	batchUpdate?: boolean,
-	executor?: (triggers: Signal<any>[], callback: AnyFunction, destroy: () => void, batchUpdate: boolean) => void,
+	batchUpdates?: boolean,
+	executor?: (triggers: Signal<any>[], callback: AnyFunction, destroy: () => void, batchUpdates: boolean) => void,
 }

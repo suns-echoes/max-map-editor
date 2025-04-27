@@ -1,4 +1,4 @@
-import { resolveResource } from '^tauri-apps/api/path.ts';
+import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { readTextFile } from '^tauri-apps/plugin-fs.ts';
 import { AppState } from '^state/app-state.ts';
 import { hexToUint8 } from '^utils/array-buffers/hex-to-uint8.ts';
@@ -7,7 +7,7 @@ import { effect } from '^utils/reactive/effect.ts';
 
 
 export async function loadPalette(assetName: string) {
-	const palette = parsePalette(await readTextFile(await resolveResource(`resources/assets/${assetName}/palette.json`)));
+	const palette = parsePalette(await readTextFile(await resolveTextResource(`resources/assets/${assetName}/palette.json`)));
 	AppState.palette.set(palette);
 }
 

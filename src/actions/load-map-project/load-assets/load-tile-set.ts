@@ -1,4 +1,4 @@
-import { resolveResource } from '^tauri-apps/api/path.ts';
+import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { readTextFile } from '^tauri-apps/plugin-fs.ts';
 import { hexToUint8 } from '^utils/array-buffers/hex-to-uint8.ts';
 import { Perf } from '^utils/perf/perf.ts';
@@ -9,9 +9,9 @@ import { Perf } from '^utils/perf/perf.ts';
 
 export async function loadTileSet(outTiles: Tiles, assetName: string) {
 	const [data, match, props, /*variants*/] = await Promise.all([
-		await readTextFile(await resolveResource(`resources/assets/${assetName}/tiles.data.json`)),
-		await readTextFile(await resolveResource(`resources/assets/${assetName}/tiles.match.json`)),
-		await readTextFile(await resolveResource(`resources/assets/${assetName}/tiles.props.json`)),
+		await readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles.data.json`)),
+		await readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles.match.json`)),
+		await readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles.props.json`)),
 		// await readTextFile(await resolveResource(`resources/assets/${assetName}/tiles.variants.json`)),
 	]);
 
