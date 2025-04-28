@@ -81,6 +81,7 @@ export class WglMap extends WebGL2 {
 	}
 
 	moveCamera(dx: number, dy: number, dz: number) {
+		const prevZoom = this.mapZoom;
 		if (dz !== 0) {
 			const cameraZOrigin = 1;
 			this.camera[2] += dz * Math.sqrt(cameraZOrigin - this.camera[2]) * 0.25;
@@ -96,8 +97,10 @@ export class WglMap extends WebGL2 {
 			this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
 		}
 
-		this.mapPanX += dx;
-		this.mapPanY -= dy;
+		const zoomFactor = this.mapZoom / prevZoom;
+
+		this.mapPanX = (this.mapPanX + dx) * zoomFactor;
+		this.mapPanY = (this.mapPanY - dy) * zoomFactor;
 
 		const mapMargin = 64 * 2 / this.mapZoom;
 
