@@ -83,7 +83,7 @@ export class WglMap extends WebGL2 {
 	moveCamera(dx: number, dy: number, dz: number) {
 		if (dz !== 0) {
 			const cameraZOrigin = 1;
-			this.camera[2] += dz * Math.sqrt(cameraZOrigin - this.camera[2]) * 0.5;
+			this.camera[2] += dz * Math.sqrt(cameraZOrigin - this.camera[2]) * 0.25;
 
 			// Limit camera zoom from "show whole map" to x2 zoom
 			if (this.camera[2] < -(this.factor - 1)) {

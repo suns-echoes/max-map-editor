@@ -45,6 +45,6 @@ export function makeMapInteractive(canvas: HTMLCanvasElement, onDrag: (cursorX: 
 	canvas.addEventListener('mousemove', onMouseMove);
 
 	canvas.addEventListener('wheel', throttle(function (event) {
-		onDrag(0, 0, 0, 0, Math.sign(event.deltaY));
+		onDrag(event.offsetX, event.offsetY, 0, 0, Math.sign(event.deltaY));
 	}, 50));
 }

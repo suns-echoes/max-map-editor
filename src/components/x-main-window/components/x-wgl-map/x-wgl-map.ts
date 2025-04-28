@@ -43,11 +43,11 @@ export class XWglMap extends HTMLElement {
 			wglMap.render();
 
 			makeMapInteractive(canvas, (cursorX, cursorY, panDeltaX, panDeltaY, zoomDelta) => {
+				if (panDeltaX !== 0 || panDeltaY !== 0 || zoomDelta !== 0) {
+					wglMap.moveCamera(panDeltaX, panDeltaY, zoomDelta);
+				}
 				if (cursorX !== 0 || cursorY !== 0) {
 					wglMap.moveCursor(cursorX, cursorY);
-				}
-				else if (panDeltaX !== 0 || panDeltaY !== 0 || zoomDelta !== 0) {
-					wglMap.moveCamera(panDeltaX, panDeltaY, zoomDelta);
 				}
 			});
 
