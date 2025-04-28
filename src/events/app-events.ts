@@ -1,10 +1,10 @@
-import { AsyncSignal } from '^utils/reactive/async-signal.ts';
 import { Signal } from '^utils/reactive/signal.class.ts';
+import { Value } from '^utils/reactive/value.class.ts';
 
 
 export const AppEvents = {
-	windowCloseRequested: AsyncSignal.empty(),
-	windowResizeSignal: new Signal({
+	windowCloseSignal: new Signal(),
+	windowSize: new Value({
 		innerWidth: window.innerWidth,
 		innerHeight: window.innerHeight,
 	}),

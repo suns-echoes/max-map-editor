@@ -1,7 +1,7 @@
 import { MAP_LAYERS } from '^consts/map-consts.ts';
 import { AppState } from '^state/app-state.ts';
+import { Effect } from '^utils/reactive/effect.class.ts';
 import { Perf } from '^utils/perf/perf.ts';
-import { effect } from '^utils/reactive/effect.ts';
 
 
 export async function loadMap(mapProject: MapProject, tiles: Tiles) {
@@ -81,6 +81,10 @@ function populateMapCell(cell: string | null, tiles: Tiles, map: Uint8Array, i: 
 const transformMap = { 'N': 0, 'W': 1, 'S': 2, 'E': 3, '!N': 4, '!W': 5, '!S': 6, '!E': 7 };
 
 
-effect.onNonNullValues([AppState.wglMap, AppState.mapSize, AppState.map], function ([wglMap, mapSize, map]) {
+new Effect(function () {
+	const wglMap = AppState.wglMap.value;
+	const mapSize = AppState.mapSize.value;
+	const map = AppState.map.value;
+	if (!wglMap || !mapSize || !map) return;
 	wglMap.initMap(map, mapSize.width, mapSize.height);
-});
+}).watch([AppState.wglMap, AppState.mapSize, AppState.map]);

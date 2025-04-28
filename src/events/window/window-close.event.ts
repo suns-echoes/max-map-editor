@@ -11,7 +11,7 @@ export async function initWindowCloseEvent() {
 		getCurrentWindow().listen(TauriEvent.WINDOW_CLOSE_REQUESTED, async function () {
 			await saveMainWindowParams().catch(console.error);
 
-			await AppEvents.windowCloseRequested.dispatch();
+			await AppEvents.windowCloseSignal.dispatch().sync();
 
 			getCurrentWindow().destroy();
 		});

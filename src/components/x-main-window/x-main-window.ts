@@ -3,7 +3,7 @@ import style from './x-main-window.style';
 
 import './components/x-wgl-map/x-wgl-map.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
-import { effect } from '^utils/reactive/effect.ts';
+import { Effect } from '^utils/reactive/effect.class.ts';
 import { AppEvents } from '^events/app-events.ts';
 import { saveMainWindowParams } from '^actions/main-window/save-main-window-params.ts';
 
@@ -24,10 +24,9 @@ export class XMainWindow extends HTMLElement {
 		(async () => {
 			// const shadowRoot = this.shadowRoot!;
 
-
-			effect([AppEvents.windowResizeSignal], function () {
+			new Effect(function () {
 				saveMainWindowParams();
-			});
+			}).watch([AppEvents.windowSize]);
 		})();
 	}
 }

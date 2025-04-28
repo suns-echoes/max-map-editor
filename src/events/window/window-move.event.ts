@@ -1,12 +1,10 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { TauriEvent } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-
 import { Signal } from '^utils/reactive/signal.class.ts';
 
 
-export const windowMoveSignal = Signal.empty();
-
+export const windowMoveSignal = new Signal();
 
 export async function initWindowMoveEvent() {
 	if (isTauri()) {

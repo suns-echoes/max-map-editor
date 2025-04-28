@@ -3,12 +3,12 @@ import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import template from './x-wgl-map.html';
 import style from './x-wgl-map.style';
 
+import { Effect } from '^utils/reactive/effect.class.ts';
+import { Value } from '^utils/reactive/value.class.ts';
 import { AppState } from '^state/app-state.ts';
 import { WglMap } from '^components/x-main-window/components/x-wgl-map/wgl/wgl-map.ts';
 import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
-import { signalValue } from '^utils/reactive/signalValue.ts';
 import { AppEvents } from '^events/app-events.ts';
-import { effect } from '^utils/reactive/effect.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
 import { makeMapInteractive } from './utils/make-map-interactive.ts';
 
@@ -37,7 +37,7 @@ export class XWglMap extends HTMLElement {
 			const wglMap = new WglMap(canvas);
 			AppState.wglMap.set(wglMap);
 
-			await signalValue(AppState.mapSize, function (size) { return size !== null; });
+			await Value.toPromise(AppState.mapSize, function (size) { return size !== null; });
 
 			wglMap.enableAnimation();
 			wglMap.render();
@@ -51,13 +51,13 @@ export class XWglMap extends HTMLElement {
 				}
 			});
 
-			effect([AppEvents.windowResizeSignal], function () {
+			new Effect(function () {
 				wglMap.onCanvasResize();
-			});
+			}).watch([AppEvents.windowSize]);
 
-			effect.once([AppEvents.windowCloseRequested], async function WglMapCleanup() {
+			new Effect(function () {
 				wglMap.cleanup();
-			});
+			}).watch([AppEvents.windowCloseSignal]);
 		})();
 	}
 }

@@ -1,4 +1,4 @@
-import { effect } from '^utils/reactive/effect.ts';
+import { Effect } from '^utils/reactive/effect.class.ts';
 import { Perf } from '^utils/perf/perf.ts';
 import { AppState } from '^state/app-state.ts';
 import { loadMap } from './load-map.ts';
@@ -26,11 +26,15 @@ export async function loadAssets(mapProject: MapProject) {
 }
 
 
-effect.onNonNullValues([AppState.wglMap, AppState.mapProject, AppState.tiles], function ([wglMap, mapProject, tiles]) {
+new Effect(function () {
+	const wglMap = AppState.wglMap.value;
+	const mapProject = AppState.mapProject.value;
+	const tiles = AppState.tiles.value;
+	if (!wglMap || !mapProject || !tiles) return;
 	const tileset = arrangeTilesData(tiles, wglMap.getTileCapability());
 	wglMap.initTilesets([tileset]);
 	loadMap(mapProject, tiles);
-});
+}).watch([AppState.wglMap, AppState.mapProject, AppState.tiles]);
 
 
 function arrangeTilesData(tiles: Tiles, tileCapability: WglTileCapability): Uint8Array {
