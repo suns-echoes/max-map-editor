@@ -10,12 +10,12 @@ export class Expr<T> extends ReactiveMiddleware {
 		this.value = initValue!;
 	}
 
-	public notify(): this {
+	public notify(asyncJobs: Promise<void>[]): this {
 		if (this._queued) return this;
 		this._queued = true;
 		queueMicrotask(() => {
 			this.value = this._executor(this.value);
-			this.dispatch();
+			this.dispatch(asyncJobs);
 			this._queued = false;
 		});
 		return this;

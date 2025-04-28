@@ -11,7 +11,7 @@ export class Reactive {
 	/**
 	 * Is object a reactive source?
 	 */
-	isSource(object: any): boolean {
+	static isSource(object: any): boolean {
 		// TODO: Implement me
 		return !!(object && object._reactive);
 	}
@@ -19,7 +19,7 @@ export class Reactive {
 	/**
 	 * Is object a reactive target?
 	 */
-	isTarget(object: any): boolean {
+	static isTarget(object: any): boolean {
 		// TODO: Implement me
 		return !!(object && object._reactive);
 	}

@@ -12,7 +12,7 @@ export namespace ReactiveD {
 
 	interface _SourceInterface {
 		destroy(): void;
-		dispatch(): ThisType<any>;
+		dispatch(asyncJobs: Promise<void>[]): ThisType<any>;
 		targets: Set<Target>,
 	}
 
@@ -20,7 +20,7 @@ export namespace ReactiveD {
 		destroy(): void;
 		watch(reactiveSources: Source[]): ThisType<any>;
 		unwatch(reactiveSource: Source): ThisType<any>;
-		notify(debugInfo?: string | false): ThisType<any>;
+		notify(asyncJobs: Promise<void>[], debugInfo?: string | false): ThisType<any>;
 		sources: Set<Source>,
 	}
 
@@ -28,7 +28,12 @@ export namespace ReactiveD {
 
 	export interface Target extends _ScopeableInterface, _TargetInterface {}
 
+	export interface AsyncTarget extends _ScopeableInterface, _TargetInterface {
+		sync(): Promise<void>;
+		isAsync: true;
+	}
+
 	export interface Middleware extends _ScopeableInterface, _SourceInterface, _TargetInterface {}
 
-	export type Object = Source | Target | Middleware;
+	export type Object = Source | AsyncTarget | Target | Middleware;
 }

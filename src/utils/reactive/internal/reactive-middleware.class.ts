@@ -1,4 +1,5 @@
 import type { ReactiveD } from './reactive.types.ts';
+import { trace } from './utils.ts';
 
 
 export abstract class ReactiveMiddleware implements ReactiveD.Middleware {
@@ -20,16 +21,15 @@ export abstract class ReactiveMiddleware implements ReactiveD.Middleware {
 		this.destroyed = true;
 	}
 
-	public notify(trace: string | false = false) {
+	public notify(asyncJobs: Promise<void>[], trace: string | false = false) {
 		if (this._trace) console.log(this._debug + '\n\n' + trace);
 		this._executor();
-		this.dispatch();
-		return this;
+		return this.dispatch(asyncJobs);
 	}
 
-	public dispatch() {
+	public dispatch(asyncJobs: Promise<void>[]) {
 		for (const target of this.targets)
-			target.notify(this._debug);
+			target.notify(asyncJobs, this._debug);
 		return this;
 	}
 
@@ -73,7 +73,7 @@ export abstract class ReactiveMiddleware implements ReactiveD.Middleware {
 		return this;
 	}
 
-	_stackTrace = this.trace();
+	_stackTrace = trace();
 	_trace: boolean = false;
 	trace(enable = true) {
 		if (enable === undefined && !!enable)

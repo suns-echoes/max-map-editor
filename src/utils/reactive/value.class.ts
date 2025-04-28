@@ -12,6 +12,7 @@ export class Value<T> extends ReactiveSource {
 				if (testFn(value.value)) {
 					resolve(value.value);
 					value.targets.delete(effect);
+					effect.destroy();
 				}
 			}).watch([value]);
 		});

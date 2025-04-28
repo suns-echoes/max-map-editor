@@ -4,7 +4,17 @@ import { describe, it, mock } from 'node:test';
 import { Value } from '../value.class.ts';
 
 
-describe('Value Class', () => {
+describe('Value', () => {
+	describe('static toPromise()', () => {
+		it('should resolve when the value meets the predicate', async () => {
+			const value = new Value(0);
+			const promise = Value.toPromise(value, (v) => v > 5);
+			setTimeout(() => value.set(6), 1);
+			const result = await promise;
+			assert.strictEqual(result, 6);
+		});
+	});
+
 	it('should initialize with the given value', () => {
 		const value = new Value(10);
 		assert.strictEqual(value.value, 10);

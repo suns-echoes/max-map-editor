@@ -106,7 +106,7 @@ describe('Reactive', () => {
 			const effectExec = mock.fn();
 			new Effect(effectExec).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 0);
 
@@ -121,7 +121,7 @@ describe('Reactive', () => {
 			const syncEffectExec = mock.fn();
 			new SyncEffect(syncEffectExec).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(syncEffectExec.mock.callCount(), 1);
 		});
@@ -132,7 +132,7 @@ describe('Reactive', () => {
 			const exprExec = mock.fn(() => expr.value + 10);
 			const expr2 = new Expr(exprExec, 0).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(exprExec.mock.callCount(), 0);
 			assert.strictEqual(expr2.value, 0);
@@ -149,7 +149,7 @@ describe('Reactive', () => {
 			const syncExprExec = mock.fn((x) => x + 10);
 			const syncExpr = new SyncExpr(syncExprExec, 0).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(syncExprExec.mock.callCount(), 1);
 			assert.deepStrictEqual(syncExprExec.mock.calls[0].arguments, [0]);
@@ -168,7 +168,7 @@ describe('Reactive', () => {
 			const expr2 = new Expr(exprExec = mock.fn((x: number) => x + 10), 0).watch([expr]);
 			const syncExpr = new SyncExpr(syncExprExec = mock.fn((x: number) => x + 10), 0).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 0);
 			assert.strictEqual(syncEffectExec.mock.callCount(), 1);
@@ -195,7 +195,7 @@ describe('Reactive', () => {
 			const effectExec = mock.fn();
 			new Effect(effectExec).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 0);
 
@@ -210,7 +210,7 @@ describe('Reactive', () => {
 			const syncEffectExec = mock.fn();
 			new SyncEffect(syncEffectExec).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(syncEffectExec.mock.callCount(), 1);
 		});
@@ -221,7 +221,7 @@ describe('Reactive', () => {
 			const exprExec = mock.fn(() => expr.value + 10);
 			const expr2 = new Expr(exprExec, 0).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(exprExec.mock.callCount(), 0);
 			assert.strictEqual(expr2.value, 0);
@@ -238,7 +238,7 @@ describe('Reactive', () => {
 			const syncExprExec = mock.fn((x) => x + 10);
 			const syncExpr = new SyncExpr(syncExprExec, 0).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(syncExprExec.mock.callCount(), 1);
 			assert.deepStrictEqual(syncExprExec.mock.calls[0].arguments, [0]);
@@ -257,7 +257,7 @@ describe('Reactive', () => {
 			const expr2 = new Expr(exprExec = mock.fn((x: number) => x + 10), 0).watch([expr]);
 			const syncExpr = new SyncExpr(syncExprExec = mock.fn((x: number) => x + 10), 0).watch([expr]);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 0);
 			assert.strictEqual(syncEffectExec.mock.callCount(), 1);
@@ -302,8 +302,8 @@ describe('Reactive', () => {
 			const effectExec = mock.fn();
 			new Effect(effectExec).watch([expr1, expr2]);
 
-			expr1.dispatch();
-			expr2.dispatch();
+			expr1.dispatch([]);
+			expr2.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 0);
 
@@ -319,8 +319,8 @@ describe('Reactive', () => {
 			const effectExec = mock.fn();
 			new Effect(effectExec).watch([expr1, expr2]);
 
-			expr1.dispatch();
-			expr2.dispatch();
+			expr1.dispatch([]);
+			expr2.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 0);
 
@@ -338,8 +338,8 @@ describe('Reactive', () => {
 			new Effect(effectExec).watch([value, expr, syncExpr]);
 
 			value.set(20);
-			expr.dispatch();
-			syncExpr.dispatch();
+			expr.dispatch([]);
+			syncExpr.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 0);
 
@@ -373,11 +373,11 @@ describe('Reactive', () => {
 			const effectExec = mock.fn();
 			new SyncEffect(effectExec).watch([expr1, expr2]);
 
-			expr1.dispatch();
+			expr1.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 1);
 
-			expr2.dispatch();
+			expr2.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 2);
 		});
@@ -389,11 +389,11 @@ describe('Reactive', () => {
 			const effectExec = mock.fn();
 			new SyncEffect(effectExec).watch([expr1, expr2]);
 
-			expr1.dispatch();
+			expr1.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 1);
 
-			expr2.dispatch();
+			expr2.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 2);
 		});
@@ -410,11 +410,11 @@ describe('Reactive', () => {
 
 			assert.strictEqual(effectExec.mock.callCount(), 1);
 
-			expr.dispatch();
+			expr.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 2);
 
-			syncExpr.dispatch();
+			syncExpr.dispatch([]);
 
 			assert.strictEqual(effectExec.mock.callCount(), 3);
 		});

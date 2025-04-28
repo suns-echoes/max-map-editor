@@ -1,5 +1,5 @@
-import { Reactive } from '../reactive.class.ts';
 import type { ReactiveD } from './reactive.types.ts';
+import { Reactive } from '../reactive.class.ts';
 import { trace } from './utils.ts';
 
 
@@ -18,12 +18,16 @@ export abstract class ReactiveSource implements ReactiveD.Source {
 	}
 
 	public dispatch() {
-		for (const target of this.targets)
-			target.notify(this._debug);
+		this._asyncJobs.length = 0;
+		for (const target of this.targets) {
+			target.notify(this._asyncJobs, this._debug);
+		}
 		return this;
 	}
 
-	public sync(): Promise<void> {
+	public async sync(): Promise<void> {
+		if (this._asyncJobs.length)
+			await Promise.all(this._asyncJobs);
 		return Reactive.sync();
 	}
 
@@ -38,6 +42,8 @@ export abstract class ReactiveSource implements ReactiveD.Source {
 	public destroyed = false;
 
 	private _scope: ReactiveD.Scope | null = null;
+
+	private _asyncJobs: Promise<void>[] = [];
 
 
 	// DEBUG

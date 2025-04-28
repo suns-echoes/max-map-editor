@@ -33,7 +33,7 @@ export abstract class ReactiveTarget implements ReactiveD.Target {
 		return this;
 	}
 
-	public notify(trace: string | false = false) {
+	public notify(_: Promise<void>[], trace: string | false = false) {
 		if (this._trace) console.log(this._debug + '\n\n' + trace);
 		this._executor();
 		return this;
