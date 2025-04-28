@@ -44,7 +44,7 @@ export class XWglMap extends HTMLElement {
 
 			makeMapInteractive(canvas, (cursorX, cursorY, panDeltaX, panDeltaY, zoomDelta) => {
 				if (panDeltaX !== 0 || panDeltaY !== 0 || zoomDelta !== 0) {
-					wglMap.moveCamera(panDeltaX, panDeltaY, zoomDelta);
+					wglMap.moveCamera(panDeltaX, panDeltaY, zoomDelta, cursorX, cursorY);
 				}
 				if (cursorX !== 0 || cursorY !== 0) {
 					wglMap.moveCursor(cursorX, cursorY);

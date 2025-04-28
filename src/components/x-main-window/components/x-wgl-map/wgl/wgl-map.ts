@@ -41,97 +41,142 @@ export class WglMap extends WebGL2 {
 		this.initModel();
 	}
 
-	viewMatrix = mat4_createIdentity();
+	private _viewMatrix = mat4_createIdentity();
+
 	initView() {
-		const cameraPosition: Vec3 = [0, 0, 1];
-		const cameraTarget: Vec3 = [0, 0, -1];
+		const cameraPosition: Vec3 = [0, 0, this._defaultCameraPositionZ];
+		const cameraTarget: Vec3 = [0, 0, -this._defaultCameraPositionZ];
 		const cameraUp: Vec3 = [0, 1, 0];
-		lookAt(this.viewMatrix, cameraPosition, cameraTarget, cameraUp);
-		this.gl.uniformMatrix4fv(this.uniformLocations.uView, false, this.viewMatrix);
+		lookAt(this._viewMatrix, cameraPosition, cameraTarget, cameraUp);
+		this.gl.uniformMatrix4fv(this.uniformLocations.uView, false, this._viewMatrix);
 	}
 
-	modelMatrix = mat4_createIdentity();
+	private _modelMatrix = mat4_createIdentity();
+
 	initModel() {
 		this.factor = this.mapModelHeight / this.gl.canvas.height;
-		mat4_identity(this.modelMatrix);
+		mat4_identity(this._modelMatrix);
 		// mat4_translate(this.modelMatrix, this.modelMatrix, [0, 0, -1]);
-		mat4_scale(this.modelMatrix, this.modelMatrix, [this.factor, this.factor, 1]);
-		this.gl.uniformMatrix4fv(this.uniformLocations.uModel, false, this.modelMatrix);
+		mat4_scale(this._modelMatrix, this._modelMatrix, [this.factor, this.factor, 1]);
+		this.gl.uniformMatrix4fv(this.uniformLocations.uModel, false, this._modelMatrix);
 	}
 
-	cursor: Vec2 = new Float32Array([56, 56]);
+	private _cursor: Vec2 = new Float32Array([56, 56]);
+
 	initCursor() {
 		this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
-		this.gl.uniform2fv(this.uniformLocations.uCursor, this.cursor);
+		this.gl.uniform2fv(this.uniformLocations.uCursor, this._cursor);
 	}
 
-	mapPanX: number = 0;
-	mapPanY: number = 0;
+	private _mapPanX: number = 0;
+	private _mapPanY: number = 0;
 
 	moveCursor(x: number, y: number) {
-		const cursorX = x - this.gl.canvas.width * 0.5 - this.mapPanX;
-		const cursorY = y - this.gl.canvas.height * 0.5 + this.mapPanY;
+		const cursorX = x - this.gl.canvas.width * 0.5 - this._mapPanX;
+		const cursorY = y - this.gl.canvas.height * 0.5 + this._mapPanY;
 		const invTileSizeAndZoom = 0.015625 / this.mapZoom;
 
-		this.cursor[0] = Math.floor(cursorX * invTileSizeAndZoom + this.mapWidth * 0.5);
-		this.cursor[1] = Math.floor(cursorY * invTileSizeAndZoom + this.mapHeight * 0.5);
+		this._cursor[0] = Math.floor(cursorX * invTileSizeAndZoom + this.mapWidth * 0.5);
+		this._cursor[1] = Math.floor(cursorY * invTileSizeAndZoom + this.mapHeight * 0.5);
 
-		this.gl.uniform2fv(this.uniformLocations.uCursor, this.cursor);
+		this.gl.uniform2fv(this.uniformLocations.uCursor, this._cursor);
 		this.render();
 	}
 
-	moveCamera(dx: number, dy: number, dz: number) {
-		const prevZoom = this.mapZoom;
-		if (dz !== 0) {
-			const cameraZOrigin = 1;
-			this.camera[2] += dz * Math.sqrt(cameraZOrigin - this.camera[2]) * 0.25;
+	private _defaultCameraPositionZ = 1;
 
-			// Limit camera zoom from "show whole map" to x2 zoom
-			if (this.camera[2] < -(this.factor - 1)) {
-				this.camera[2] = -(this.factor - 1);
-			} else if (this.camera[2] > 0.5) {
-				this.camera[2] = 0.5;
-			}
+	private _updateCameraZ(dz: number) {
+		this.camera[2] += dz * Math.sqrt(this._defaultCameraPositionZ - this.camera[2]) * 0.25;
+		this._limitMapZoom();
+	}
 
-			this.mapZoom = 1 / (cameraZOrigin - this.camera[2]);
-			this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
+	/**
+	 * Limit camera zoom from "show whole map" to x2 zoom
+	 */
+	private _limitMapZoom() {
+		if (this.camera[2] < -(this.factor - 1)) {
+			this.camera[2] = -(this.factor - 1);
+		} else if (this.camera[2] > 0.5) {
+			this.camera[2] = 0.5;
 		}
+	}
 
-		const zoomFactor = this.mapZoom / prevZoom;
+	/**
+	 * Zoom map relative to the screen center.
+	 */
+	private _updatePanToScreenCenter(dx: number, dy: number, zoomFactor: number) {
+		this._mapPanX = (this._mapPanX + dx) * zoomFactor;
+		this._mapPanY = (this._mapPanY - dy) * zoomFactor;
+		this._limitMapPan();
+	}
 
-		this.mapPanX = (this.mapPanX + dx) * zoomFactor;
-		this.mapPanY = (this.mapPanY - dy) * zoomFactor;
+	/**
+	 * Zoom map relative to the cursor position.
+	 */
+	private _updatePanToCursor(dx: number, dy: number, zoomFactor: number, cursorX: number, cursorY: number) {
+		const cursorToCenterX = cursorX - this.gl.canvas.width * 0.5;
+		const cursorToCenterY = cursorY - this.gl.canvas.height * 0.5;
+		this._mapPanX = (this._mapPanX + dx - cursorToCenterX) * zoomFactor + cursorToCenterX;
+		this._mapPanY = (this._mapPanY - dy + cursorToCenterY) * zoomFactor - cursorToCenterY;
+		this._limitMapPan();
+	}
 
-		const mapMargin = 64 * 2 / this.mapZoom;
+	/**
+	 * Update map pan (no zoom).
+	 */
+	private _updatePan(dx: number, dy: number) {
+		this._mapPanX += dx;
+		this._mapPanY -= dy;
+		this._limitMapPan();
+	}
 
+	private _mapMargin = 64 * 2;
+
+	private _limitMapPan() {
+		const mapMargin = this._mapMargin / this.mapZoom;
 		if ((this.mapModelWidth + mapMargin) * this.mapZoom >= this.gl.canvas.width) {
 			const maxPanX = (this.mapModelWidth * 0.5 + mapMargin) * this.mapZoom - this.gl.canvas.width * 0.5;
-			if (this.mapPanX < -maxPanX) {
-				this.mapPanX = -maxPanX;
-			} else if (this.mapPanX > maxPanX) {
-				this.mapPanX = maxPanX;
+			if (this._mapPanX < -maxPanX) {
+				this._mapPanX = -maxPanX;
+			} else if (this._mapPanX > maxPanX) {
+				this._mapPanX = maxPanX;
 			}
 		} else {
-			this.mapPanX = 0;
+			this._mapPanX = 0;
 		}
-
 		if ((this.mapModelHeight + mapMargin) * this.mapZoom >= this.gl.canvas.height) {
 			const maxPanY = (this.mapModelHeight * 0.5 + mapMargin) * this.mapZoom - this.gl.canvas.height * 0.5;
-			if (this.mapPanY < -maxPanY) {
-				this.mapPanY = -maxPanY;
-			} else if (this.mapPanY > maxPanY) {
-				this.mapPanY = maxPanY;
+			if (this._mapPanY < -maxPanY) {
+				this._mapPanY = -maxPanY;
+			} else if (this._mapPanY > maxPanY) {
+				this._mapPanY = maxPanY;
 			}
 		} else {
-			this.mapPanY = 0;
+			this._mapPanY = 0;
+		}
+	}
+
+	public moveCamera(dx: number, dy: number, dz: number, cursorX: number = 0, cursorY: number = 0) {
+		if (dz !== 0) {
+			this._updateCameraZ(dz);
+
+			const newMapZoom = 1 / (this._defaultCameraPositionZ - this.camera[2]);
+			const zoomFactor = newMapZoom / this.mapZoom;
+			this.mapZoom = newMapZoom;
+			this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
+
+			// this._updatePanToScreenCenter(dx, dy, zoomFactor);
+			this._updatePanToCursor(dx, dy, zoomFactor, cursorX, cursorY);
+		} else {
+			this._updatePan(dx, dy);
 		}
 
 		const cameraPanCoefficient = this.factor * 2 / this.mapZoom;
-		this.camera[0] = this.mapPanX / this.mapModelWidth * cameraPanCoefficient;
-		this.camera[1] = this.mapPanY / this.mapModelHeight * cameraPanCoefficient;
+		this.camera[0] = this._mapPanX / this.mapModelWidth * cameraPanCoefficient;
+		this.camera[1] = this._mapPanY / this.mapModelHeight * cameraPanCoefficient;
 
 		const view = mat4_createIdentity();
-		mat4_translate(view, this.viewMatrix, this.camera);
+		mat4_translate(view, this._viewMatrix, this.camera);
 
 		this.gl.uniformMatrix4fv(this.uniformLocations.uView, false, view);
 		this.render();
@@ -210,44 +255,45 @@ export class WglMap extends WebGL2 {
 		this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
 	}
 
-	animationFrame_6fps: number = 0;
-	animationFrame_8fps: number = 0;
-	animationFrame_10fps: number = 0;
-	animationTimer_6fps: TimerID | null = null;
-	animationTimer_8fps: TimerID | null = null;
-	animationTimer_10fps: TimerID | null = null;
+	private _animationFrame_6fps: number = 0;
+	private _animationFrame_8fps: number = 0;
+	private _animationFrame_10fps: number = 0;
+	private _animationTimer_6fps: TimerID | null = null;
+	private _animationTimer_8fps: TimerID | null = null;
+	private _animationTimer_10fps: TimerID | null = null;
 	/** Common number for all animation frames count. */
-	animationFrameCycle: number = 7 * 6 * 5;
+	private _animationFrameCycle: number = 7 * 6 * 5;
+
 	enableAnimation() {
-		if (this.animationTimer_6fps !== null) {
+		if (this._animationTimer_6fps !== null) {
 			return;
 		}
 
-		this.animationTimer_6fps = setInterval(() => {
-			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_6fps, this.animationFrame_6fps++);
-			if (this.animationFrame_6fps >= this.animationFrameCycle) this.animationFrame_6fps = 0;
+		this._animationTimer_6fps = setInterval(() => {
+			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_6fps, this._animationFrame_6fps++);
+			if (this._animationFrame_6fps >= this._animationFrameCycle) this._animationFrame_6fps = 0;
 			this.render();
 		}, 167);
-		this.animationTimer_8fps = setInterval(() => {
-			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_8fps, this.animationFrame_8fps++);
-			if (this.animationFrame_8fps >= this.animationFrameCycle) this.animationFrame_8fps = 0;
+		this._animationTimer_8fps = setInterval(() => {
+			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_8fps, this._animationFrame_8fps++);
+			if (this._animationFrame_8fps >= this._animationFrameCycle) this._animationFrame_8fps = 0;
 			this.render();
 		}, 125);
-		this.animationTimer_10fps = setInterval(() => {
-			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_10fps, this.animationFrame_10fps++);
-			if (this.animationFrame_10fps >= this.animationFrameCycle) this.animationFrame_10fps = 0;
+		this._animationTimer_10fps = setInterval(() => {
+			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_10fps, this._animationFrame_10fps++);
+			if (this._animationFrame_10fps >= this._animationFrameCycle) this._animationFrame_10fps = 0;
 			this.render();
 		}, 100);
 	}
 
 	disableAnimation() {
-		if (this.animationTimer_6fps === null) return;
-		clearInterval(this.animationTimer_6fps);
-		this.animationTimer_6fps = null;
-		clearInterval(this.animationTimer_8fps!);
-		this.animationTimer_8fps = null;
-		clearInterval(this.animationTimer_10fps!);
-		this.animationTimer_10fps = null;
+		if (this._animationTimer_6fps === null) return;
+		clearInterval(this._animationTimer_6fps);
+		this._animationTimer_6fps = null;
+		clearInterval(this._animationTimer_8fps!);
+		this._animationTimer_8fps = null;
+		clearInterval(this._animationTimer_10fps!);
+		this._animationTimer_10fps = null;
 	}
 
 	PALETTE_TEXTURE = 0;
