@@ -96,9 +96,34 @@ export class WglMap extends WebGL2 {
 			this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
 		}
 
-		const cameraPanCoefficient = this.factor * 2 / this.mapZoom;
 		this.mapPanX += dx;
 		this.mapPanY -= dy;
+
+		const mapMargin = 64 * 2 / this.mapZoom;
+
+		if ((this.mapModelWidth + mapMargin) * this.mapZoom >= this.gl.canvas.width) {
+			const maxPanX = (this.mapModelWidth * 0.5 + mapMargin) * this.mapZoom - this.gl.canvas.width * 0.5;
+			if (this.mapPanX < -maxPanX) {
+				this.mapPanX = -maxPanX;
+			} else if (this.mapPanX > maxPanX) {
+				this.mapPanX = maxPanX;
+			}
+		} else {
+			this.mapPanX = 0;
+		}
+
+		if ((this.mapModelHeight + mapMargin) * this.mapZoom >= this.gl.canvas.height) {
+			const maxPanY = (this.mapModelHeight * 0.5 + mapMargin) * this.mapZoom - this.gl.canvas.height * 0.5;
+			if (this.mapPanY < -maxPanY) {
+				this.mapPanY = -maxPanY;
+			} else if (this.mapPanY > maxPanY) {
+				this.mapPanY = maxPanY;
+			}
+		} else {
+			this.mapPanY = 0;
+		}
+
+		const cameraPanCoefficient = this.factor * 2 / this.mapZoom;
 		this.camera[0] = this.mapPanX / this.mapModelWidth * cameraPanCoefficient;
 		this.camera[1] = this.mapPanY / this.mapModelHeight * cameraPanCoefficient;
 
