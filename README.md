@@ -236,7 +236,7 @@ npm run coverage
 
 Licensed under MIT
 
-Copyright © 2024 Aneta Suns
+Copyright © 2024-2025 Aneta Suns
 
 
 ### M.A.X. License
