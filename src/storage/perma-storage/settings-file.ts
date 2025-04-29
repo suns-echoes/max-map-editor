@@ -1,5 +1,6 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { printDebugInfo } from '^utils/debug/debug.ts';
+import { debounce } from '^utils/flow-control/debounce.ts';
 import { fs } from '^utils/fs/fs.ts';
 import { deepAssignEqual } from '^utils/object-utils/deep-assign-equal.ts';
 
@@ -24,7 +25,7 @@ interface SettingsFileData {
 
 export const SettingsFile = new class SettingsFile {
 	async sync() {
-		await printDebugInfo('Settings::sync');
+		await printDebugInfo('SettingsFile::sync');
 
 		if (!isTauri()) {
 			this.#data.setup = false;
@@ -70,6 +71,7 @@ export const SettingsFile = new class SettingsFile {
 	#loaded = false;
 
 	async #initialize() {
+		await printDebugInfo('SettingsFile::#initialize');
 		if (!(await fs.appLocalDataDir.exists('./settings.json'))) {
 			this.#needSync = true;
 			await this.#write();
@@ -80,18 +82,22 @@ export const SettingsFile = new class SettingsFile {
 	}
 
 	async #load() {
+		await printDebugInfo('SettingsFile::#load');
 		this.#data = await fs.appLocalDataDir.readJSONFile('./settings.json');
 	}
 
 	/**
 	 * @returns The `true` if data was written, `false` if not.
 	 */
-	async #write(): Promise<boolean> {
+	#write = (() => debounce(async (): Promise<boolean> => {
 		if (this.#needSync) {
+			await printDebugInfo('SettingsFile::#write');
 			await fs.appLocalDataDir.writeJSONFile('./settings.json', this.#data);
 			this.#needSync = false;
 			return true;
+		} else {
+			await printDebugInfo('SettingsFile::#write (skipped)');
 		}
 		return false;
-	}
+	}, 1000))();
 };

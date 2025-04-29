@@ -1,6 +1,6 @@
 [package]
 name = "max-game-map-editor"
-version = "0.1.12"
+version = "0.1.13"
 description = "M.A.X. Game Map Editor"
 authors = ["Aneta Suns"]
 edition = "2021"

@@ -4,12 +4,14 @@ use crate::logger;
 
 
 pub fn read() -> Result<serde_json::Value, String> {
-	if !fs::file_exists(&format!("{}/settings.json", app_state::get_app_local_data_path())) {
+	let settings_path = format!("{}/settings.json", app_state::get_app_local_data_path());
+
+	if !fs::file_exists(&settings_path) {
 		logger::error("settings_json::read -> Error: settings.json not found");
 		return Err("Error: settings.json not found".to_string());
 	}
 
-	let settings_content = match std::fs::read_to_string("settings.json") {
+	let settings_content = match std::fs::read_to_string(&settings_path) {
 		Ok(content) => content,
 		Err(e) => {
 			logger::error(&format!("settings_json::read -> Error: failed to read settings.json: {}", e));

@@ -9,10 +9,10 @@ export class SyncExpr<T> extends ReactiveMiddleware {
 		this.value = initValue!;
 	}
 
-	notify(trace: string | false = false) {
+	notify(_: Promise<void>[], trace: string | false = false) {
 		if (this._trace) console.log(this._debug + '\n' + trace);
 		this.value = this._executor(this.value);
-		this.dispatch();
+		this.dispatch(_);
 		return this;
 	}
 }

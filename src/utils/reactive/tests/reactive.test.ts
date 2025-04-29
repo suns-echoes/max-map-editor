@@ -188,6 +188,8 @@ describe('Reactive', () => {
 		});
 	});
 
+	// TODO: AsyncExpr
+
 	describe('SyncExpr', () => {
 		it('should notify effect', async () => {
 			const expr = new SyncExpr(() => 0, 0);
@@ -348,6 +350,8 @@ describe('Reactive', () => {
 			assert.strictEqual(effectExec.mock.callCount(), 1);
 		});
 	});
+
+	// TODO: AsyncEffect
 
 	describe('SyncEffect', () => {
 		it('should be notified by many values', async () => {

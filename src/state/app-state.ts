@@ -1,4 +1,4 @@
-import type { WglMap } from '^components/x-main-window/components/x-wgl-map/wgl/wgl-map';
+import type { WglMap } from '^src/ui/main-window/wgl-map/wgl/wgl-map';
 import { Value } from '^utils/reactive/value.class.ts';
 
 

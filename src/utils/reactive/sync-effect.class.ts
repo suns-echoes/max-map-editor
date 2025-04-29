@@ -7,7 +7,7 @@ export class SyncEffect extends ReactiveTarget {
 		super('SyncEffect', executor);
 	}
 
-	notify(trace: string | false = false) {
+	notify(_: Promise<void>[], trace: string | false = false) {
 		if (this._trace) console.log(this._debug + '\n' + trace);
 		this._cleanup?.();
 		this._cleanup = this._executor();

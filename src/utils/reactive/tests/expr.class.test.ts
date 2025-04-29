@@ -18,7 +18,7 @@ describe('Expr', () => {
 		const executor = mock.fn((value: number) => value + 10);
 		const expr = new Expr(executor, 10);
 
-		expr.notify();
+		expr.notify([]);
 		await Reactive.sync();
 
 		assert.strictEqual(executor.mock.calls.length, 1);
@@ -31,8 +31,8 @@ describe('Expr', () => {
 		const executor = mock.fn((value: number) => value + 10);
 		const expr = new Expr(executor, 10);
 
-		expr.notify();
-		expr.notify();
+		expr.notify([]);
+		expr.notify([]);
 		await Reactive.sync();
 
 		assert.strictEqual(executor.mock.calls.length, 1);
@@ -45,7 +45,7 @@ describe('Expr', () => {
 		const expr = new Expr(executor, 20);
 		expr.dispatch = mockDispatch as any;
 
-		expr.notify();
+		expr.notify([]);
 		await Reactive.sync();
 
 		assert.strictEqual(mockDispatch.mock.calls.length, 1);
@@ -55,8 +55,8 @@ describe('Expr', () => {
 		const executor = mock.fn((value: number) => value + 10);
 		const expr = new Expr(executor, 10);
 
-		expr.notify();
-		expr.notify();
+		expr.notify([]);
+		expr.notify([]);
 		await Reactive.sync();
 
 		assert.strictEqual(expr.value, 20);

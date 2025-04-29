@@ -104,11 +104,11 @@ export class WglMap extends WebGL2 {
 	/**
 	 * Zoom map relative to the screen center.
 	 */
-	private _updatePanToScreenCenter(dx: number, dy: number, zoomFactor: number) {
-		this._mapPanX = (this._mapPanX + dx) * zoomFactor;
-		this._mapPanY = (this._mapPanY - dy) * zoomFactor;
-		this._limitMapPan();
-	}
+	// private _updatePanToScreenCenter(dx: number, dy: number, zoomFactor: number) {
+	// 	this._mapPanX = (this._mapPanX + dx) * zoomFactor;
+	// 	this._mapPanY = (this._mapPanY - dy) * zoomFactor;
+	// 	this._limitMapPan();
+	// }
 
 	/**
 	 * Zoom map relative to the cursor position.

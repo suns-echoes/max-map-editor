@@ -1,17 +1,14 @@
 import { restoreMainWindow } from './restore-main-window.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
 import { initWindowEvents } from './init-window-events.ts';
-
-import type { XMainWindow as XMainWindowT } from '^components/x-main-window/x-main-window.ts';
-import '^components/x-main-window/x-main-window.ts';
+import { MainWindow } from '^src/ui/main-window/main-window.html.ts';
 
 
 export async function showMainWindow() {
-	await printDebugInfo('showMainWindow');
+	await printDebugInfo('App::showMainWindow');
 
 	await restoreMainWindow();
 	await initWindowEvents();
 
-	const xMainWindow = document.createElement<XMainWindowT>('x-main-window');
-	document.body.appendChild(xMainWindow);
+	document.body.appendChild(MainWindow().element);
 }

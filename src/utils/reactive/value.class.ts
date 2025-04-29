@@ -10,9 +10,9 @@ export class Value<T> extends ReactiveSource {
 			}
 			const effect = new Effect(function () {
 				if (testFn(value.value)) {
-					resolve(value.value);
-					value.targets.delete(effect);
+					const resultValue = value.value;
 					effect.destroy();
+					resolve(resultValue);
 				}
 			}).watch([value]);
 		});

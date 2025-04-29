@@ -1,7 +1,7 @@
 {
   "name": "max-game-map-editor",
   "private": true,
-  "version": "0.1.12",
+  "version": "0.1.13",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,10 +18,10 @@
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-fs": "^2",
     "@tauri-apps/plugin-shell": "^2",
-    "@types/node": "22.8.1",
+    "@types/node": "22.15.3",
     "ts-node": "10.9.2",
-    "typescript": "5.7.2",
-    "vite": "5.4.10"
+    "typescript": "5.8.3",
+    "vite": "6.3.3"
   },
   "dependencies": {
     "@tauri-apps/plugin-updater": "^2.3.0"

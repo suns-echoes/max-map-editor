@@ -17,7 +17,7 @@ describe('SyncExpr', () => {
 		const executor = mock.fn((value: number) => value + 10);
 		const syncExpr = new SyncExpr(executor, 10);
 
-		syncExpr.notify();
+		syncExpr.notify([]);
 
 		assert.strictEqual(executor.mock.calls.length, 1);
 		assert.strictEqual(executor.mock.calls[0].arguments[0], 10);
@@ -31,7 +31,7 @@ describe('SyncExpr', () => {
 		const syncExpr = new SyncExpr(executor, 10);
 		syncExpr.dispatch = mockDispatch as any;
 
-		syncExpr.notify();
+		syncExpr.notify([]);
 
 		assert.strictEqual(mockDispatch.mock.calls.length, 1);
 	});

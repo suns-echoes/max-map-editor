@@ -17,7 +17,7 @@ describe('SyncEffect', () => {
 		const executor = mock.fn();
 		const syncEffect = new SyncEffect(executor);
 
-		syncEffect.notify();
+		syncEffect.notify([]);
 
 		assert.strictEqual(executor.mock.calls.length, 1);
 	});
@@ -27,8 +27,8 @@ describe('SyncEffect', () => {
 		const executor = mock.fn(() => cleanup);
 		const syncEffect = new SyncEffect(executor);
 
-		syncEffect.notify();
-		syncEffect.notify();
+		syncEffect.notify([]);
+		syncEffect.notify([]);
 
 		assert.strictEqual(cleanup.mock.calls.length, 1);
 		assert.strictEqual(executor.mock.calls.length, 2);

@@ -1,17 +1,13 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { appDataDir, appLocalDataDir, resourceDir } from '^tauri-apps/api/path';
 import { saveMainWindowParams } from '^actions/main-window/save-main-window-params.ts';
-import { showSetupScreen } from '^actions/setup-screen/show-setup-screen.ts';
+import { showSetupScreen } from '^actions/main-window/setup-screen/show-setup-screen';
 import { showMainWindow } from '^actions/main-window/show-main-window.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
 
-import globalStyle from './styles/global.style';
-import style from './styles/index.style';
-
-
-document.head.appendChild(globalStyle);
-document.head.appendChild(style);
+import './styles/global.style.css';
+import './styles/index.style.css';
 
 
 await printDebugInfo('M.A.X. Game Map Editor');
