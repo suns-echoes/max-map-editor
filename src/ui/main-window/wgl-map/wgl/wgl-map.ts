@@ -258,42 +258,41 @@ export class WglMap extends WebGL2 {
 	private _animationFrame_6fps: number = 0;
 	private _animationFrame_8fps: number = 0;
 	private _animationFrame_10fps: number = 0;
-	private _animationTimer_6fps: TimerID | null = null;
-	private _animationTimer_8fps: TimerID | null = null;
-	private _animationTimer_10fps: TimerID | null = null;
+	private _animationTimer: TimerID | null = null;
 	/** Common number for all animation frames count. */
 	private _animationFrameCycle: number = 7 * 6 * 5;
 
 	enableAnimation() {
-		if (this._animationTimer_6fps !== null) {
-			return;
-		}
+		if (this._animationTimer !== null) return;
 
-		this._animationTimer_6fps = setInterval(() => {
-			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_6fps, this._animationFrame_6fps++);
-			if (this._animationFrame_6fps >= this._animationFrameCycle) this._animationFrame_6fps = 0;
+		let time = 0;
+		let timeCycle = 100 * 125 * 150;
+
+		this._animationTimer = setInterval(() => {
+			if (time % 100 === 0) {
+				this._animationFrame_10fps = this._animationFrame_10fps + 1;
+				if (this._animationFrame_10fps >= this._animationFrameCycle) this._animationFrame_10fps = 0;
+				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_10fps, this._animationFrame_10fps);
+			}
+			if (time % 125 === 0) {
+				this._animationFrame_8fps = this._animationFrame_8fps + 1;
+				if (this._animationFrame_8fps >= this._animationFrameCycle) this._animationFrame_8fps = 0;
+				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_8fps, this._animationFrame_8fps);
+			}
+			if (time % 150 === 0) {
+				this._animationFrame_6fps = this._animationFrame_6fps + 1;
+				if (this._animationFrame_6fps >= this._animationFrameCycle) this._animationFrame_6fps = 0;
+				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_6fps, this._animationFrame_6fps);
+			}
+			if ((time += 25) >= timeCycle) time = 0;
 			this.render();
-		}, 167);
-		this._animationTimer_8fps = setInterval(() => {
-			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_8fps, this._animationFrame_8fps++);
-			if (this._animationFrame_8fps >= this._animationFrameCycle) this._animationFrame_8fps = 0;
-			this.render();
-		}, 125);
-		this._animationTimer_10fps = setInterval(() => {
-			this.gl.uniform1i(this.uniformLocations.uAnimationFrame_10fps, this._animationFrame_10fps++);
-			if (this._animationFrame_10fps >= this._animationFrameCycle) this._animationFrame_10fps = 0;
-			this.render();
-		}, 100);
+		}, 25);
 	}
 
 	disableAnimation() {
-		if (this._animationTimer_6fps === null) return;
-		clearInterval(this._animationTimer_6fps);
-		this._animationTimer_6fps = null;
-		clearInterval(this._animationTimer_8fps!);
-		this._animationTimer_8fps = null;
-		clearInterval(this._animationTimer_10fps!);
-		this._animationTimer_10fps = null;
+		if (this._animationTimer === null) return;
+		clearInterval(this._animationTimer);
+		this._animationTimer = null;
 	}
 
 	PALETTE_TEXTURE = 0;

@@ -17,9 +17,10 @@ export class WebGL2 {
 	viewportFovy: number = Math.PI * 0.5;
 	viewportProjectionMatrix = mat4_createIdentity();
 	initViewport(fovy: number = this.viewportFovy) {
+		const canvas = this.gl.canvas as HTMLCanvasElement;
 		this.viewportFovy = fovy;
-		this.gl.canvas.width = this.canvas.offsetWidth;
-		this.gl.canvas.height = this.canvas.offsetHeight;
+		canvas.width = canvas.parentElement!.clientWidth;
+		canvas.height = canvas.parentElement!.clientHeight;
 		this.aspect = this.gl.canvas.width / this.gl.canvas.height;
 		perspective(this.viewportProjectionMatrix, fovy, this.aspect, 0.1, 100);
 		this.gl.uniformMatrix4fv(this.uniformLocations.uProjection, false, this.viewportProjectionMatrix);
