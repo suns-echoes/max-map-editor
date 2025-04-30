@@ -23,8 +23,8 @@
 * {
 	box-sizing: border-box;
 	cursor: default;
-    user-select: none;
-    -webkit-user-select: none;
+	user-select: none;
+	-webkit-user-select: none;
 
 	color: inherit;
 	font: inherit;
@@ -35,6 +35,9 @@ button {
 	cursor: pointer;
 }
 
-input:active, input:focus, button:active, button:focus {
+input:active,
+input:focus,
+button:active,
+button:focus {
 	outline: none;
 }

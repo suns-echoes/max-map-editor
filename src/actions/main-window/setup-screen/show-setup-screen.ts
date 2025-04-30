@@ -1,6 +1,6 @@
 import { getCurrentWindow, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
 import { printDebugInfo } from '^utils/debug/debug.ts';
-import { setupDoneSignal, SetupScreen } from '^src/ui/main-window/setup-screen/setup-screen.html.ts';
+import { setupDoneSignal, SetupScreen } from '^src/ui/setup-screen/setup-screen.html';
 import { Signal } from '^utils/reactive/signal.class.ts';
 
 

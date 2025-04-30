@@ -6,7 +6,7 @@ import { AppState } from '^state/app-state.ts';
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { printDebugInfo } from '^utils/debug/debug.ts';
 import { Effect } from '^utils/reactive/effect.class.ts';
-import { Canvas, Section } from '^utils/reactive/html-node.elements.ts';
+import { Canvas, Div, Section } from '^utils/reactive/html-node.elements.ts';
 import { Value } from '^utils/reactive/value.class.ts';
 
 import style from './wgl-map.module.css';
@@ -19,7 +19,11 @@ export function WGLMap() {
 
 	const WGLMap = (
 		Section('wgl-map').class(style.wglMap).nodes([
-			canvas = Canvas('canvas'),
+			Div().nodes([
+				Div().nodes([
+					canvas = Canvas('canvas'),
+				]),
+			]),
 		])
 	);
 

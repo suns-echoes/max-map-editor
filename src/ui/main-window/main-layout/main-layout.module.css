@@ -1,0 +1,88 @@
+.mainLayout {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	overflow: hidden;
+
+	display: grid;
+	grid-template-columns: 300px auto;
+	grid-template-rows: 30px 40px 250px auto 200px 38px;
+	grid-column-gap: 0px;
+	grid-row-gap: 0px;
+
+	background: url("/images/app-bg.jpg");
+	background-size: cover;
+
+	/** Main menu */
+	section:nth-of-type(1) {
+		grid-area: 1 / 1 / 2 / 3;
+	}
+
+	/** Minimap */
+	section:nth-of-type(2) {
+		grid-area: 2 / 1 / 4 / 2;
+
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		margin: 5px;
+		color: #ee0;
+		text-shadow: 1px 1px 4px #000, 1px 1px 4px #000;
+		background-image: linear-gradient(64deg, #b909 25%, #2209 25%, #2209 50%, #b909 50%, #b909 75%, #2209 75%, #2209 100%);
+		background-size: 42.28px 86.68px;
+	}
+
+	/** Top toolbar */
+	section:nth-of-type(3) {
+		grid-area: 2 / 2 / 3 / 3;
+
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		margin: 5px;
+		color: #ee0;
+		text-shadow: 1px 1px 4px #000, 1px 1px 4px #000;
+		background-image: linear-gradient(64deg, #b909 25%, #2209 25%, #2209 50%, #b909 50%, #b909 75%, #2209 75%, #2209 100%);
+		background-size: 42.28px 86.68px;
+	}
+
+	/** SideToolbar */
+	section:nth-of-type(4) {
+		grid-area: 4 / 1 / 5 / 2;
+
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		margin: 5px;
+		color: #ee0;
+		text-shadow: 1px 1px 4px #000, 1px 1px 4px #000;
+		background-image: linear-gradient(64deg, #b909 25%, #2209 25%, #2209 50%, #b909 50%, #b909 75%, #2209 75%, #2209 100%);
+		background-size: 42.28px 86.68px;
+	}
+
+	/** Map */
+	section:nth-of-type(5) {
+		grid-area: 3 / 2 / 5 / 3;
+	}
+
+	/** Bottom toolbar */
+	section:nth-of-type(6) {
+		grid-area: 5 / 1 / 6 / 3;
+
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		margin: 5px;
+		color: #ee0;
+		text-shadow: 1px 1px 4px #000, 1px 1px 4px #000;
+		background-image: linear-gradient(64deg, #b909 25%, #2209 25%, #2209 50%, #b909 50%, #b909 75%, #2209 75%, #2209 100%);
+		background-size: 42.28px 86.68px;
+	}
+
+	/** Status bar */
+	section:nth-of-type(7) {
+		grid-area: 6 / 1 / 7 / 3;
+	}
+}

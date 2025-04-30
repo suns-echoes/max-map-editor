@@ -1,0 +1,52 @@
+.menuButton {
+	height: 22px;
+
+	margin: 2px 4px;
+	padding: 2px 8px 4px 8px;
+
+	font-family: "MAX Regular", sans-serif;
+	font-size: 16px;
+	letter-spacing: 1px;
+
+	color: #f0e9e0;
+	text-shadow: -1px -1px 1px #d4ba90, 1px 0 2px #19130c, 1px 0 2px #19130c, 1px 0 2px #19130c;
+
+	border-width: 1px;
+	border-radius: 3px;
+	border-style: solid;
+	border-top-color: #fda6;
+	border-right-color: #000a;
+	border-bottom-color: #0008;
+	border-left-color: #fdaa;
+
+	box-shadow: 1px 0 3px #000;
+
+	background: #7654;
+
+	cursor: pointer;
+
+	&:hover {
+		color: #e1c5a3;
+		text-shadow: -1px -1px 0 #fca800, 1px 0 2px #19130c, 1px 0 2px #19130c, 1px 0 2px #19130c;
+	}
+
+	&:active {
+		color: #b87854;
+		text-shadow: -1px -1px 0 #fca800, 1px 0 2px #19130c, 1px 0 2px #19130c, 1px 0 2px #19130c;
+
+		border-top-color: #0008;
+		border-right-color: #fdaa;
+		border-bottom-color: #fda6;
+		border-left-color: #000a;
+
+		background: #443c;
+
+		box-shadow: 1px 0 2px #0007;
+	}
+
+	&:disabled {
+		background-color: #30281c;
+		color: #888;
+		cursor: not-allowed;
+	}
+}

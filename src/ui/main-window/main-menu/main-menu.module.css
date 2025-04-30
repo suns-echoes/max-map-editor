@@ -1,0 +1,8 @@
+.mainMenu {
+	background: #765a;
+	background-size: 50px 50px, 100% 100%;
+
+	border-bottom-color: #0008;
+	border-bottom-style: solid;
+	border-bottom-width: 4px;
+}

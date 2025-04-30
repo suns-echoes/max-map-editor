@@ -5,6 +5,9 @@ import { saveMainWindowParams } from '^actions/main-window/save-main-window-para
 import { AppEvents } from '^events/app-events.ts';
 import { AsyncEffect } from '^utils/reactive/async-effect.class.ts';
 import { BuildInfo } from './build-info/build.info.html.ts';
+import { MainLayout } from './main-layout/main-layout.html.ts';
+import { MainMenu } from './main-menu/main-menu.html.ts';
+import { StatusBar } from './status-bar/status-bar.html.ts';
 
 
 export function MainWindow() {
@@ -15,7 +18,15 @@ export function MainWindow() {
 	return (
 		Section('main-window').nodes([
 			BuildInfo(),
-			WGLMap(),
+			MainLayout().nodes([
+				MainMenu(),
+				Section().text('Minimap'),
+				Section().text('MainToolbar'),
+				Section().text('SideToolbar'),
+				WGLMap(),
+				Section().text('BottomToolbar'),
+				StatusBar(),
+			]),
 		])
 	);
 }

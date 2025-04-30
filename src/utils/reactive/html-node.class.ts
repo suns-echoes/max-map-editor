@@ -214,6 +214,16 @@ export class HTMLNode<T extends HTMLElement = HTMLElement, const C extends HTMLN
 		return this;
 	}
 
+	src(url: string): HTMLNode<T, C> {
+		if (this.element instanceof HTMLImageElement || this.element instanceof HTMLVideoElement)
+			this.element.src = url;
+		else if (this.element instanceof HTMLLinkElement)
+			this.element.href = url;
+		else if (this.element instanceof HTMLAudioElement)
+			this.element.src = url;
+		return this;
+	}
+
 	html(html: string): HTMLNode<T, C> {
 		this.element.innerHTML = html;
 		return this;
