@@ -30,7 +30,7 @@ export function WGLMap() {
 
 	(async () => {
 		const canvasElement = canvas.element;
-		await loadMapProject(await resolveTextResource('resources/maps/CRATER_1.json'));
+		await loadMapProject(await resolveTextResource('resources/maps/SNOW_5.json'));
 
 		const wglMap = new WglMap(canvasElement);
 		AppState.wglMap.set(wglMap);

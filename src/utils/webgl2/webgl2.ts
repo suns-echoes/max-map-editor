@@ -3,7 +3,7 @@ import { mat4_createIdentity } from '^utils/math/mat4.ts';
 
 
 export class WebGL2 {
-	TILE_SIZE_LIMIT = 4096 * 2; // TODO: Move this to settings.json
+	TILE_SIZE_LIMIT = 4096 * 2 * 2; // TODO: Move this to settings.json
 
 	constructor(canvas: HTMLCanvasElement) {
 		const gl = canvas.getContext('webgl2');

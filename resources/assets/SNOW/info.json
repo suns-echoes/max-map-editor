@@ -1,0 +1,15 @@
+{
+	"name": "Snow tile pack",
+	"description": "Tile set based on original snow maps.",
+	"version": "0.1",
+	"date": "2024-11-05",
+	"contents": [
+		"palettes",
+		"tile passage data",
+		"transformable shore tiles",
+		"transformable sand land tiles",
+		"transformable sand patterns tiles",
+		"rough land tiles",
+		"mountains tiles"
+	]
+}

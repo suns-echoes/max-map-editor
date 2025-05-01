@@ -1,0 +1,15 @@
+{
+	"SSa": ["SSa000", "SSa001", "SSa002", "SSa003", "SSa004", "SSa005", "SSa006", "SSa007"],
+	"SSb": ["SSb000", "SSb001", "SSb002", "SSb003"],
+	"SSc": ["SSc000", "SSc001", "SSc002", "SSc003"],
+	"SSd": ["SSd000", "SSd001", "SSd002", "SSd003"],
+	"SSe": ["SSe000", "SSe001", "SSe002", "SSe003", "SSe004", "SSe005", "SSe006", "SSe007", "SSe008", "SSe009", "SSe010"],
+	"SSf": ["SSf000", "SSf001", "SSf002", "SSf003"],
+	"SSg": ["SSg000", "SSg001", "SSg002", "SSg003", "SSg004", "SSg005", "SSg006", "SSg007"],
+	"SSh": ["SSh000", "SSh001", "SSh002", "SSh003", "SSh004", "SSh005", "SSh006", "SSh007", "SSh008", "SSh009", "SSh010", "SSh011", "SSh012", "SSh013", "SSh014", "SSh015", "SSh016", "SSh017", "SSh018"],
+	"SSi": ["SSi000", "SSi001"],
+	"SSj": ["SSj000", "SSj001", "SSj002", "SSj003", "SSj004", "SSj005", "SSj006", "SSj007", "SSj008"],
+	"SSk": ["SSk000", "SSk001", "SSk002", "SSk003", "SSk004", "SSk005", "SSk006", "SSk007", "SSk008", "SSk009", "SSk010"],
+	"SSl": ["SSl000", "SSl001", "SSl002", "SSl003"],
+	"SLa": ["SLa000", "SLa001", "SLa002", "SLa003", "SLa004", "SLa005", "SLa006", "SLa007", "SLa008", "SLa009"]
+}

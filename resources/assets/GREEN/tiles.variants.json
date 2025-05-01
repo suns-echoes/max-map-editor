@@ -1,0 +1,18 @@
+{
+	"GSa": ["GSa000", "GSa001", "GSa002", "GSa003", "GSa004", "GSa005", "GSa006", "GSa007"],
+	"GSb": ["GSb000", "GSb001", "GSb002", "GSb003"],
+	"GSc": ["GSc000", "GSc001", "GSc002", "GSc003", "GSc004"],
+	"GSd": ["GSd000", "GSd001", "GSd002", "GSd003", "GSd004"],
+	"GSe": ["GSe000", "GSe001", "GSe002", "GSe003", "GSe004", "GSe005", "GSe006", "GSe007", "GSe008"],
+	"GSf": ["GSf000", "GSf001", "GSf002", "GSf003"],
+	"GSg": ["GSg000", "GSg001", "GSg002", "GSg003", "GSg004", "GSg005", "GSg006", "GSg007"],
+	"GSh": ["GSh000", "GSh001", "GSh002", "GSh003", "GSh004", "GSh005", "GSh006", "GSh007", "GSh008", "GSh009", "GSh010", "GSh011", "GSh012", "GSh013"],
+	"GSi": ["GSi000", "GSi001", "GSi002", "GSi003", "GSi004"],
+	"GSj": ["GSj000", "GSj001", "GSj002", "GSj003", "GSj004", "GSj005", "GSj006", "GSj007", "GSj008", "GSj009", "GSj010", "GSj011", "GSj012", "GSj013", "GSj014"],
+	"GSk": ["GSk000", "GSk001", "GSk002", "GSk003", "GSk004", "GSk005"],
+	"GSl": ["GSl000", "GSl001", "GSl002", "GSl003"],
+	"GSm": ["GSm000"],
+	"GSn": ["GSn000"],
+	"GSo": ["GSo000"],
+	"GLa": ["GLa000", "GLa001", "GLa002", "GLa003", "GLa004", "GLa005", "GLa006", "GLa007", "GLa008", "GLa009", "GLa010", "GLa011"]
+}

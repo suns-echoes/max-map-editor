@@ -1,0 +1,367 @@
+{
+	"DSa": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"DSa:!S",
+			"DSc:E",
+			"DSc:!S",
+			"DSe:E",
+			"DSh:E",
+			"DSh:!W",
+			"DSi:E",
+			"DSi:!W",
+			"DSj",
+			"DSj:!W",
+			"DSk",
+			"DSk:!W",
+			"DSl:E",
+			"DSl:!W",
+			"DSm:S",
+			"DSm:!W"
+		],
+		"E": [
+			"DSa:!",
+			"DSd:W",
+			"DSd:!",
+			"DSe",
+			"DSf",
+			"DSf:!W",
+			"DSg",
+			"DSg:!"
+		]
+	},
+	"DSb": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"DSb:S",
+			"DSb:!S",
+			"DSh:W",
+			"DSh:E",
+			"DSh:!E",
+			"DSh:!W",
+			"DSi:W",
+			"DSi:E",
+			"DSi:!E",
+			"DSi:!W",
+			"DSl",
+			"DSl:!",
+			"DSm",
+			"DSm:!"
+		],
+		"E": [
+			"__WATER__"
+		]
+	},
+	"DSc": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"DSc:E",
+			"DSc:!S",
+			"DSe:E",
+			"DSh:E",
+			"DSh:!W",
+			"DSi:E",
+			"DSi:!W",
+			"DSj",
+			"DSj:!W",
+			"DSk",
+			"DSk:!W",
+			"DSl:E",
+			"DSl:!W",
+			"DSm:S",
+			"DSm:!W"
+		],
+		"E": [
+			"DSc:W",
+			"DSc:!",
+			"DSe:!",
+			"DSh",
+			"DSh:!",
+			"DSi",
+			"DSi:!",
+			"DSj",
+			"DSj:!W",
+			"DSk",
+			"DSk:!W",
+			"DSl",
+			"DSl:!",
+			"DSm",
+			"DSm:!"
+		]
+	},
+	"DSd": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"DSd:E",
+			"DSd:!S",
+			"DSe:!W",
+			"DSf",
+			"DSf:!W",
+			"DSg:E",
+			"DSg:!W"
+		],
+		"E": [
+			"DSd:W",
+			"DSd:!",
+			"DSe",
+			"DSf",
+			"DSf:!W",
+			"DSg",
+			"DSg:!"
+		]
+	},
+	"DSe": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"DSe:!",
+			"DSf:W",
+			"DSf:!",
+			"DSg",
+			"DSg:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"DSe:!",
+			"DSh",
+			"DSh:!",
+			"DSi",
+			"DSi:!",
+			"DSj",
+			"DSj:!W",
+			"DSk",
+			"DSk:!W",
+			"DSl",
+			"DSl:!",
+			"DSm",
+			"DSm:!E"
+		]
+	},
+	"DSf": {
+		"N": [
+			"DSf:E",
+			"DSf:!S",
+			"DSg:E",
+			"DSg:!W"
+		],
+		"W": [
+			"DSf:W",
+			"DSf:!",
+			"DSg",
+			"DSg:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"DSg": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"DSg",
+			"DSg:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"DSg",
+			"DSg:!"
+		]
+	},
+	"DSh": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"DSh",
+			"DSh:!",
+			"DSi",
+			"DSi:!",
+			"DSj:W",
+			"DSj:!",
+			"DSk:W",
+			"DSk:!",
+			"DSl",
+			"DSl:!",
+			"DSm:E",
+			"DSm:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"DSh",
+			"DSh:!",
+			"DSi",
+			"DSi:!",
+			"DSj",
+			"DSj:!W",
+			"DSk",
+			"DSk:!W",
+			"DSl",
+			"DSl:!",
+			"DSm",
+			"DSm:!E"
+		]
+	},
+	"DSi": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"DSi",
+			"DSi:!",
+			"DSj:W",
+			"DSj:!",
+			"DSk:W",
+			"DSk:!",
+			"DSl",
+			"DSl:!",
+			"DSm:E",
+			"DSm:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"DSi",
+			"DSi:!",
+			"DSj",
+			"DSj:!W",
+			"DSk",
+			"DSk:!W",
+			"DSl",
+			"DSl:!",
+			"DSm",
+			"DSm:!E"
+		]
+	},
+	"DSj": {
+		"N": [
+			"DSj:E",
+			"DSj:!S",
+			"DSk:E",
+			"DSk:!S",
+			"DSl:E",
+			"DSl:!W",
+			"DSm:E",
+			"DSm:!"
+		],
+		"W": [
+			"DSj:W",
+			"DSj:!",
+			"DSk:W",
+			"DSk:!",
+			"DSl",
+			"DSl:!",
+			"DSm:E",
+			"DSm:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"DSk": {
+		"N": [
+			"DSk:E",
+			"DSk:!S",
+			"DSl:E",
+			"DSl:!W",
+			"DSm:E",
+			"DSm:!"
+		],
+		"W": [
+			"DSk:W",
+			"DSk:!",
+			"DSl",
+			"DSl:!",
+			"DSm:E",
+			"DSm:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"DSl": {
+		"N": [
+			"DSl:S",
+			"DSl:!S",
+			"DSm:E",
+			"DSm:!S"
+		],
+		"W": [
+			"DSl",
+			"DSl:!",
+			"DSm",
+			"DSm:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"DSl",
+			"DSl:!",
+			"DSm",
+			"DSm:!"
+		]
+	},
+	"DSm": {
+		"N": [
+			"DSm",
+			"DSm:W",
+			"DSm:S",
+			"DSm:!E",
+			"DSm:!S",
+			"DSm:!W"
+		],
+		"W": [
+			"DSm:E",
+			"DSm:!"
+		],
+		"S": [
+			"DSm:W",
+			"DSm:!E",
+			"DSm:!S"
+		],
+		"E": [
+			"DSm:S",
+			"DSm:E",
+			"DSm:!",
+			"DSm:!W"
+		]
+	}
+}

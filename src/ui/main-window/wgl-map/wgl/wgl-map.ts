@@ -271,20 +271,20 @@ export class WglMap extends WebGL2 {
 		this._animationTimer = setInterval(() => {
 			if (time % 100 === 0) {
 				this._animationFrame_10fps = this._animationFrame_10fps + 1;
-				if (this._animationFrame_10fps >= this._animationFrameCycle) this._animationFrame_10fps = 0;
+				if (this._animationFrame_10fps === this._animationFrameCycle) this._animationFrame_10fps = 0;
 				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_10fps, this._animationFrame_10fps);
 			}
 			if (time % 125 === 0) {
 				this._animationFrame_8fps = this._animationFrame_8fps + 1;
-				if (this._animationFrame_8fps >= this._animationFrameCycle) this._animationFrame_8fps = 0;
+				if (this._animationFrame_8fps === this._animationFrameCycle) this._animationFrame_8fps = 0;
 				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_8fps, this._animationFrame_8fps);
 			}
 			if (time % 150 === 0) {
 				this._animationFrame_6fps = this._animationFrame_6fps + 1;
-				if (this._animationFrame_6fps >= this._animationFrameCycle) this._animationFrame_6fps = 0;
+				if (this._animationFrame_6fps === this._animationFrameCycle) this._animationFrame_6fps = 0;
 				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_6fps, this._animationFrame_6fps);
 			}
-			if ((time += 25) >= timeCycle) time = 0;
+			if ((time += 25) === timeCycle) time = 0;
 			this.render();
 		}, 25);
 	}

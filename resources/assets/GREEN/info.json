@@ -1,0 +1,16 @@
+{
+	"name": "Green tile pack",
+	"description": "Tile set based on original green maps.",
+	"version": "0.1",
+	"date": "2024-11-02",
+	"contents": [
+		"palettes",
+		"tile passage data",
+		"transformable shore tiles",
+		"transformable sand land tiles",
+		"rough land tiles",
+		"meadow tiles",
+		"mountains tiles",
+		"trees tiles"
+	]
+}

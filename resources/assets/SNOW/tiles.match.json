@@ -1,0 +1,302 @@
+{
+	"SSa": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"SSa:!S",
+			"SSc:E",
+			"SSc:!S",
+			"SSe:E",
+			"SSh:E",
+			"SSh:!W",
+			"SSi:E",
+			"SSi:!W",
+			"SSj",
+			"SSj:!W",
+			"SSk",
+			"SSk:!W",
+			"SSl:E",
+			"SSl:!W"
+		],
+		"E": [
+			"SSa:!",
+			"SSd:W",
+			"SSd:!",
+			"SSe",
+			"SSf",
+			"SSf:!W",
+			"SSg",
+			"SSg:!"
+		]
+	},
+	"SSb": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"SSb:S",
+			"SSb:!S",
+			"SSl",
+			"SSl:!"
+		],
+		"E": [
+			"__WATER__"
+		]
+	},
+	"SSc": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"SSc:E",
+			"SSc:!S",
+			"SSe:E",
+			"SSh:E",
+			"SSh:!W",
+			"SSi:E",
+			"SSi:!W",
+			"SSj",
+			"SSj:!W",
+			"SSk",
+			"SSk:!W",
+			"SSl:E",
+			"SSl:!W"
+		],
+		"E": [
+			"SSc:W",
+			"SSc:!",
+			"SSe:!",
+			"SSh",
+			"SSh:!",
+			"SSi",
+			"SSi:!",
+			"SSj",
+			"SSj:!W",
+			"SSk",
+			"SSk:!W",
+			"SSl",
+			"SSl:!"
+		]
+	},
+	"SSd": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"SSd:E",
+			"SSd:!S",
+			"SSe:!W",
+			"SSf",
+			"SSf:!W",
+			"SSg:E",
+			"SSg:!W"
+		],
+		"E": [
+			"SSd:W",
+			"SSd:!",
+			"SSe",
+			"SSf",
+			"SSf:!W",
+			"SSg",
+			"SSg:!"
+		]
+	},
+	"SSe": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"SSe:!",
+			"SSf:W",
+			"SSf:!",
+			"SSg",
+			"SSg:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSe:!",
+			"SSh",
+			"SSh:!",
+			"SSi",
+			"SSi:!",
+			"SSj",
+			"SSj:!W",
+			"SSk",
+			"SSk:!W",
+			"SSl",
+			"SSl:!"
+		]
+	},
+	"SSf": {
+		"N": [
+			"SSf:E",
+			"SSf:!S",
+			"SSg:E",
+			"SSg:!W"
+		],
+		"W": [
+			"SSf:W",
+			"SSf:!",
+			"SSg",
+			"SSg:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"SSg": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"SSg",
+			"SSg:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSg",
+			"SSg:!"
+		]
+	},
+	"SSh": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"SSh",
+			"SSh:!",
+			"SSi",
+			"SSi:!",
+			"SSj:W",
+			"SSj:!",
+			"SSk:W",
+			"SSk:!",
+			"SSl",
+			"SSl:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSh",
+			"SSh:!",
+			"SSi",
+			"SSi:!",
+			"SSj",
+			"SSj:!W",
+			"SSk",
+			"SSk:!W",
+			"SSl",
+			"SSl:!"
+		]
+	},
+	"SSi": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"SSi",
+			"SSi:!",
+			"SSj:W",
+			"SSj:!",
+			"SSk:W",
+			"SSk:!",
+			"SSl",
+			"SSl:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSi",
+			"SSi:!",
+			"SSj",
+			"SSj:!W",
+			"SSk",
+			"SSk:!W",
+			"SSl",
+			"SSl:!"
+		]
+	},
+	"SSj": {
+		"N": [
+			"SSj:E",
+			"SSj:!S",
+			"SSk:E",
+			"SSk:!S",
+			"SSl:E",
+			"SSl:!W"
+		],
+		"W": [
+			"SSj:W",
+			"SSj:!",
+			"SSk:W",
+			"SSk:!",
+			"SSl",
+			"SSl:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"SSk": {
+		"N": [
+			"SSk:E",
+			"SSk:!S",
+			"SSl:E",
+			"SSl:!W"
+		],
+		"W": [
+			"SSk:W",
+			"SSk:!",
+			"SSl",
+			"SSl:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"SSl": {
+		"N": [
+			"SSl:S",
+			"SSl:!S"
+		],
+		"W": [
+			"SSl",
+			"SSl:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSl",
+			"SSl:!"
+		]
+	}
+}
