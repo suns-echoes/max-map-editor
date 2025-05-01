@@ -39,8 +39,12 @@ document.querySelectorAll('img[data-preview="true"]').forEach(function (image) {
 document.querySelectorAll('img[data-lazy-src]').forEach(function(img) {
 	if (img.getAttribute('src')) return;
 
+	const imgXSS = /[:<>]/;
+
 	const loadImage = function() {
-		img.src = img.getAttribute('data-lazy-src');
+		const src = img.getAttribute('data-lazy-src');
+		if (imgXSS.test(src)) return;
+		img.src = src;
 		img.removeAttribute('data-lazy-src');
 		img.removeEventListener('mouseenter', loadImage);
 		img.removeEventListener('touchstart', loadImage);
