@@ -17,8 +17,10 @@ export function deepAssignEqual(target: Record<string, any>, source: Record<stri
 		let isDifferent = false;
 
 		for (const key in source) {
-			if (source.hasOwnProperty(key)) {
-				if (typeof source[key] === 'object' && source[key] !== null) {
+			if (Object.hasOwn(source, key)) {
+				if ((key === '__proto__' || key === 'constructor') && !Object.hasOwn(target, key)) {
+					target[key] = source[key];
+				} else if (typeof source[key] === 'object' && source[key] !== null) {
 					if (!target[key]) {
 						target[key] = Array.isArray(source[key]) ? [] : {};
 					}
