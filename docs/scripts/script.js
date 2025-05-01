@@ -44,7 +44,7 @@ document.querySelectorAll('img[data-lazy-src]').forEach(function(img) {
 	const loadImage = function() {
 		const src = img.getAttribute('data-lazy-src');
 		if (imgXSS.test(src)) return;
-		img.src = src;
+		img.src = encodeURI(src);
 		img.removeAttribute('data-lazy-src');
 		img.removeEventListener('mouseenter', loadImage);
 		img.removeEventListener('touchstart', loadImage);
