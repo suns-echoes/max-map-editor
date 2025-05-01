@@ -31,12 +31,6 @@ jobs:
         with:
           node-version: lts/*
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -46,6 +40,9 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
+      - name: Create Artifacts directory
+        run: mkdir -p ./Artifacts/
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,18 +50,18 @@ jobs:
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
           releaseName: "App v__VERSION__"
           releaseBody: "See the assets to download this version and install."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
 
       - name: copy artifacts
         run: |
-          cp ./src-tauri/target/release/bundle/appimage/max-game-map-editor_*_amd64.AppImage ./${{steps.build_configuration.outputs.build_type}}/Artifacts/
-          cp ./src-tauri/target/release/bundle/deb/max-game-map-editor_*_amd64.deb ./${{steps.build_configuration.outputs.build_type}}/Artifacts/
-          cp ./src-tauri/target/release/bundle/nsis/M.A.X.Game.Map.Editor_*_x64-setup.exe ./${{steps.build_configuration.outputs.build_type}}/Artifacts/
+          cp ./src-tauri/target/release/bundle/appimage/max-game-map-editor_*_amd64.AppImage ./Artifacts/
+          cp ./src-tauri/target/release/bundle/deb/max-game-map-editor_*_amd64.deb ./Artifacts/
+          cp ./src-tauri/target/release/bundle/nsis/M.A.X.Game.Map.Editor_*_x64-setup.exe ./Artifacts/
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
             name: ${{github.job}}
-            path: ${{steps.build_configuration.outputs.build_type}}/Artifacts
+            path: ./Artifacts
