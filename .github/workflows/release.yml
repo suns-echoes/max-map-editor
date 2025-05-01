@@ -35,7 +35,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: install frontend dependencies
         run: npm install
@@ -47,7 +47,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
+          tagName: v__VERSION__
           releaseName: "App v__VERSION__"
           releaseBody: "See the assets to download this version and install."
           releaseDraft: false
@@ -55,9 +55,13 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: copy artifacts
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           cp ./src-tauri/target/release/bundle/appimage/max-game-map-editor_*_amd64.AppImage ./Artifacts/
           cp ./src-tauri/target/release/bundle/deb/max-game-map-editor_*_amd64.deb ./Artifacts/
+
+      - name: copy artifacts
+        if: matrix.platform == 'windows-latest'
           cp ./src-tauri/target/release/bundle/nsis/M.A.X.Game.Map.Editor_*_x64-setup.exe ./Artifacts/
 
       - name: Upload Artifacts
