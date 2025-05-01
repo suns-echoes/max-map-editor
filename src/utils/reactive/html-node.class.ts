@@ -196,6 +196,17 @@ export class HTMLNode<T extends HTMLElement = HTMLElement, const C extends HTMLN
 		return this;
 	}
 
+	disable(): HTMLNode<T, C> {
+		(this.element as any).disabled = true;
+		return this;
+	}
+
+	enable(): HTMLNode<T, C> {
+		if ((this.element as any).disabled)
+			(this.element as any).disabled = false;
+		return this;
+	}
+
 	id(id: string): HTMLNode<T, C> {
 		this.element.id = id;
 		return this;

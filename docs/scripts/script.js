@@ -35,3 +35,31 @@ document.querySelectorAll('img[data-preview="true"]').forEach(function (image) {
 		}, { once: true });
 	})
 });
+
+document.querySelectorAll('img[data-lazy-src]').forEach(function(img) {
+	if (img.getAttribute('src')) return;
+
+	const loadImage = function() {
+		img.src = img.getAttribute('data-lazy-src');
+		img.removeAttribute('data-lazy-src');
+		img.removeEventListener('mouseenter', loadImage);
+		img.removeEventListener('touchstart', loadImage);
+		img.removeEventListener('focus', loadImage);
+	};
+
+	if ('IntersectionObserver' in window) {
+		const observer = new IntersectionObserver(function(entries, observer) {
+			entries.forEach(function(entry) {
+				if (entry.isIntersecting) {
+					loadImage();
+					observer.unobserve(img);
+				}
+			});
+		});
+		observer.observe(img);
+	} else {
+		img.addEventListener('mouseenter', loadImage);
+		img.addEventListener('touchstart', loadImage);
+		img.addEventListener('focus', loadImage);
+	}
+});

@@ -1,6 +1,6 @@
 import { SimpleButton } from '^src/ui/components/buttons/simple-button.component';
 import { printDebugInfo } from '^utils/debug/debug.ts';
-import { Div, Section } from '^utils/reactive/html-node.elements.ts';
+import { Section } from '^utils/reactive/html-node.elements.ts';
 import { VerticalSeparator } from '^src/ui/components/separators/vertical-separator.component';
 
 import style from './main-toolbar.module.css';

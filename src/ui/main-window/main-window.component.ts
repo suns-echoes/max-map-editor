@@ -10,6 +10,7 @@ import { MainMenu } from './main-menu/main-menu.component.ts';
 import { Minimap } from './minimap/minimap.compoment.ts';
 import { StatusBar } from './status-bar/status-bar.component.ts';
 import { MainToolbar } from './main-toolbar/main-toolbar.component.ts';
+import { MapSelector } from './map-selector/map-selector.component.ts';
 
 
 export function MainWindow() {
@@ -24,7 +25,9 @@ export function MainWindow() {
 				MainMenu(),
 				Minimap(),
 				MainToolbar(),
-				Section().text('SideToolbar'),
+				Section().nodes([
+					MapSelector(),
+				]),
 				WGLMap(),
 				Section().text('BottomToolbar'),
 				StatusBar(),
