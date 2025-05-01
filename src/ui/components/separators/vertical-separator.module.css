@@ -1,0 +1,15 @@
+.verticalSeparator {
+	display: inline-block;
+	width: 4px;
+	height: 100%;
+	margin: 0 4px;
+
+	border-width: 2px;
+	border-style: solid;
+	border-top-color: #fda6;
+	border-right-color: #000a;
+	border-bottom-color: #0008;
+	border-left-color: #fdaa;
+
+	box-shadow: 1px 0 3px #000;
+}

@@ -1,20 +1,14 @@
 .wglMap {
 	position: relative;
-	width: 100%;
-	height: 100%;
+	width: calc(100% - 4px);
+	height: calc(100% - 4px);
 	overflow: hidden;
+
+	margin: 2px;
 
 	& > div {
 		width: 100%;
 		height: 100%;
-
-		border-width: 8px;
-		border-radius: 8px;
-		border-style: solid;
-		border-top-color: #0008;
-		border-right-color: #fdaa;
-		border-bottom-color: #fda6;
-		border-left-color: #000a;
 
 		& > div {
 			width: 100%;

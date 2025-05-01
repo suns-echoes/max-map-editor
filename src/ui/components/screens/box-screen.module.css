@@ -1,0 +1,34 @@
+.boxScreen {
+	position: relative;
+	width: 100%;
+	height: 100%;
+
+	color: #0f0;
+
+	background: #121010;
+}
+
+.boxGlass {
+	position: relative;
+	width: 100%;
+	height: 100%;
+
+	border-width: 8px;
+	border-radius: 12px;
+
+	background: linear-gradient(269deg, transparent 0%, #191616 100%) no-repeat 0 0/8px 100%,
+	linear-gradient(1deg, transparent 0%, #191616 100%) no-repeat 0 0/100% 8px,
+	linear-gradient(to bottom right, #423e3d 0%, #423e3d 49%, #191616 50%, #191616 100%) 0 0/100% 100% no-repeat;
+}
+
+.boxContent {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	bottom: 8px;
+	left: 8px;
+
+	border-radius: 6px;
+	background: linear-gradient(300deg,#231e1e 0%, #342f2f 100%);
+	/* background: red; */
+}

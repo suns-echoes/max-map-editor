@@ -1,0 +1,9 @@
+.bigInset {
+	border-width: 8px;
+	border-radius: 8px;
+	border-style: solid;
+	border-top-color: #0008;
+	border-right-color: #fdaa;
+	border-bottom-color: #fda6;
+	border-left-color: #000a;
+}

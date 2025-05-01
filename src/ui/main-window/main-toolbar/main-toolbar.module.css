@@ -1,0 +1,16 @@
+.mainToolbar {
+	margin: 2px;
+	padding: 1px 2px;
+
+	border-width: 2px;
+	border-radius: 6px;
+	border-style: solid;
+	border-top-color: #0008;
+	border-right-color: #fdaa;
+	border-bottom-color: #fda6;
+	border-left-color: #000a;
+
+	button + button {
+		margin-left: 2px;
+	}
+}

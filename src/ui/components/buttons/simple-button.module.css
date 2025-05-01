@@ -1,27 +1,26 @@
-.menuButton {
-	height: 22px;
+.simpleButton {
+	height: 30px;
 
-	margin: 2px 4px;
-	padding: 2px 8px 4px 8px;
+	padding: 4px 12px;
 
-	font-family: "MAX Regular", sans-serif;
-	font-size: 16px;
+	font-family: "MAX Square", sans-serif;
+	font-size: 18px;
 	letter-spacing: 1px;
 
 	color: #f0e9e0;
 	text-shadow: -1px -1px 1px #fa09, 2px 1px 2px #19130c;
 
-	border-width: 1px;
-	border-radius: 3px;
+	border-width: 2px;
+	border-radius: 6px;
 	border-style: solid;
 	border-top-color: #fda6;
 	border-right-color: #000a;
 	border-bottom-color: #0008;
 	border-left-color: #fdaa;
 
-	box-shadow: 1px 0 3px #000;
+	box-shadow: 1px 0 3px #000, inset 2px 1px 4px #0005, inset -2px -1px 4px #fe95;
 
-	background: #7654;
+	background: #7538;
 
 	&:hover {
 		color: #ffe7c7;
@@ -37,9 +36,9 @@
 		border-bottom-color: #fda6;
 		border-left-color: #000a;
 
-		background: #443c;
+		background: #753a;
 
-		box-shadow: 1px 0 2px #0007;
+		box-shadow: 1px 0 2px #0007, inset 2px 1px 4px #0005, inset -2px -1px 4px #fe95;
 	}
 
 	&:disabled {
