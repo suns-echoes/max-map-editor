@@ -1,0 +1,302 @@
+{
+	"SSA": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"SSA:!S",
+			"SSC:E",
+			"SSC:!S",
+			"SSE:E",
+			"SSH:E",
+			"SSH:!W",
+			"SSI:E",
+			"SSI:!W",
+			"SSJ",
+			"SSJ:!W",
+			"SSK",
+			"SSK:!W",
+			"SSL:E",
+			"SSL:!W"
+		],
+		"E": [
+			"SSA:!",
+			"SSD:W",
+			"SSD:!",
+			"SSE",
+			"SSF",
+			"SSF:!W",
+			"SSG",
+			"SSG:!"
+		]
+	},
+	"SSB": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"SSB:S",
+			"SSB:!S",
+			"SSL",
+			"SSL:!"
+		],
+		"E": [
+			"__WATER__"
+		]
+	},
+	"SSC": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"SSC:E",
+			"SSC:!S",
+			"SSE:E",
+			"SSH:E",
+			"SSH:!W",
+			"SSI:E",
+			"SSI:!W",
+			"SSJ",
+			"SSJ:!W",
+			"SSK",
+			"SSK:!W",
+			"SSL:E",
+			"SSL:!W"
+		],
+		"E": [
+			"SSC:W",
+			"SSC:!",
+			"SSE:!",
+			"SSH",
+			"SSH:!",
+			"SSI",
+			"SSI:!",
+			"SSJ",
+			"SSJ:!W",
+			"SSK",
+			"SSK:!W",
+			"SSL",
+			"SSL:!"
+		]
+	},
+	"SSD": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"__WATER__"
+		],
+		"S": [
+			"SSD:E",
+			"SSD:!S",
+			"SSE:!W",
+			"SSF",
+			"SSF:!W",
+			"SSG:E",
+			"SSG:!W"
+		],
+		"E": [
+			"SSD:W",
+			"SSD:!",
+			"SSE",
+			"SSF",
+			"SSF:!W",
+			"SSG",
+			"SSG:!"
+		]
+	},
+	"SSE": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"SSE:!",
+			"SSF:W",
+			"SSF:!",
+			"SSG",
+			"SSG:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSE:!",
+			"SSH",
+			"SSH:!",
+			"SSI",
+			"SSI:!",
+			"SSJ",
+			"SSJ:!W",
+			"SSK",
+			"SSK:!W",
+			"SSL",
+			"SSL:!"
+		]
+	},
+	"SSF": {
+		"N": [
+			"SSF:E",
+			"SSF:!S",
+			"SSG:E",
+			"SSG:!W"
+		],
+		"W": [
+			"SSF:W",
+			"SSF:!",
+			"SSG",
+			"SSG:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"SSG": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"SSG",
+			"SSG:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSG",
+			"SSG:!"
+		]
+	},
+	"SSH": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"SSH",
+			"SSH:!",
+			"SSI",
+			"SSI:!",
+			"SSJ:W",
+			"SSJ:!",
+			"SSK:W",
+			"SSK:!",
+			"SSL",
+			"SSL:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSH",
+			"SSH:!",
+			"SSI",
+			"SSI:!",
+			"SSJ",
+			"SSJ:!W",
+			"SSK",
+			"SSK:!W",
+			"SSL",
+			"SSL:!"
+		]
+	},
+	"SSI": {
+		"N": [
+			"__WATER__"
+		],
+		"W": [
+			"SSI",
+			"SSI:!",
+			"SSJ:W",
+			"SSJ:!",
+			"SSK:W",
+			"SSK:!",
+			"SSL",
+			"SSL:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSI",
+			"SSI:!",
+			"SSJ",
+			"SSJ:!W",
+			"SSK",
+			"SSK:!W",
+			"SSL",
+			"SSL:!"
+		]
+	},
+	"SSJ": {
+		"N": [
+			"SSJ:E",
+			"SSJ:!S",
+			"SSK:E",
+			"SSK:!S",
+			"SSL:E",
+			"SSL:!W"
+		],
+		"W": [
+			"SSJ:W",
+			"SSJ:!",
+			"SSK:W",
+			"SSK:!",
+			"SSL",
+			"SSL:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"SSK": {
+		"N": [
+			"SSK:E",
+			"SSK:!S",
+			"SSL:E",
+			"SSL:!W"
+		],
+		"W": [
+			"SSK:W",
+			"SSK:!",
+			"SSL",
+			"SSL:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"SSL": {
+		"N": [
+			"SSL:S",
+			"SSL:!S"
+		],
+		"W": [
+			"SSL",
+			"SSL:!"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"SSL",
+			"SSL:!"
+		]
+	}
+}
