@@ -25,11 +25,11 @@ export function MainWindow() {
 				MainMenu(),
 				Minimap(),
 				MainToolbar(),
+				Section().text('Sidebar'),
+				WGLMap(),
 				Section().nodes([
 					MapSelector(),
 				]),
-				WGLMap(),
-				Section().text('BottomToolbar'),
 				StatusBar(),
 			]),
 		])

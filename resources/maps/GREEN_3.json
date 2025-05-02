@@ -11,7 +11,8 @@
 			"version": 0.1
 		},
 		{
-			"name": "GREEN_3", "tileset": true,
+			"name": "GREEN",
+			"tileset": true,
 			"palette": true,
 			"version": 0.1
 		}

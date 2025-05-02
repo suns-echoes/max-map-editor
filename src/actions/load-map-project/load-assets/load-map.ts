@@ -69,13 +69,13 @@ function populateMapCell(cell: string | null, tiles: Tiles, map: Uint8Array, i: 
 	const tile = tiles.get(tileId);
 
 	if (!tile) {
-		// throw new Error(`Tile not found: ${tileId}`);
-		console.error(`Tile not found: ${tileId}`);
-		map[i++] = 0;
-		map[i++] = 0;
-		map[i++] = 0;
-		map[i++] = 0;
-		return;
+		throw new Error(`Tile not found: ${tileId}`);
+		// console.error(`Tile not found: ${tileId}`);
+		// map[i++] = 0;
+		// map[i++] = 0;
+		// map[i++] = 0;
+		// map[i++] = 0;
+		// return;
 	}
 
 	map[i++] = tile.location.textureX;

@@ -10,4 +10,12 @@ export const AppState = {
 	tiles: new Value<Tiles | null>(null),
 
 	wglMap: new Value<WglMap | null>(null),
+
+	reset() {
+		this.mapProject.set(null);
+		this.mapSize.set({ width: 0, height: 0 });
+		this.palette.set(null);
+		this.map.set(null);
+		this.tiles.set(null);
+	}
 };
