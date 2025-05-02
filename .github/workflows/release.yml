@@ -62,6 +62,7 @@ jobs:
 
       - name: copy artifacts
         if: matrix.platform == 'windows-latest'
+        run: |
           cp ./src-tauri/target/release/bundle/nsis/M.A.X.Game.Map.Editor_*_x64-setup.exe ./Artifacts/
 
       - name: Upload Artifacts
