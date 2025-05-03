@@ -82,36 +82,36 @@ void main() {
 
 	// water waves, 7 frames, 8 fps, L-R
 	if (paletteIndex >= 96.0 && paletteIndex <= 102.0) {
-		paletteIndex += rotBy7_8fps;
+		paletteIndex -= rotBy7_8fps;
 		if (paletteIndex < 96.0) {
-			paletteIndex = paletteIndex + 7.0;
+			paletteIndex += 7.0;
 		}
 	}
 	// water waves, 7 frames, 8 fps, L-R
 	else if (paletteIndex >= 103.0 && paletteIndex <= 109.0) {
-		paletteIndex += rotBy7_8fps;
+		paletteIndex -= rotBy7_8fps;
 		if (paletteIndex < 103.0) {
-			paletteIndex = paletteIndex + 7.0;
+			paletteIndex += 7.0;
 		}
 	}
 	// water waves, 7 frames, 10 fps, L-R
 	else if (paletteIndex >= 110.0 && paletteIndex <= 116.0) {
-		paletteIndex += rotBy7_10fps;
+		paletteIndex -= rotBy7_10fps;
 		if (paletteIndex < 110.0) {
-			paletteIndex = paletteIndex + 7.0;
+			paletteIndex += 7.0;
 		}
 	}
 	// water waves, 6 frames, 6 fps
 	else if (paletteIndex >= 117.0 && paletteIndex <= 122.0) {
-		paletteIndex += rotBy6_6fps;
+		paletteIndex -= rotBy6_6fps;
 		if (paletteIndex < 117.0) {
-			paletteIndex = paletteIndex + 6.0;
+			paletteIndex += 6.0;
 		}
 	// water waves, 5 frames, 6 fps
 	} else if (paletteIndex >= 123.0 && paletteIndex <= 127.0) {
 		paletteIndex -= rotBy5_6fps;
 		if (paletteIndex < 123.0) {
-			paletteIndex = paletteIndex + 5.0;
+			paletteIndex += 5.0;
 		}
 	}
 
