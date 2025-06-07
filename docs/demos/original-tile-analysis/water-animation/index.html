@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Palette Play</title>
+	<link rel="stylesheet" href="static/styles.css">
+	<script src="static/draggable.js" defer></script>
+	<script src="static/palettes.js" defer></script>
+	<script src="static/tiles.js" defer></script>
+	<script src="static/anim.js" defer></script>
+	<script src="static/global-state.js" defer></script>
+	<script src="static/palette-controls.js" defer></script>
+	<script src="static/tile-bitmaps.js" defer></script>
+	<script src="static/index.js" defer></script>
+	<body>
+		<!--
+		  -- https://www.compart.com/en/unicode/block/U+25A0
+		  -- 
+		  -- 🟥 🟧 🟨 🟩 🟦 🟪 🟫 ⬛ ⬜
+		  -- ◩ ◪ ◧ ◫ ◨ ◻ ◼ ▣ □ ■ ▩ ▦
+		  -->
+		<div class="subpalettes-preview">
+			<fieldset>
+				<legend id="subpalette-1-legend">Water 1 (X-Y)</legend>
+				<div class="palette-controls">
+					<button title="Stop animation" id="subpalette-1-ctrl-stop">⏹️</button>
+					<button title="Play/pause animation" id="subpalette-1-ctrl-playpause" class="enabled">⏯️</button>
+					<div class="separator vertical"></div>
+					<button title="Frame back" id="subpalette-1-ctrl-frameback">⏮️</button>
+					<button title="Frame forward" id="subpalette-1-ctrl-frameForward">⏭️</button>
+					<div class="separator vertical"></div>
+					<button title="Switch alt palette" id="subpalette-1-ctrl-switchpalette">🔄</button>
+					<button title="Switch hide" id="subpalette-1-ctrl-onoff"><span>🟥</span><span>⏻</span></button>
+					<div class="separator vertical"></div>
+					<button title="Mask even pixels" id="subpalette-1-ctrl-maskEven"><span>🟩</span><span style="top: -2px;">◩</span></button>
+					<button title="No mask" id="subpalette-1-ctrl-noMask"><span>🟩</span><span>☐</span></button>
+					<button title="Mask odd pixels" id="subpalette-1-ctrl-maskOdd"><span>🟩</span><span style="top: -2px;">◪</span></button>
+					<div class="separator vertical"></div>
+					<button title="Fill missing pixels" id="subpalette-1-ctrl-unEvenOdd"><span>🟩</span><span style="top: -2px;">▦</span></button>
+					<div class="separator vertical"></div>
+				</div>
+				<canvas id="subpalette-1-canvas"></canvas>
+			</fieldset>
+			<fieldset style="width: 200px;">
+				<legend id="subpalette-S-legend">Sync</legend>
+				<div class="palette-controls">
+					<button title="Stop animation" id="subpalette-S-ctrl-stop">⏹️</button>
+					<button title="Play/pause animation" id="subpalette-S-ctrl-playpause" class="enabled">⏯️</button>
+					<div class="separator vertical"></div>
+					<button title="Frame back" id="subpalette-S-ctrl-frameback">⏮️</button>
+					<button title="Frame forward" id="subpalette-S-ctrl-frameForward">⏭️</button>
+					<div class="separator vertical"></div>
+					<button title="Switch alt palette" id="subpalette-S-ctrl-switchpalette">🔄</button>
+					<button title="Switch hide" id="subpalette-S-ctrl-onoff"><span>🟥</span><span>⏻</span></button>
+					<div class="separator horizontal"></div>
+					<button title="Mask even pixels" id="subpalette-S-ctrl-maskEven"><span>🟩</span><span style="top: -2px;">◩</span></button>
+					<button title="No mask" id="subpalette-S-ctrl-noMask"><span>🟩</span><span>☐</span></button>
+					<button title="Mask odd pixels" id="subpalette-S-ctrl-maskOdd"><span>🟩</span><span style="top: -2px;">◪</span></button>
+					<div class="separator vertical"></div>
+					<button title="Fill missing pixels" id="subpalette-S-ctrl-unEvenOdd"><span>🟩</span><span style="top: -2px;">▦</span></button>
+				</div>
+			</fieldset>
+			<fieldset>
+				<legend id="subpalette-2-legend">Water 2 (X-Y)</legend>
+				<div class="palette-controls">
+					<button title="Stop animation" id="subpalette-2-ctrl-stop">⏹️</button>
+					<button title="Play/pause animation" id="subpalette-2-ctrl-playpause" class="enabled">⏯️</button>
+					<div class="separator vertical"></div>
+					<button title="Frame back" id="subpalette-2-ctrl-frameback">⏮️</button>
+					<button title="Frame forward" id="subpalette-2-ctrl-frameForward">⏭️</button>
+					<div class="separator vertical"></div>
+					<button title="Switch alt palette" id="subpalette-2-ctrl-switchpalette">🔄</button>
+					<button title="Switch hide" id="subpalette-2-ctrl-onoff"><span>🟥</span><span>⏻</span></button>
+					<div class="separator vertical"></div>
+					<button title="Mask even pixels" id="subpalette-2-ctrl-maskEven"><span>🟩</span><span style="top: -2px;">◩</span></button>
+					<button title="No mask" id="subpalette-2-ctrl-noMask"><span>🟩</span><span>☐</span></button>
+					<button title="Mask odd pixels" id="subpalette-2-ctrl-maskOdd"><span>🟩</span><span style="top: -2px;">◪</span></button>
+					<div class="separator vertical"></div>
+					<button title="Fill missing pixels" id="subpalette-2-ctrl-unEvenOdd"><span>🟩</span><span style="top: -2px;">▦</span></button>
+					<div class="separator vertical"></div>
+				</div>
+				<canvas id="subpalette-2-canvas"></canvas>
+			</fieldset>
+		</div>
+		<div class="tile-frame"></div>
+	</body>
+</html>
