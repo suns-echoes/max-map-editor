@@ -1,0 +1,30 @@
+.squareText {
+	position: relative;
+	width: max-content;
+	height: max-content;
+
+	font-family: "MAX Square", sans-serif;
+	font-size: 16px;
+	letter-spacing: 1px;
+
+	isolation: isolate;
+
+	span:first-child {
+		color: #f8e8cc;
+		text-shadow: 1px 1px 2px #000;
+	}
+
+	span:last-child {
+		position: absolute;
+		top: 1px;
+		left: 1px;
+
+		width: max-content;
+		height: max-content;
+
+		color: #d8b48c;
+		text-shadow: none;
+
+		mix-blend-mode: multiply;
+	}
+}

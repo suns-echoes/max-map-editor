@@ -5,4 +5,17 @@
 	border-bottom-color: #0008;
 	border-bottom-style: solid;
 	border-bottom-width: 4px;
+
+	& > div {
+		display: inline-block;
+		position: relative;
+
+		section {
+			display: none;
+		}
+
+		&.open section {
+			display: block;
+		}
+	}
 }

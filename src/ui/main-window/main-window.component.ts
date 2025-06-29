@@ -6,7 +6,7 @@ import { AppEvents } from '^events/app-events.ts';
 import { AsyncEffect } from '^lib/reactive/async-effect.class.ts';
 import { BuildInfo } from './build-info/build.info.component.ts';
 import { MainLayout } from './main-layout/main-layout.component.ts';
-import { MainMenu } from './main-menu/main-menu.component.ts';
+import { AppMainMenu } from './app-main-menu/app-main-menu.component.ts';
 import { Minimap } from './minimap/minimap.compoment.ts';
 import { StatusBar } from './status-bar/status-bar.component.ts';
 import { MainToolbar } from './main-toolbar/main-toolbar.component.ts';
@@ -22,7 +22,7 @@ export function MainWindow() {
 		Section('main-window').nodes([
 			BuildInfo(),
 			MainLayout().nodes([
-				MainMenu(),
+				AppMainMenu(),
 				Minimap(),
 				MainToolbar(),
 				Section().text('Sidebar'),

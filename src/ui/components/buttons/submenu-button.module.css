@@ -1,0 +1,27 @@
+.submenuButton {
+	display: block;
+	position: relative;
+
+	width: calc(100% - 8px);
+	height: max-content;
+
+	margin: 4px 4px;
+	padding: 4px 8px 2px 8px;
+
+	background: none;
+
+	border-width: 1px;
+	border-radius: 2px;
+	border-style: solid;
+	border-top-color: #fda6;
+	border-right-color: #000a;
+	border-bottom-color: #0008;
+	border-left-color: #fdaa;
+
+	box-shadow: 1px 0 1px #0007;
+
+	&:disabled {
+		opacity: 0.5;
+		pointer-events: none;
+	}
+}
