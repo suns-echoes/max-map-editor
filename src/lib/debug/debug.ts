@@ -1,4 +1,4 @@
-import { sleep } from '^utils/flow-control/sleep.ts';
+import { sleep } from '^lib/flow-control/sleep.ts';
 
 
 export async function printDebugInfo(message: string) {

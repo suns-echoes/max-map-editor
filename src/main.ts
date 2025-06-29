@@ -4,7 +4,7 @@ import { saveMainWindowParams } from '^actions/main-window/save-main-window-para
 import { showSetupScreen } from '^actions/main-window/setup-screen/show-setup-screen';
 import { showMainWindow } from '^actions/main-window/show-main-window.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
-import { printDebugInfo } from '^utils/debug/debug.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
 
 import './styles/global.style.css';
 import './styles/index.style.css';

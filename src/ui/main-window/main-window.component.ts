@@ -1,9 +1,9 @@
-import { Section } from '^utils/reactive/html-node.elements.ts';
+import { Section } from '^lib/reactive/html-node.elements.ts';
 import { WGLMap } from './wgl-map/wgl-map.component.ts';
-import { printDebugInfo } from '^utils/debug/debug.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
 import { saveMainWindowParams } from '^actions/main-window/save-main-window-params.ts';
 import { AppEvents } from '^events/app-events.ts';
-import { AsyncEffect } from '^utils/reactive/async-effect.class.ts';
+import { AsyncEffect } from '^lib/reactive/async-effect.class.ts';
 import { BuildInfo } from './build-info/build.info.component.ts';
 import { MainLayout } from './main-layout/main-layout.component.ts';
 import { MainMenu } from './main-menu/main-menu.component.ts';

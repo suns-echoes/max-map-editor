@@ -1,5 +1,5 @@
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
-import { fileExists } from '^utils/fs/file-exists.ts';
+import { fileExists } from '^lib/fs/file-exists.ts';
 
 
 export async function updateMaxPath(path: string): Promise<void> {

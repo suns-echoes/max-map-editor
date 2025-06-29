@@ -1,5 +1,5 @@
-import { printDebugInfo } from '^utils/debug/debug.ts';
-import { Section } from '^utils/reactive/html-node.elements.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
+import { Section } from '^lib/reactive/html-node.elements.ts';
 
 import style from './status-bar.module.css';
 import { LabelScreen } from '^src/ui/components/screens/label-screen.component';

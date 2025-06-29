@@ -1,7 +1,7 @@
-import { Div } from '^utils/reactive/html-node.elements.ts';
+import { Div } from '^lib/reactive/html-node.elements.ts';
 
 import style from './big-inset.module.css';
-import { HTMLNode } from '^utils/reactive/html-node.class.ts';
+import { HTMLNode } from '^lib/reactive/html-node.class.ts';
 
 
 export function BigInset(debugName?: string) {

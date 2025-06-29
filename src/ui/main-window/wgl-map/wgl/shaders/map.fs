@@ -101,13 +101,13 @@ void main() {
 			paletteIndex += 7.0;
 		}
 	}
-	// water waves, 6 frames, 6 fps
+	// water waves, 6 frames, 6 fps, L-R
 	else if (paletteIndex >= 117.0 && paletteIndex <= 122.0) {
 		paletteIndex -= rotBy6_6fps;
 		if (paletteIndex < 117.0) {
 			paletteIndex += 6.0;
 		}
-	// water waves, 5 frames, 6 fps
+	// water waves, 5 frames, 6 fps, L-R
 	} else if (paletteIndex >= 123.0 && paletteIndex <= 127.0) {
 		paletteIndex -= rotBy5_6fps;
 		if (paletteIndex < 123.0) {

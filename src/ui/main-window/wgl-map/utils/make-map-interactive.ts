@@ -1,5 +1,5 @@
-import { disableContextMenu } from '^utils/disable-context-menu/disable-context-menu.ts';
-import { throttle } from '^utils/flow-control/throttle.ts';
+import { disableContextMenu } from '^lib/disable-context-menu/disable-context-menu.ts';
+import { throttle } from '^lib/flow-control/throttle.ts';
 
 
 // const MOUSE_BUTTON_LEFT = 0;

@@ -1,8 +1,8 @@
 import { isTauri } from '@tauri-apps/api/core';
-import { printDebugInfo } from '^utils/debug/debug.ts';
-import { debounce } from '^utils/flow-control/debounce.ts';
-import { fs } from '^utils/fs/fs.ts';
-import { deepAssignEqual } from '^utils/object-utils/deep-assign-equal.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
+import { debounce } from '^lib/flow-control/debounce.ts';
+import { fs } from '^lib/fs/fs.ts';
+import { deepAssignEqual } from '^lib/object-utils/deep-assign-equal.ts';
 
 
 interface SettingsFileData {

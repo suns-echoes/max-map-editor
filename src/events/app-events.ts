@@ -1,4 +1,4 @@
-import { Signal } from '^utils/reactive/signal.class.ts';
+import { Signal } from '^lib/reactive/signal.class.ts';
 
 
 export const AppEvents = {

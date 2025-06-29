@@ -1,11 +1,12 @@
 import vertexShaderSource from './shaders/map.vs';
 import fragmentShaderSource from './shaders/map.fs';
-import { Perf } from '^utils/perf/perf.ts';
-import { WebGL2 } from '^utils/webgl2/webgl2.ts';
+import { Perf } from '^lib/perf/perf.ts';
+import { WebGL2 } from '^lib/webgl2/webgl2.ts';
 import { MAP_LAYERS } from '^consts/map-consts.ts';
-import { mat4_createIdentity, mat4_identity, mat4_scale, mat4_translate } from '^utils/math/mat4.ts';
-import { lookAt } from '^utils/math/3d.ts';
-import { printDebugInfo } from '^utils/debug/debug.ts';
+import { mat4_createIdentity, mat4_identity, mat4_scale, mat4_translate } from '^lib/math/mat4.ts';
+import { lookAt } from '^lib/math/3d.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
+import { FPS } from '^lib/webgl2/fps.ts';
 
 
 export class WglMap extends WebGL2 {
@@ -286,7 +287,7 @@ export class WglMap extends WebGL2 {
 			}
 			if ((time += 25) === timeCycle) time = 0;
 			this.render();
-		}, 25);
+		}, FPS(30));
 	}
 
 	disableAnimation() {

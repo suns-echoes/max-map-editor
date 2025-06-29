@@ -1,7 +1,7 @@
 import { MAP_LAYERS } from '^consts/map-consts.ts';
 import { AppState } from '^state/app-state.ts';
-import { Effect } from '^utils/reactive/effect.class.ts';
-import { Perf } from '^utils/perf/perf.ts';
+import { Effect } from '^lib/reactive/effect.class.ts';
+import { Perf } from '^lib/perf/perf.ts';
 
 
 export async function loadMap(mapProject: MapProject, tiles: Tiles) {

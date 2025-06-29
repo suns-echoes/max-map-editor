@@ -1,9 +1,9 @@
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { readTextFile } from '^tauri-apps/plugin-fs.ts';
 import { AppState } from '^state/app-state.ts';
-import { hexToUint8 } from '^utils/array-buffers/hex-to-uint8.ts';
-import { Perf } from '^utils/perf/perf.ts';
-import { Effect } from '^utils/reactive/effect.class.ts';
+import { hexToUint8 } from '^lib/array-buffers/hex-to-uint8.ts';
+import { Perf } from '^lib/perf/perf.ts';
+import { Effect } from '^lib/reactive/effect.class.ts';
 
 
 export async function loadPalette(assetName: string) {

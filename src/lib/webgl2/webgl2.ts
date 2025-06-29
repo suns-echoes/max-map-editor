@@ -1,5 +1,5 @@
-import { perspective } from '^utils/math/3d.ts';
-import { mat4_createIdentity } from '^utils/math/mat4.ts';
+import { perspective } from '^lib/math/3d.ts';
+import { mat4_createIdentity } from '^lib/math/mat4.ts';
 
 
 export class WebGL2 {

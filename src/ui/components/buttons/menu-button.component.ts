@@ -1,4 +1,4 @@
-import { Button } from '^utils/reactive/html-node.elements.ts';
+import { Button } from '^lib/reactive/html-node.elements.ts';
 import style from './menu-button.module.css';
 
 

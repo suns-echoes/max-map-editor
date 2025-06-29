@@ -1,4 +1,4 @@
-import { arrayBufferToHexString } from '^utils/convert/array-buffer-to-hex-string.ts';
+import { arrayBufferToHexString } from '^lib/convert/array-buffer-to-hex-string.ts';
 
 
 export async function SHA1(buffer: ArrayBuffer): Promise<string> {

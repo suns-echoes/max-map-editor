@@ -1,5 +1,5 @@
-import { Effect } from '^utils/reactive/effect.class.ts';
-import { Perf } from '^utils/perf/perf.ts';
+import { Effect } from '^lib/reactive/effect.class.ts';
+import { Perf } from '^lib/perf/perf.ts';
 import { AppState } from '^state/app-state.ts';
 import { loadMap } from './load-map.ts';
 import { loadPalette } from './load-palette.ts';

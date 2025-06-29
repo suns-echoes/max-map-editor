@@ -1,6 +1,6 @@
 import { BigInset } from '../frames/big-inset.component.ts';
-import { Div } from '^utils/reactive/html-node.elements.ts';
-import { HTMLNode } from '^utils/reactive/html-node.class.ts';
+import { Div } from '^lib/reactive/html-node.elements.ts';
+import { HTMLNode } from '^lib/reactive/html-node.class.ts';
 
 import style from './box-screen.module.css';
 

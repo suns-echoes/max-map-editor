@@ -1,7 +1,7 @@
 {
   "name": "max-game-map-editor",
   "private": true,
-  "version": "0.1.15",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,20 +10,20 @@
     "tauri": "tauri",
     "test": "node --no-warnings --enable-source-maps --import ./ts-node.loader.js --import ./node-test.loader.js --test ./src/**/*.test.ts",
     "coverage": "node --no-warnings --experimental-test-coverage --enable-source-maps --import ./ts-node.loader.js --import ./node-test.loader.js --test ./src/**/*.test.ts"
-},
+  },
   "devDependencies": {
-    "@suns-echoes/ts-types": "2.1.0",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/cli": "^2",
-    "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-fs": "^2",
-    "@tauri-apps/plugin-shell": "^2",
-    "@types/node": "22.15.3",
+    "@suns-echoes/ts-types": "2.3.0",
+    "@tauri-apps/api": "2.6.0",
+    "@tauri-apps/cli": "2.6.2",
+    "@tauri-apps/plugin-dialog": "2.3.0",
+    "@tauri-apps/plugin-fs": "2.4.0",
+    "@tauri-apps/plugin-shell": "2.3.0",
+    "@types/node": "24.0.7",
     "ts-node": "10.9.2",
     "typescript": "5.8.3",
-    "vite": "6.3.3"
+    "vite": "7.0.0"
   },
   "dependencies": {
-    "@tauri-apps/plugin-updater": "^2.3.0"
+    "@tauri-apps/plugin-updater": "2.9.0"
   }
 }

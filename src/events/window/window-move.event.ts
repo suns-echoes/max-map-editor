@@ -1,7 +1,7 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { TauriEvent } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Signal } from '^utils/reactive/signal.class.ts';
+import { Signal } from '^lib/reactive/signal.class.ts';
 
 
 export const windowMoveSignal = new Signal();

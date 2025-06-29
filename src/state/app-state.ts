@@ -1,5 +1,5 @@
 import type { WglMap } from '^src/ui/main-window/wgl-map/wgl/wgl-map';
-import { Value } from '^utils/reactive/value.class.ts';
+import { Value } from '^lib/reactive/value.class.ts';
 
 
 export const AppState = {

@@ -1,8 +1,8 @@
 import { getCurrentWindow, PhysicalPosition, PhysicalSize } from '^tauri-apps/api/window.ts';
 
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
-import { RustAPI } from '^utils/rust-api.ts';
-import { printDebugInfo } from '^utils/debug/debug.ts';
+import { RustAPI } from '^lib/rust-api.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
 
 
 export async function restoreMainWindow() {

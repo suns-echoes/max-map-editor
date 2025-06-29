@@ -1,11 +1,11 @@
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { AppState } from '^state/app-state.ts';
 import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
-import { printDebugInfo } from '^utils/debug/debug.ts';
-import { animationFrame } from '^utils/flow-control/animation-frame.ts';
-import { Value } from '^utils/reactive/value.class.ts';
-import { HTMLNode } from '^utils/reactive/html-node.class.ts';
-import { Br, Div } from '^utils/reactive/html-node.elements.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
+import { animationFrame } from '^lib/flow-control/animation-frame.ts';
+import { Value } from '^lib/reactive/value.class.ts';
+import { HTMLNode } from '^lib/reactive/html-node.class.ts';
+import { Br, Div } from '^lib/reactive/html-node.elements.ts';
 import { SimpleButton } from '^src/ui/components/buttons/simple-button.component.ts';
 
 import style from './map-selector.module.css';

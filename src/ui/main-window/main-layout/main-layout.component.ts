@@ -1,5 +1,5 @@
-import { printDebugInfo } from '^utils/debug/debug.ts';
-import { Section } from '^utils/reactive/html-node.elements.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
+import { Section } from '^lib/reactive/html-node.elements.ts';
 
 import style from './main-layout.module.css';
 

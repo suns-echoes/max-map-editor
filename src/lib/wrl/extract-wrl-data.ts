@@ -1,4 +1,4 @@
-import { ArrayBufferReader } from '^utils/array-buffers/array-buffer-reader.ts';
+import { ArrayBufferReader } from '^lib/array-buffers/array-buffer-reader.ts';
 
 
 export function extractWrlData(wrl: Uint8Array): WRLData {

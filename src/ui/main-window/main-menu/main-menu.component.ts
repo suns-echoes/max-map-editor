@@ -1,5 +1,5 @@
-import { printDebugInfo } from '^utils/debug/debug.ts';
-import { Div, Section } from '^utils/reactive/html-node.elements.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
+import { Div, Section } from '^lib/reactive/html-node.elements.ts';
 import { MenuButton } from '^src/ui/components/buttons/menu-button.component';
 
 import style from './main-menu.module.css';

@@ -1,9 +1,9 @@
 import { readTextFile } from '^tauri-apps/plugin-fs.ts';
 import { loadAssets } from '^actions/load-map-project/load-assets/load-assets.ts';
 import { AppState } from '^state/app-state.ts';
-import { Perf } from '^utils/perf/perf.ts';
-import { Effect } from '^utils/reactive/effect.class.ts';
-import { printDebugInfo } from '^utils/debug/debug.ts';
+import { Perf } from '^lib/perf/perf.ts';
+import { Effect } from '^lib/reactive/effect.class.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
 
 
 export async function loadMapProject(projectFilePath: string) {

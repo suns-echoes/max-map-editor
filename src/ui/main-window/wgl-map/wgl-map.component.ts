@@ -4,10 +4,10 @@ import { WglMap } from '^src/ui/main-window/wgl-map/wgl/wgl-map';
 import { AppEvents } from '^events/app-events.ts';
 import { AppState } from '^state/app-state.ts';
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
-import { printDebugInfo } from '^utils/debug/debug.ts';
-import { Effect } from '^utils/reactive/effect.class.ts';
-import { Canvas, Div, Section } from '^utils/reactive/html-node.elements.ts';
-import { Value } from '^utils/reactive/value.class.ts';
+import { printDebugInfo } from '^lib/debug/debug.ts';
+import { Effect } from '^lib/reactive/effect.class.ts';
+import { Canvas, Div, Section } from '^lib/reactive/html-node.elements.ts';
+import { Value } from '^lib/reactive/value.class.ts';
 import { BigInset } from '^src/ui/components/frames/big-inset.component.ts';
 
 import style from './wgl-map.module.css';
