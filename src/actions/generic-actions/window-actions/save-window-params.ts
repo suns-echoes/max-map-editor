@@ -1,7 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { printDebugInfo } from '^lib/debug/debug.ts';
-import { RustAPI } from '^lib/rust-api.ts';
+import { RustAPI } from '^src/bff/rust-api';
 
 
 type TWindow = ReturnType<typeof getCurrentWindow>;

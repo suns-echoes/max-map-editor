@@ -1,7 +1,7 @@
 import { appLocalDataDir } from '@tauri-apps/api/path';
 import { BaseDirectory, exists, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 
-import { RustAPI } from '^lib/rust-api.ts';
+import { RustAPI } from '^src/bff/rust-api';
 
 
 export const fs = {

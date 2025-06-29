@@ -1,4 +1,4 @@
-use crate::logger;
+use crate::{app_state, logger};
 
 
 pub fn file_exists(path: &str) -> bool {
@@ -31,4 +31,30 @@ pub fn dir_contains_file(dir: String, file: String) -> bool {
 	}
 
 	return false;
+}
+
+
+pub fn read_file_from_resources(path: &str) -> Result<String, String> {
+	logger::info(&format!("read_file_from_resources (path={})", path));
+
+	let resource_path = app_state::get_resource_path();
+
+	let full_path = std::path::Path::new(&resource_path).join(path);
+	if !full_path.exists() {
+		logger::error(&format!("read_file_from_resources -> File does not exist: {}", full_path.display()));
+		return Err(format!("File does not exist: {}", full_path.display()));
+	}
+
+	let content = match std::fs::read_to_string(&full_path) {
+		Ok(content) => {
+			logger::info(&format!("read_file_from_resources -> File read successfully: {}", full_path.display()));
+			content
+		}
+		Err(e) => {
+			logger::error(&format!("read_file_from_resources -> Failed to read file: {}", e));
+			return Err(format!("Failed to read file: {}", e));
+		}
+	};
+
+	Ok(content)
 }

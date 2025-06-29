@@ -9,3 +9,5 @@ declare type Rect = {
 	width: number,
 	height: number,
 };
+
+declare type LockPromise = Promise<void>;

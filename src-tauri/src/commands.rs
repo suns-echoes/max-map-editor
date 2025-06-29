@@ -3,6 +3,7 @@ use crate::fs;
 use crate::logger;
 use crate::settings_json;
 
+use crate::image_to_wrl;
 
 const ERROR_PATH_DOES_NOT_EXIST: &str = "ERROR_PATH_DOES_NOT_EXIST";
 const ERROR_INVALID_MAX_PATH: &str = "ERROR_INVALID_MAX_PATH";
@@ -49,4 +50,21 @@ pub fn reload_max_path() -> Result<bool, String> {
 
 	logger::info(&format!("commands::reload_max_path -> path: {}", max_path));
 	Ok(true)
+}
+
+
+#[tauri::command]
+pub fn image_to_wrl(path: String) -> Result<(Vec<u8>, Vec<u8>), String> {
+	logger::info(&format!("commands::image_to_wrl path: {}", path));
+
+	match image_to_wrl::image_to_wrl(path.clone()) {
+		Ok(image_and_palette) => {
+			logger::info(&format!("commands::image_to_wrl -> Successfully converted image to WRL: {}", path));
+			Ok(image_and_palette)
+		},
+		Err(e) => {
+			logger::error(&format!("commands::image_to_wrl -> Failed to convert image to WRL: {}", e));
+			Err(format!("Failed to convert image to WRL: {}", e))
+		}
+	}
 }

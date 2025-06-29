@@ -1,4 +1,4 @@
-import { RustAPI } from '^lib/rust-api.ts';
+import { RustAPI } from '^src/bff/rust-api';
 
 
 export async function getZipContents(path: string): Promise<void> {

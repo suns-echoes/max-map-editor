@@ -2,7 +2,7 @@ import { Button, Div, Section, Span, TextInput } from '^lib/reactive/html-node.e
 import { Signal } from '^lib/reactive/signal.class.ts';
 import { openFolderDialog } from '^lib/dialogs/open-folder-dialog.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
-import { RustAPI } from '^lib/rust-api.ts';
+import { RustAPI } from '^src/bff/rust-api';
 import style from './setup-screen.module.css';
 
 

@@ -1,5 +1,7 @@
-import { CloseAppAction } from '^actions/app/close-app.action.ts';
 import { printDebugInfo } from '^lib/debug/debug.ts';
+
+import { CloseAppAction } from '^actions/app/close-app.action.ts';
+import { NewMapFromImageAction } from '^actions/new-map/new-map-from-image.action.ts';
 
 import { MainMenu } from '^src/ui/components/menus/main-menu/main-menu.component.ts';
 
@@ -17,9 +19,7 @@ export function AppMainMenu() {
 				},
 				{
 					label: 'New Map from Image',
-					action: () => {
-						printDebugInfo('UI::MainMenu::NewMapFromImage');
-					},
+					action: NewMapFromImageAction,
 				},
 				{
 					label: 'Save File',
