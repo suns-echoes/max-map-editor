@@ -27,7 +27,7 @@ function parseMap(mapProject: MapProject, tiles: Tiles) {
 
 	// TODO: add validation
 	const mapSize = mapProject.width * mapProject.height * 4;
-	const map = new Uint8Array(mapSize * MAP_LAYERS);
+	const map = new Uint16Array(mapSize * MAP_LAYERS);
 
 	let i = 0;
 	for (let y = 0; y < mapProject.height; y++) {
@@ -56,7 +56,7 @@ function parseMap(mapProject: MapProject, tiles: Tiles) {
 	return map;
 }
 
-function populateMapCell(cell: string | null, tiles: Tiles, map: Uint8Array, i: number) {
+function populateMapCell(cell: string | null, tiles: Tiles, map: Uint16Array, i: number) {
 	if (!cell) {
 		map[i++] = 0;
 		map[i++] = 0;
@@ -80,7 +80,7 @@ function populateMapCell(cell: string | null, tiles: Tiles, map: Uint8Array, i: 
 
 	map[i++] = tile.location.textureX;
 	map[i++] = tile.location.textureY;
-	map[i++] = tile.location.textureIndex;
+	map[i++] = tile.location.textureLayer;
 	map[i++] = transformMap[transformation];
 }
 
@@ -92,5 +92,22 @@ new Effect(function () {
 	const mapSize = AppState.mapSize.value;
 	const map = AppState.map.value;
 	if (!wglMap || !mapSize || !map) return;
+
+	console.log('map.length', map.length);
+
+	// for (let i = 0, j = 0; i < 112*112*4; i+=4, j++) {
+	// 	map[i] = j % 1;
+	// 	map[i + 1] = (j / 1) | 0;
+	// 	map[i + 2] = Math.floor(j / 4096);
+	// 	map[i + 3] = 0;
+	// }
+
+	// for (let i = 112*112*4, j = 0; i < 112*112*4*2; i+=4, j++) {
+	// 	map[i] = 0;
+	// 	map[i + 1] = 0;// % 4096;
+	// 	map[i + 2] = 0;//Math.floor(j / 4096);
+	// 	map[i + 3] = 255;
+	// }
+
 	wglMap.initMap(map, mapSize.width, mapSize.height);
 }).watch([AppState.wglMap, AppState.mapSize, AppState.map]);

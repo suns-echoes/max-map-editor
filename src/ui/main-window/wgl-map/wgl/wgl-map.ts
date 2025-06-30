@@ -15,7 +15,7 @@ export class WglMap extends WebGL2 {
 		super(canvas);
 
 		this.tileCapability = this.getTileCapability();
-		this.textures = new Array(this.tileCapability.maxTileTextures).fill(null);
+		this.textures = new Array(this.tileCapability.maxTextureLayers).fill(null);
 
 		const program = this.createProgram(vertexShaderSource, fragmentShaderSource);
 		this.gl.useProgram(program);
@@ -192,7 +192,7 @@ export class WglMap extends WebGL2 {
 	 * Initialize or reinitialize the map texture.
 	 * Use this method whenever the map size changes.
 	 */
-	initMap(mapData: Uint8Array, width: number, height: number) {
+	initMap(mapData: Uint16Array, width: number, height: number) {
 		if (this.textures[this.MAP_TEXTURE]) {
 			this.gl.deleteTexture(this.mapTexture);
 		}
@@ -200,23 +200,26 @@ export class WglMap extends WebGL2 {
 		this.mapHeight = height;
 		this.mapModelWidth = width * 64;
 		this.mapModelHeight = height * 64;
-		this.textures[this.MAP_TEXTURE] = this.createTexture(this.MAP_TEXTURE, mapData, width, height, this.gl.RGBA, '3d', MAP_LAYERS);
+		this.textures[this.MAP_TEXTURE] = this.createTexture(this.MAP_TEXTURE, mapData, width, height, this.gl.RGBA16UI, '3d', MAP_LAYERS);
 		this.gl.uniform1i(this.uniformLocations.uMapTexture, this.MAP_TEXTURE);
 
 		this.initModel();
 	}
 
-	initTilesets(tileDataSets: Uint8Array[]) {
+	initTilesets(tilesetData: Uint8Array, layers: number) {
 		const perf = Perf('WglMap::uploadTilesets');
 
-		for (let i = 0; i < tileDataSets.length; i++) {
-			const textureUnit = this[`TILES_TEXTURE${i}` as keyof WglMap] as GLenum;
-			if (textureUnit === undefined) {
-				throw new Error(`Fatal: Texture unit overflow: ${i}`);
-			}
-			this.createTexture(textureUnit, tileDataSets[i], this.tileCapability.tilesTexWidth, this.tileCapability.tilesTexWidth, this.gl.RGBA);
-			this.gl.uniform1i(this.uniformLocations[`uTilesTexture${i}`], textureUnit);
-		}
+		const textureUnit = this.TILES_TEXTURE;
+		this.createTexture(
+			textureUnit,
+			tilesetData,
+			this.tileCapability.maxTextureSize,
+			this.tileCapability.maxTextureSize,
+			this.gl.RGBA8UI,
+			'3d',
+			layers,
+		);
+		this.gl.uniform1i(this.uniformLocations.uTilesTexture, textureUnit);
 
 		perf();
 	}
@@ -273,17 +276,17 @@ export class WglMap extends WebGL2 {
 			if (time % 100 === 0) {
 				this._animationFrame_10fps = this._animationFrame_10fps + 1;
 				if (this._animationFrame_10fps === this._animationFrameCycle) this._animationFrame_10fps = 0;
-				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_10fps, this._animationFrame_10fps);
+				this.gl.uniform1ui(this.uniformLocations.uAnimationFrame_10fps, this._animationFrame_10fps);
 			}
 			if (time % 125 === 0) {
 				this._animationFrame_8fps = this._animationFrame_8fps + 1;
 				if (this._animationFrame_8fps === this._animationFrameCycle) this._animationFrame_8fps = 0;
-				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_8fps, this._animationFrame_8fps);
+				this.gl.uniform1ui(this.uniformLocations.uAnimationFrame_8fps, this._animationFrame_8fps);
 			}
 			if (time % 150 === 0) {
 				this._animationFrame_6fps = this._animationFrame_6fps + 1;
 				if (this._animationFrame_6fps === this._animationFrameCycle) this._animationFrame_6fps = 0;
-				this.gl.uniform1i(this.uniformLocations.uAnimationFrame_6fps, this._animationFrame_6fps);
+				this.gl.uniform1ui(this.uniformLocations.uAnimationFrame_6fps, this._animationFrame_6fps);
 			}
 			if ((time += 25) === timeCycle) time = 0;
 			this.render();
@@ -298,7 +301,7 @@ export class WglMap extends WebGL2 {
 
 	PALETTE_TEXTURE = 0;
 	MAP_TEXTURE = 1;
-	TILES_TEXTURE0 = 2;
+	TILES_TEXTURE = 2;
 
 	factor: number = 1;
 	camera: Vec3 = [0, 0, 0];
@@ -323,10 +326,7 @@ export class WglMap extends WebGL2 {
 		uAnimationFrame_10fps: null!,
 		uPaletteTexture: null!,
 		uMapTexture: null!,
-		uTilesTexture0: null!,
-		// uTilesTexture1: null!,
-		// uTilesTexture2: null!,
-		// uTilesTexture3: null!,
+		uTilesTexture: null!,
 	};
 
 	attributeLocations: Record<string, GLint> = {

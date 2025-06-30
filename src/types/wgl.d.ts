@@ -1,7 +1,8 @@
 declare type WglTileCapability = {
-	maxTilesPerTexture: number,
-	maxTileTextures: number,
-	maxTileCount: number,
+	maxTextureSize: number,
+	maxTextureLayers: number,
+	maxTilesPerTextureLayer: number,
+	maxTiles: number,
 	tilesPerRow: number,
 	tilesPerCol: number,
 	tilesTexWidth: number,

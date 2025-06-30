@@ -1,28 +1,35 @@
 #version 300 es
 precision highp float;
 precision highp sampler2DArray;
+precision highp usampler2DArray;
 
 in vec2 vTexCoord;
 
 uniform float uZoom;
 uniform vec2 uCursor;
 uniform float uMapLayer;
-uniform int uAnimationFrame_6fps;
-uniform int uAnimationFrame_8fps;
-uniform int uAnimationFrame_10fps;
+uniform uint uAnimationFrame_6fps;
+uniform uint uAnimationFrame_8fps;
+uniform uint uAnimationFrame_10fps;
 
 uniform sampler2D uPaletteTexture;
-uniform sampler2DArray uMapTexture;
-uniform sampler2D uTilesTexture0;
+uniform usampler2DArray uMapTexture;
+uniform usampler2DArray uTilesTexture;
 
 out vec4 outColor;
+
+vec3 getMaxCoord(uint x, uint y, uint z) {
+	// Get the maximum coordinate for the given tile.
+	// This is used to calculate the texture coordinates for the tile.
+	return vec3(float(x) / 4096.0, float(y) / 1.0, float(z));
+}
 
 void main() {
 	// Get map texture 2D size.
 	vec2 mapSize = vec2(textureSize(uMapTexture, 0).xy);
 	// Get tileSet 2D size. Tile data is 4096x1 pixels.
-	vec2 tileDataSize = vec2(4096, 1);
-	vec2 tileSetSize = vec2(textureSize(uTilesTexture0, 0)) / tileDataSize;
+	vec2 tileDataSize = vec2(4096.0, 1.0);
+	vec2 tileSetSize = vec2(textureSize(uTilesTexture, 0)) / tileDataSize;
 
 	// Calculate the cell coordinates.
 	vec2 cellXY = floor(vTexCoord * mapSize);
@@ -44,11 +51,12 @@ void main() {
 	//     5: !W (X flip, west facing up)
 	//     6: !S (X flip, south facing up)
 	//     7: !E (X flip, east facing up)
-	vec4 tileData = texture(uMapTexture, vec3(cell, uMapLayer)) * 255.0;
-	int flags = int(floor(tileData.a));
+	uvec4 tileDataUI = texture(uMapTexture, vec3(cell, uMapLayer));// * 255.0;
+	vec4 tileData = vec4(tileDataUI);// * 256.0;
+	uint flags = tileDataUI.a;
 
 	// Return transparent color if tile is empty.
-	if (flags == 255) {
+	if (flags == 255u) {
 		outColor = vec4(0.0, 0.0, 0.0, 0.0);
 		return;
 	}
@@ -56,67 +64,70 @@ void main() {
 	// Calculate the tile data offset.
 	float x = subCell.x;
 	// Check if tile should be flipped.
-	if (flags == 4 || flags == 5 || flags == 6 || flags == 7) {
+	if (flags == 4u || flags == 5u || flags == 6u || flags == 7u) {
 		x = 63.0 - x;
 	}
 	vec2 tileDataOffset = (tileData.xy + vec2(subCell.y * 64.0 + x, 0.0) / tileDataSize) / tileSetSize;
 
 	// Get the palette index from tile pixel value.
 	// The R, G, B, A components of the tile pixel value are used for N, W, S, E transformations.
-	float paletteIndex = 0.0;
-	if (flags == 0 || flags == 4) {
-		paletteIndex = texture(uTilesTexture0, tileDataOffset).r * 255.0;
-	} else if (flags == 1 || flags == 5) {
-		paletteIndex = texture(uTilesTexture0, tileDataOffset).g * 255.0;
-	} else if (flags == 2 || flags == 6) {
-		paletteIndex = texture(uTilesTexture0, tileDataOffset).b * 255.0;
-	} else if (flags == 3 || flags == 7) {
-		paletteIndex = texture(uTilesTexture0, tileDataOffset).a * 255.0;
+	uint paletteIndex = 0u;
+	vec3 tileSampleCoord = vec3(tileDataOffset, 0.0); // Use layer 0, or replace with correct layer if needed
+	uvec4 tileSample = texture(uTilesTexture, tileSampleCoord);
+
+	if (flags == 0u || flags == 4u) {
+		paletteIndex = tileSample.r; // * 255.0;
+	} else if (flags == 1u || flags == 5u) {
+		paletteIndex = tileSample.g; // * 255.0;
+	} else if (flags == 2u || flags == 6u) {
+		paletteIndex = tileSample.b; // * 255.0;
+	} else if (flags == 3u || flags == 7u) {
+		paletteIndex = tileSample.a; // * 255.0;
 	}
 
 	// Cycle palette colors.
-	float rotBy6_6fps = float(uAnimationFrame_6fps % 6);
-	float rotBy5_6fps = float(uAnimationFrame_6fps % 5);
-	float rotBy7_8fps = float(uAnimationFrame_8fps % 7);
-	float rotBy7_10fps = float(uAnimationFrame_10fps % 7);
+	uint rotBy6_6fps = uAnimationFrame_6fps % 6u;
+	uint rotBy5_6fps = uAnimationFrame_6fps % 5u;
+	uint rotBy7_8fps = uAnimationFrame_8fps % 7u;
+	uint rotBy7_10fps = uAnimationFrame_10fps % 7u;
 
 	// water waves, 7 frames, 8 fps, L-R
-	if (paletteIndex >= 96.0 && paletteIndex <= 102.0) {
+	if (paletteIndex >= 96u && paletteIndex <= 102u) {
 		paletteIndex -= rotBy7_8fps;
-		if (paletteIndex < 96.0) {
-			paletteIndex += 7.0;
+		if (paletteIndex < 96u) {
+			paletteIndex += 7u;
 		}
 	}
 	// water waves, 7 frames, 8 fps, L-R
-	else if (paletteIndex >= 103.0 && paletteIndex <= 109.0) {
+	else if (paletteIndex >= 103u && paletteIndex <= 109u) {
 		paletteIndex -= rotBy7_8fps;
-		if (paletteIndex < 103.0) {
-			paletteIndex += 7.0;
+		if (paletteIndex < 103u) {
+			paletteIndex += 7u;
 		}
 	}
 	// water waves, 7 frames, 10 fps, L-R
-	else if (paletteIndex >= 110.0 && paletteIndex <= 116.0) {
+	else if (paletteIndex >= 110u && paletteIndex <= 116u) {
 		paletteIndex -= rotBy7_10fps;
-		if (paletteIndex < 110.0) {
-			paletteIndex += 7.0;
+		if (paletteIndex < 110u) {
+			paletteIndex += 7u;
 		}
 	}
 	// water waves, 6 frames, 6 fps, L-R
-	else if (paletteIndex >= 117.0 && paletteIndex <= 122.0) {
+	else if (paletteIndex >= 117u && paletteIndex <= 122u) {
 		paletteIndex -= rotBy6_6fps;
-		if (paletteIndex < 117.0) {
-			paletteIndex += 6.0;
+		if (paletteIndex < 117u) {
+			paletteIndex += 6u;
 		}
 	// water waves, 5 frames, 6 fps, L-R
-	} else if (paletteIndex >= 123.0 && paletteIndex <= 127.0) {
+	} else if (paletteIndex >= 123u && paletteIndex <= 127u) {
 		paletteIndex -= rotBy5_6fps;
-		if (paletteIndex < 123.0) {
-			paletteIndex += 5.0;
+		if (paletteIndex < 123u) {
+			paletteIndex += 5u;
 		}
 	}
 
 	// Get the color from palette texture.
-	vec4 color = texture(uPaletteTexture, vec2(paletteIndex / 255.0, 0.0)).rgba;
+	vec4 color = texture(uPaletteTexture, vec2(float(paletteIndex) / 255.0, 0.0)).rgba;
 
 	// Check if cursor is on cell.
 	float cursorFrameWidth = 4.0 * sqrt(2.0) / uZoom;

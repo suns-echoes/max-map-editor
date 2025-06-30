@@ -75,7 +75,7 @@ function buildTiles<T extends string>(outTiles: Tiles, assetName: string, data: 
 			inUse: false,
 			location: {
 				dataOffset: 0,
-				textureIndex: 2,
+				textureLayer: 2,
 				textureX: 0,
 				textureY: 0,
 			},

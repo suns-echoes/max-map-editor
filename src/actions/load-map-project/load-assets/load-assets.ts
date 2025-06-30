@@ -31,26 +31,39 @@ new Effect(function () {
 	const mapProject = AppState.mapProject.value;
 	const tiles = AppState.tiles.value;
 	if (!wglMap || !mapProject || !tiles) return;
-	const tileset = arrangeTilesData(tiles, wglMap.getTileCapability());
-	wglMap.initTilesets([tileset]);
+	const [tileset, layers] = arrangeTilesData(tiles, wglMap.getTileCapability());
+	wglMap.initTilesets(tileset, layers);
 	loadMap(mapProject, tiles);
 }).watch([AppState.wglMap, AppState.mapProject, AppState.tiles]);
 
 
-function arrangeTilesData(tiles: Tiles, tileCapability: WglTileCapability): Uint8Array {
+function arrangeTilesData(tiles: Tiles, tileCapability: WglTileCapability): [tileset: Uint8Array, layers: number] {
 	const perf = Perf('arrangeTilesData');
 
-	const { maxTileTextures, maxTilesPerTexture, tilesPerRow, tilesPerCol } = tileCapability;
+	const { maxTextureSize, maxTilesPerTextureLayer, tilesPerRow, tilesPerCol } = tileCapability;
+	const usedTextureLayers = Math.ceil(tiles.size / maxTilesPerTextureLayer);
 
-	const tileset = new Uint8Array(64 ** 2 * maxTilesPerTexture * 4);
+	if (usedTextureLayers > tileCapability.maxTextureLayers) {
+		throw new Error('Fatal: Too many tiles for the available texture layers');
+	}
+
+	const tileset = new Uint8Array(maxTextureSize ** 2 * usedTextureLayers * 4);
+
+	console.log({
+		maxTextureSize,
+		maxTilesPerTextureLayer,
+		tilesPerRow,
+		tilesPerCol,
+		usedTextureLayers,
+	})
 
 	let tileIndex = 0;
+	let layer = 0;
 	let row = 0;
 	let column = 0;
 	let textureDataOffset = 0;
-	let textureUnit = 0;
 	for (const tile of tiles.values()) {
-		tile.location.textureIndex = 0;
+		tile.location.textureLayer = layer;
 		tile.location.textureX = row;
 		tile.location.textureY = column;
 
@@ -87,19 +100,12 @@ function arrangeTilesData(tiles: Tiles, tileCapability: WglTileCapability): Uint
 			column++;
 			if (column >= tilesPerCol) {
 				column = 0;
-				textureUnit++;
-				textureDataOffset = 0;
-
-				throw new Error('Too many tiles for one texture, implement more!');
-
-				if (textureUnit >= maxTileTextures) {
-					throw new Error('Too many tiles');
-				}
+				layer++;
 			}
 		}
 	}
 
 	perf();
 
-	return tileset;
+	return [tileset, usedTextureLayers];
 }

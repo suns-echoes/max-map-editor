@@ -13,7 +13,7 @@ declare type Tile = {
 	inUse: boolean,
 	location: {
 		dataOffset: number,
-		textureIndex: number,
+		textureLayer: number,
 		textureX: number,
 		textureY: number,
 	},
