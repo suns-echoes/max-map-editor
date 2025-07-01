@@ -84,100 +84,99 @@ export class WebGL2 {
 		};
 	}
 
-	createTexture(unit: GLenum, data: Uint8Array, width: number, height: number, format: typeof this.gl.RGBA | typeof this.gl.RGBA8UI, target?: '2d'): WebGLTexture;
+	createTexture(unit: GLenum, data: Uint8Array, width: number, height: number, format: typeof this.gl.RGBA | typeof this.gl.R8UI | typeof this.gl.RGBA8UI, target?: '2d'): WebGLTexture;
 	createTexture(unit: GLenum, data: Uint16Array, width: number, height: number, format: typeof this.gl.RGBA16UI, target?: '2d'): WebGLTexture;
-	createTexture(unit: GLenum, data: Uint8Array, width: number, height: number, format: typeof this.gl.RGBA | typeof this.gl.RGBA8UI, target: '3d', depth: number): WebGLTexture;
+	createTexture(unit: GLenum, data: Uint8Array, width: number, height: number, format: typeof this.gl.RGBA | typeof this.gl.R8UI | typeof this.gl.RGBA8UI, target: '3d', depth: number): WebGLTexture;
 	createTexture(unit: GLenum, data: Uint16Array, width: number, height: number, format: typeof this.gl.RGBA16UI, target: '3d', depth: number): WebGLTexture;
-	createTexture(unit: GLenum, data: Uint8Array | Uint16Array, width: number, height: number, format: typeof this.gl.RGBA | typeof this.gl.RGBA8UI | typeof this.gl.RGBA16UI, target: '2d' | '3d' = '2d', depth: number = 1): WebGLTexture {
+	createTexture(unit: GLenum, data: Uint8Array | Uint16Array, width: number, height: number, format: typeof this.gl.RGBA | typeof this.gl.R8UI | typeof this.gl.RGBA8UI | typeof this.gl.RGBA16UI, target: '2d' | '3d' = '2d', depth: number = 1): WebGLTexture {
 		const texture = this.gl.createTexture();
 		if (!texture) {
 			throw new Error('Fatal: Failed to create texture');
 		}
 
-        const targetSampler = target === '3d'
-            ? this.gl.TEXTURE_2D_ARRAY
-            : this.gl.TEXTURE_2D;
+		const targetSampler = target === '3d'
+			? this.gl.TEXTURE_2D_ARRAY
+			: this.gl.TEXTURE_2D;
 
-        this.gl.activeTexture(this.gl.TEXTURE0 + unit);
-        this.gl.bindTexture(targetSampler, texture);
-        this.gl.pixelStorei(this.gl.UNPACK_ALIGNMENT, 1);
+		this.gl.activeTexture(this.gl.TEXTURE0 + unit);
+		this.gl.bindTexture(targetSampler, texture);
+		this.gl.pixelStorei(this.gl.UNPACK_ALIGNMENT, 1);
 
-        // --- Start of Implementation ---
+		let internalFormat: GLenum;
+		let pixelFormat: GLenum;
+		let pixelType: GLenum;
+		let isIntegerTexture: boolean = false;
 
-        let internalFormat: GLenum;
-        let pixelFormat: GLenum;
-        let pixelType: GLenum;
-        let isIntegerTexture: boolean = false;
-
-        if (data instanceof Uint16Array && format === this.gl.RGBA16UI) {
-            console.info("Creating RGBA16UI texture (16-bit unsigned integer).");
-            internalFormat = this.gl.RGBA16UI;
-            pixelFormat = this.gl.RGBA_INTEGER; // Specific format for integer data upload
-            pixelType = this.gl.UNSIGNED_SHORT; // Corresponds to Uint16Array
-            isIntegerTexture = true;
+		if (data instanceof Uint16Array && format === this.gl.RGBA16UI) {
+			console.info("Creating RGBA16UI texture (16-bit unsigned integer).");
+			internalFormat = this.gl.RGBA16UI;
+			pixelFormat = this.gl.RGBA_INTEGER;
+			pixelType = this.gl.UNSIGNED_SHORT;
+			isIntegerTexture = true;
+		} else if (data instanceof Uint8Array && format === this.gl.R8UI) {
+			console.info("Creating R8UI texture (8-bit unsigned integer).");
+			internalFormat = this.gl.R8UI;
+			pixelFormat = this.gl.RED_INTEGER;
+			pixelType = this.gl.UNSIGNED_BYTE;
+			isIntegerTexture = true;
 		} else if (data instanceof Uint8Array && format === this.gl.RGBA8UI) {
 			console.info("Creating RGBA8UI texture (8-bit unsigned integer).");
-			internalFormat = this.gl.RGBA8UI; // Prefer explicit RGBA8UI in WebGL2 over just RGBA
-			pixelFormat = this.gl.RGBA_INTEGER; // Specific format for integer data upload
-			pixelType = this.gl.UNSIGNED_BYTE; // Corresponds to Uint8Array
+			internalFormat = this.gl.RGBA8UI;
+			pixelFormat = this.gl.RGBA_INTEGER;
+			pixelType = this.gl.UNSIGNED_BYTE;
 			isIntegerTexture = true;
-        } else if (data instanceof Uint8Array && format === this.gl.RGBA) {
-            console.info("Creating RGBA8 texture (8-bit normalized unsigned).");
-            internalFormat = this.gl.RGBA8; // Prefer explicit RGBA8 in WebGL2 over just RGBA
-            pixelFormat = this.gl.RGBA;       // Standard pixel format for normalized data
-            pixelType = this.gl.UNSIGNED_BYTE; // Corresponds to Uint8Array
-            isIntegerTexture = false;
-        } else {
-            // Fallback or error handling for unexpected combinations
-            // This case should ideally be caught by TypeScript thanks to overloads,
-            // but it's good to have a runtime check just in case.
-            const dataTypeName = data instanceof Uint8Array ? "Uint8Array" : "Uint16Array";
-            const formatName = formatToString(this.gl, format); // Helper for logging
-            throw new Error(`Unsupported texture combination: data=${dataTypeName}, format=${formatName}. Expected Uint8Array with RGBA or Uint16Array with RGBA16UI.`);
-        }
+		} else if (data instanceof Uint8Array && format === this.gl.RGBA) {
+			console.info("Creating RGBA8 texture (8-bit normalized unsigned).");
+			internalFormat = this.gl.RGBA8;
+			pixelFormat = this.gl.RGBA;
+			pixelType = this.gl.UNSIGNED_BYTE;
+			isIntegerTexture = false;
+		} else {
+			const dataTypeName = Object.prototype.toString.call(data).slice(8, -1);
+			const formatName = formatToString(this.gl, format);
+			throw new Error(`Fatal: Unsupported texture combination: data=${dataTypeName}, format=${formatName}.`);
+		}
 
-        // Use texStorage for immutable texture allocation
-        // Mipmap level is 1 because we explicitly don't generate mipmaps for integer textures,
-        // and if we were to generate them for non-integer, texStorage handles it.
-        const numMipLevels = 1; // Always 1 for simplicity in this combined function; could be more for filterable
-                                // textures where you generate mipmaps.
+		// Use texStorage for immutable texture allocation
+		// Mipmap level is 1 because we explicitly don't generate mipmaps for integer textures,
+		// and if we were to generate them for non-integer, texStorage handles it.
+		const numMipLevels = 1; // Always 1 for simplicity in this combined function; could be more for filterable
+		// textures where you generate mipmaps.
 
-        if (target === '3d') {
-            this.gl.texStorage3D(targetSampler, numMipLevels, internalFormat, width, height, depth);
-            this.gl.texSubImage3D(targetSampler, 0, 0, 0, 0, width, height, depth, pixelFormat, pixelType, data);
-        } else { // '2d'
-            this.gl.texStorage2D(targetSampler, numMipLevels, internalFormat, width, height);
-            this.gl.texSubImage2D(targetSampler, 0, 0, 0, width, height, pixelFormat, pixelType, data);
-        }
+		if (target === '3d') {
+			this.gl.texStorage3D(targetSampler, numMipLevels, internalFormat, width, height, depth);
+			this.gl.texSubImage3D(targetSampler, 0, 0, 0, 0, width, height, depth, pixelFormat, pixelType, data);
+		} else { // '2d'
+			this.gl.texStorage2D(targetSampler, numMipLevels, internalFormat, width, height);
+			this.gl.texSubImage2D(targetSampler, 0, 0, 0, width, height, pixelFormat, pixelType, data);
+		}
 
-        // Set texture parameters based on whether it's an integer texture
-        if (isIntegerTexture) {
-            // Integer textures MUST use NEAREST filtering and no mipmaps
-            this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
-            this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
-            this.gl.texParameteri(targetSampler, this.gl.TEXTURE_BASE_LEVEL, 0);
-            this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MAX_LEVEL, 0);
-        } else {
-            // For non-integer textures (e.g., RGBA8), use common filtering.
-            // You might want to generate mipmaps here if your textures are power-of-2
-            // or if you handle NPOT mipmaps.
-            this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR); // Using LINEAR as a simple default
-            this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
-            // Optionally, generate mipmaps for filterable textures:
-            // if (width % 2 === 0 && height % 2 === 0) { // Simple check for power-of-2 for basic mipmapping
-            //    this.gl.generateMipmap(targetSampler);
-            //    this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR_MIPMAP_LINEAR);
-            // }
-        }
+		// Set texture parameters based on whether it's an integer texture
+		if (isIntegerTexture) {
+			// Integer textures MUST use NEAREST filtering and no mipmaps
+			this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+			this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+			this.gl.texParameteri(targetSampler, this.gl.TEXTURE_BASE_LEVEL, 0);
+			this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MAX_LEVEL, 0);
+		} else {
+			// For non-integer textures (e.g., RGBA8), use common filtering.
+			// You might want to generate mipmaps here if your textures are power-of-2
+			// or if you handle NPOT mipmaps.
+			this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR); // Using LINEAR as a simple default
+			this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
+			// Optionally, generate mipmaps for filterable textures:
+			// if (width % 2 === 0 && height % 2 === 0) { // Simple check for power-of-2 for basic mipmapping
+			//    this.gl.generateMipmap(targetSampler);
+			//    this.gl.texParameteri(targetSampler, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR_MIPMAP_LINEAR);
+			// }
+		}
 
-        // Wrapping modes (common for both types)
-        this.gl.texParameteri(targetSampler, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-        this.gl.texParameteri(targetSampler, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-        if (target === '3d') {
-            this.gl.texParameteri(targetSampler, this.gl.TEXTURE_WRAP_R, this.gl.CLAMP_TO_EDGE);
-        }
-
-        // --- End of Implementation ---
+		// Wrapping modes (common for both types)
+		this.gl.texParameteri(targetSampler, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+		this.gl.texParameteri(targetSampler, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+		if (target === '3d') {
+			this.gl.texParameteri(targetSampler, this.gl.TEXTURE_WRAP_R, this.gl.CLAMP_TO_EDGE);
+		}
 
 		this.textures.push(texture);
 		return texture;
@@ -298,12 +297,12 @@ type WebGL2BufferStruct = {
 
 
 function formatToString(gl: WebGL2RenderingContext, format: GLenum): string {
-    switch (format) {
-        case gl.RGBA: return 'gl.RGBA';
-        case gl.RGBA8: return 'gl.RGBA8';
-        case gl.RGBA16UI: return 'gl.RGBA16UI';
-        case gl.RGBA_INTEGER: return 'gl.RGBA_INTEGER';
-        // Add more formats as needed for debugging
-        default: return `UnknownFormat(0x${format.toString(16)})`;
-    }
+	switch (format) {
+		case gl.RGBA: return 'gl.RGBA';
+		case gl.RGBA8: return 'gl.RGBA8';
+		case gl.R8UI: return 'gl.R8UI';
+		case gl.RGBA16UI: return 'gl.RGBA16UI';
+		case gl.RGBA_INTEGER: return 'gl.RGBA_INTEGER';
+		default: return `UnknownFormat(0x${format.toString(16)})`;
+	}
 }

@@ -215,7 +215,7 @@ export class WglMap extends WebGL2 {
 			tilesetData,
 			this.tileCapability.maxTextureSize,
 			this.tileCapability.maxTextureSize,
-			this.gl.RGBA8UI,
+			this.gl.R8UI,
 			'3d',
 			layers,
 		);

@@ -70,12 +70,6 @@ function populateMapCell(cell: string | null, tiles: Tiles, map: Uint16Array, i:
 
 	if (!tile) {
 		throw new Error(`Tile not found: ${tileId}`);
-		// console.error(`Tile not found: ${tileId}`);
-		// map[i++] = 0;
-		// map[i++] = 0;
-		// map[i++] = 0;
-		// map[i++] = 0;
-		// return;
 	}
 
 	map[i++] = tile.location.textureX;
@@ -84,7 +78,7 @@ function populateMapCell(cell: string | null, tiles: Tiles, map: Uint16Array, i:
 	map[i++] = transformMap[transformation];
 }
 
-const transformMap = { 'N': 0, 'W': 1, 'S': 2, 'E': 3, '!N': 4, '!W': 5, '!S': 6, '!E': 7 };
+const transformMap = { 'N': 0x00, 'W': 0x01, 'S': 0x02, 'E': 0x03, '!N': 0x04, '!W': 0x07, '!S': 0x06, '!E': 0x05 } as const;
 
 
 new Effect(function () {
@@ -92,22 +86,6 @@ new Effect(function () {
 	const mapSize = AppState.mapSize.value;
 	const map = AppState.map.value;
 	if (!wglMap || !mapSize || !map) return;
-
-	console.log('map.length', map.length);
-
-	// for (let i = 0, j = 0; i < 112*112*4; i+=4, j++) {
-	// 	map[i] = j % 1;
-	// 	map[i + 1] = (j / 1) | 0;
-	// 	map[i + 2] = Math.floor(j / 4096);
-	// 	map[i + 3] = 0;
-	// }
-
-	// for (let i = 112*112*4, j = 0; i < 112*112*4*2; i+=4, j++) {
-	// 	map[i] = 0;
-	// 	map[i + 1] = 0;// % 4096;
-	// 	map[i + 2] = 0;//Math.floor(j / 4096);
-	// 	map[i + 3] = 255;
-	// }
 
 	wglMap.initMap(map, mapSize.width, mapSize.height);
 }).watch([AppState.wglMap, AppState.mapSize, AppState.map]);

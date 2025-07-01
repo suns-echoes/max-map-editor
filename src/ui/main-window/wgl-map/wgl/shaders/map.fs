@@ -41,16 +41,16 @@ void main() {
 	// Get map cell data for tiling:
 	//   X = tile X offset in tiles texture
 	//   Y = tile Y offset in tiles texture
-	//   Z = // TODO: textureUnit of texture containing tile
+	//   Z = tile Z offset in tiles texture (texture layer)
 	//   A = transformation flags values:
-	//     0: N (North facing up)
-	//     1: W (West facing up)
-	//     2: S (South facing up)
-	//     3: E (East facing up)
-	//     4: !N (X flip, north facing up)
-	//     5: !W (X flip, west facing up)
-	//     6: !S (X flip, south facing up)
-	//     7: !E (X flip, east facing up)
+	//     0b0000 : 0x00 : N (North facing up)
+	//     0b0001 : 0x01 : W (West facing up)
+	//     0b0010 : 0x02 : S (South facing up)
+	//     0b0011 : 0x03 : E (East facing up)
+	//     0b0100 : 0x04 : !N (X flip, north facing up)
+	//     0b0101 : 0x05 : !W (X flip, west facing up)
+	//     0b0110 : 0x06 : !S (X flip, south facing up)
+	//     0b0111 : 0x07 : !E (X flip, east facing up)
 	uvec4 tileDataUI = texture(uMapTexture, vec3(cell, uMapLayer));// * 255.0;
 	vec4 tileData = vec4(tileDataUI);// * 256.0;
 	uint flags = tileDataUI.a;
@@ -63,27 +63,43 @@ void main() {
 
 	// Calculate the tile data offset.
 	float x = subCell.x;
+	float y = subCell.y;
+
+	// Check if tile should be rotated and/or flipped.
+	if ((flags & 0x03u) == 0x00u) {
+		// North facing up, no rotation.
+	} else if ((flags & 0x03u) == 0x01u) {
+		// West facing up, rotate 90 degrees clockwise.
+		float temp = x;
+		x = y;
+		y = 63.0 - temp;
+	} else if ((flags & 0x03u) == 0x02u) {
+		// South facing up, rotate 180 degrees.
+		x = 63.0 - x;
+		y = 63.0 - y;
+	} else if ((flags & 0x03u) == 0x03u) {
+		// East facing up, rotate 90 degrees counter-clockwise.
+		float temp = x;
+		x = 63.0 - y;
+		y = temp;
+	}
+
 	// Check if tile should be flipped.
-	if (flags == 4u || flags == 5u || flags == 6u || flags == 7u) {
+	if ((flags & 0x04u) == 0x04u) {
+		// X flip, flip horizontally.
 		x = 63.0 - x;
 	}
-	vec2 tileDataOffset = (tileData.xy + vec2(subCell.y * 64.0 + x, 0.0) / tileDataSize) / tileSetSize;
+
+
+
+	////if (flags == 4u || flags == 5u || flags == 6u || flags == 7u) {
+	////	x = 63.0 - x;
+	////}
+	vec2 tileDataOffset = (tileData.xy + vec2(y * 64.0 + x, 0.0) / tileDataSize) / tileSetSize;
 
 	// Get the palette index from tile pixel value.
-	// The R, G, B, A components of the tile pixel value are used for N, W, S, E transformations.
-	uint paletteIndex = 0u;
 	vec3 tileSampleCoord = vec3(tileDataOffset, 0.0); // Use layer 0, or replace with correct layer if needed
-	uvec4 tileSample = texture(uTilesTexture, tileSampleCoord);
-
-	if (flags == 0u || flags == 4u) {
-		paletteIndex = tileSample.r; // * 255.0;
-	} else if (flags == 1u || flags == 5u) {
-		paletteIndex = tileSample.g; // * 255.0;
-	} else if (flags == 2u || flags == 6u) {
-		paletteIndex = tileSample.b; // * 255.0;
-	} else if (flags == 3u || flags == 7u) {
-		paletteIndex = tileSample.a; // * 255.0;
-	}
+	uint paletteIndex = texture(uTilesTexture, tileSampleCoord).r;
 
 	// Cycle palette colors.
 	uint rotBy6_6fps = uAnimationFrame_6fps % 6u;

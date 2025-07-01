@@ -47,21 +47,14 @@ function arrangeTilesData(tiles: Tiles, tileCapability: WglTileCapability): [til
 		throw new Error('Fatal: Too many tiles for the available texture layers');
 	}
 
-	const tileset = new Uint8Array(maxTextureSize ** 2 * usedTextureLayers * 4);
-
-	console.log({
-		maxTextureSize,
-		maxTilesPerTextureLayer,
-		tilesPerRow,
-		tilesPerCol,
-		usedTextureLayers,
-	})
+	const tileset = new Uint8Array(maxTextureSize ** 2 * usedTextureLayers);
 
 	let tileIndex = 0;
 	let layer = 0;
 	let row = 0;
 	let column = 0;
 	let textureDataOffset = 0;
+
 	for (const tile of tiles.values()) {
 		tile.location.textureLayer = layer;
 		tile.location.textureX = row;
@@ -69,26 +62,11 @@ function arrangeTilesData(tiles: Tiles, tileCapability: WglTileCapability): [til
 
 		// tileset.data.set(tile.data, 64 ** 2 * tileIndex);
 		let n = 0;
-		let w = 64 * 63;
-		let s = 64 ** 2 - 1;
-		let e = 63;
 		for (let y = 0; y < 64; y++) {
 			for (let x = 0; x < 64; x++) {
-				// N
 				tileset[textureDataOffset++] = tile.data[n];
 				n++;
-				// W
-				tileset[textureDataOffset++] = tile.data[w];
-				w -= 64;
-				// S
-				tileset[textureDataOffset++] = tile.data[s];
-				s--;
-				// E
-				tileset[textureDataOffset++] = tile.data[e];
-				e += 64;
 			}
-			w += 64 ** 2 + 1;
-			e -= 64 ** 2 + 1;
 		}
 
 		tile.inUse = true;
