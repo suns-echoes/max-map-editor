@@ -1,0 +1,62 @@
+.backdrop {
+	position: fixed;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.5);
+
+	z-index: 999;
+}
+
+.modal {
+	width: 500px;
+
+	background-image: url("/images/modal-bg.png");
+	background-repeat: repeat;
+
+	box-shadow: 8px 8px 32px #000;
+	z-index: 1000;
+}
+
+.content {
+	display: flex;
+	padding: 8px;
+	flex-direction: column;
+	align-items: center;
+}
+
+.title {
+	width: 60%;
+	margin: 0 auto 8px auto;
+
+	div {
+		color: #f00;
+	}
+}
+
+.icon {
+	float: left;
+	width: 92px;
+	height: 88px;
+	margin: 8px 16px 16px 0;
+}
+
+.message {
+	flex: 1;
+	font-family: "MAX Square", sans-serif;
+	font-size: 16px;
+	line-height: 1.5;
+	letter-spacing: 1px;
+
+	p:first-of-type {
+		margin-top: 0;
+	}
+
+	p:last-of-type {
+		margin-bottom: 0;
+	}
+}

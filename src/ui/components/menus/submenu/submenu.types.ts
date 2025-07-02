@@ -2,7 +2,7 @@ export type Submenu = (SubmenuItem | SubmenuSeparator)[];
 
 export interface SubmenuItem {
 	label: string;
-	action?: () => void;
+	action?: () => Promise<void>;
 	disabled?: boolean;
 }
 

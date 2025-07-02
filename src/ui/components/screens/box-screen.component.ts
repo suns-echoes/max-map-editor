@@ -5,24 +5,36 @@ import { HTMLNode } from '^lib/reactive/html-node.class.ts';
 import style from './box-screen.module.css';
 
 
-export function BoxScreen(debugName?: string) {
-	let content;
+export function BoxScreen() {
+	let content = Div();
 
 	const boxScreen = (
-		BigInset(debugName).class(style.boxScreen).nodes([
-			Div().class(style.boxGlass).nodes([
+		BigInset().class(style.boxInset).nodes([
+			Div().class(style.boxScreen).nodes([
 				content = Div().class(style.boxContent),
 			]),
 		])
 	);
 
+	const boxScreenClass = boxScreen.element.className;
+
 	boxScreen.class = function (className: string) {
-		HTMLNode.prototype.classes.call(content, style.boxContent, className);
+		boxScreen.classes(boxScreenClass, className);
 		return boxScreen;
 	};
 
 	boxScreen.text = function (text: string) {
-		HTMLNode.prototype.text.call(content, text);
+		content.text(text);
+		return boxScreen;
+	};
+
+	boxScreen.html = function (html: string) {
+		content.html(html);
+		return boxScreen;
+	};
+
+	boxScreen.nodes = function (nodes: HTMLNode[]) {
+		content.nodes(nodes);
 		return boxScreen;
 	};
 

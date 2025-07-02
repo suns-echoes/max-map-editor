@@ -3,5 +3,12 @@ import style from './simple-button.module.css';
 
 
 export function SimpleButton(debugName?: string) {
-	return Button(debugName).class(style.simpleButton);
+	const button = Button(debugName).class(style.simpleButton);
+
+	button.class = function (className: string) {
+		button.classes(style.simpleButton, className);
+		return button;
+	}
+
+	return button;
 }

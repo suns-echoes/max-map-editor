@@ -5,6 +5,6 @@ export type MainMenu = MainMenuItem[];
 export interface MainMenuItem {
 	label: string;
 	submenu?: Submenu;
-	action?: () => void;
+	action?: () => Promise<void>;
 	disabled?: boolean;
 }

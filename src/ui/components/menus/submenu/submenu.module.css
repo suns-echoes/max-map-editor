@@ -9,14 +9,6 @@
 	background-image: url("/images/modal-bg.png");
 	background-repeat: repeat;
 
-	border-width: 4px;
-	border-radius: 2px;
-	border-style: solid;
-	border-top-color: #fda6;
-	border-right-color: #000a;
-	border-bottom-color: #0008;
-	border-left-color: #fdaa;
-
 	box-shadow: 8px 8px 16px #000;
 }
 

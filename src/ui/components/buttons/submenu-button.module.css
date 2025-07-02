@@ -20,6 +20,10 @@
 
 	box-shadow: 1px 0 1px #0007;
 
+	&:hover {
+		background: #fda2;
+	}
+
 	&:disabled {
 		opacity: 0.5;
 		pointer-events: none;

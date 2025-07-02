@@ -7,7 +7,7 @@ import { AsyncEffect } from '^lib/reactive/async-effect.class.ts';
 import { BuildInfo } from './build-info/build.info.component.ts';
 import { MainLayout } from './main-layout/main-layout.component.ts';
 import { AppMainMenu } from './app-main-menu/app-main-menu.component.ts';
-import { Minimap } from './minimap/minimap.compoment.ts';
+import { Minimap } from './minimap/minimap.component.ts';
 import { StatusBar } from './status-bar/status-bar.component.ts';
 import { MainToolbar } from './main-toolbar/main-toolbar.component.ts';
 import { MapSelector } from './map-selector/map-selector.component.ts';

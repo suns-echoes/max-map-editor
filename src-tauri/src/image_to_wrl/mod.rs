@@ -5,6 +5,7 @@ mod img;
 mod log;
 mod palette;
 mod quantize_colors;
+mod tiles;
 
 pub fn image_to_wrl(image_file_path: String) -> Result<(Vec<u8>, Vec<u8>), String> {
     //// let output_indexed_bmp_path = "quantized_no_dither.bmp";
@@ -84,6 +85,22 @@ pub fn image_to_wrl(image_file_path: String) -> Result<(Vec<u8>, Vec<u8>), Strin
     };
 
     //
+    // Check if image is square and multiple of 64
+    //
+
+    if width != height {
+        log::error("Image is not square (width != height)");
+        //// log::show_cursor();
+        return Err("Image is not square (width != height)".to_string());
+    }
+
+    if width % 64 != 0 {
+        log::error("Image width is not a multiple of 64");
+        //// log::show_cursor();
+        return Err("Image width is not a multiple of 64".to_string());
+    }
+
+    //
     // Quantize colors, generate indexed image, and palette
     //
 
@@ -114,30 +131,35 @@ pub fn image_to_wrl(image_file_path: String) -> Result<(Vec<u8>, Vec<u8>), Strin
         }
     };
 
-	let raw_palette = match convert::vec_rgba_to_raw(&final_palette) {
-		Ok(palette) => palette,
-		Err(e) => {
-			log::error(&format!("Failed to convert final palette to raw format: {}", e));
-			//// log::show_cursor();
-			return Err(format!("Failed to convert final palette to raw format: {}", e));
-		}
-	};
-
+    let raw_palette = match convert::vec_rgba_to_raw(&final_palette) {
+        Ok(palette) => palette,
+        Err(e) => {
+            log::error(&format!(
+                "Failed to convert final palette to raw format: {}",
+                e
+            ));
+            //// log::show_cursor();
+            return Err(format!(
+                "Failed to convert final palette to raw format: {}",
+                e
+            ));
+        }
+    };
 
     //// //
     //// // Save final palette to JSON file
     //// //
-	////
+    ////
     //// log::action("Saving final palette to JSON file...");
-	////
+    ////
     //// local_timer = benchmark::get_start_time();
-	////
+    ////
     //// palette::save_to_json_file(&final_palette).unwrap_or_else(|e| {
     ////     log::error(&format!("Failed to save final palette: {}", e));
     ////     log::show_cursor();
     ////     return;
     //// });
-	////
+    ////
     //// log::ok(
     ////     "final palette saved successfully",
     ////     Some(benchmark::get_elapsed_time(local_timer)),
@@ -267,7 +289,7 @@ pub fn image_to_wrl(image_file_path: String) -> Result<(Vec<u8>, Vec<u8>), Strin
     //// log::show_cursor();
 
     Ok((
-		raw_palette,
-		indexed_dither_pixels
-	))
+        raw_palette,
+        tiles::from_indexed_image(&indexed_dither_pixels, width, height, 64),
+    ))
 }

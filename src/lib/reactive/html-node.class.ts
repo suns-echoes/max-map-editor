@@ -8,6 +8,9 @@ export class HTMLNode<T extends HTMLElement = HTMLElement, const C extends HTMLN
 	}
 
 	destroy(): void {
+		HTMLNode._lifecycleEventHandlers.get(this)?.get('destroy')?.(this);
+		this.removeAllEventListeners();
+		this.element.remove();
 		this.element = null!;
 	}
 
@@ -72,8 +75,8 @@ export class HTMLNode<T extends HTMLElement = HTMLElement, const C extends HTMLN
     appendN<N extends (HTMLNode | HTMLElement)[]>(nodes: N): HTMLNode<T, ToHTMLNode<N>>;
     appendN(nodes: any): any {
 		for (let i = 0; i < nodes.length; i++) {
-			const n = nodes[i];
-			this.element.appendChild(n instanceof HTMLNode ? n.element : n);
+			const node = nodes[i];
+			this.element.appendChild(node instanceof HTMLNode ? node.element : node);
 		}
 		return this;
 	}
@@ -184,8 +187,7 @@ export class HTMLNode<T extends HTMLElement = HTMLElement, const C extends HTMLN
 	}
 
 	classes(...classes: string[]): HTMLNode<T, C> {
-		this.element.className = '';
-		this.element.classList.add(...classes);
+		this.element.className = classes.join(' ');
 		return this;
 	}
 
@@ -250,6 +252,24 @@ export class HTMLNode<T extends HTMLElement = HTMLElement, const C extends HTMLN
 			this.element.value = typeof value === 'number' ? value.toString(10) : value;
 		return this;
 	}
+
+	// Lifecycle methods
+
+	private static _lifecycleEventHandlers: LifecycleEventHandlerRegistry = new Map();
+
+	onDestroy(callback: LifecycleEventHandler<T, C>): HTMLNode<T, C> {
+		const eventHandlersForNode = HTMLNode._lifecycleEventHandlers.get(this);
+
+		if (!eventHandlersForNode) {
+			HTMLNode._lifecycleEventHandlers.set(this, new Map([['destroy', callback]]));
+		} else if (!eventHandlersForNode.has('destroy')) {
+			eventHandlersForNode.set('destroy', callback);
+		} else {
+			throw new Error('Lifecycle event handler for "destroy" already exists for this node.');
+		}
+
+		return this;
+	}
 }
 
 
@@ -257,6 +277,10 @@ export class HTMLNode<T extends HTMLElement = HTMLElement, const C extends HTMLN
 
 type HTMLNodeEventRemover = () => void;
 type HTMLNodeEventRegistry = WeakMap<HTMLElement, Set<HTMLNodeEventRemover>>;
+
+type LifecycleEventNames = 'destroy';
+type LifecycleEventHandlerRegistry = Map<HTMLNode, Map<LifecycleEventNames, LifecycleEventHandler<any, any>>>;
+type LifecycleEventHandler<T extends HTMLElement = HTMLElement, C extends HTMLNode<HTMLElement>[] = any[]> = (node: HTMLNode<T, C>) => void;
 
 type ToHTMLNode<T extends (HTMLNode | HTMLElement | undefined | null | boolean)[]> = {
 	[K in keyof T]: T[K] extends HTMLElement ? HTMLNode<T[K]> : T[K] extends HTMLNode ? T[K] : never;
