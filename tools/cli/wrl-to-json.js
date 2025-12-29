@@ -37,7 +37,7 @@ if (process.argv[2] === '-h' || process.argv[2] === '--help') {
 		.ln('	-p, --preview - export all images to bitmap files')
 		.ln('')
 		.ln('')
-		.lightGreen('origin: ').underline('https://github.com/suns-echoes/max-game-map-editor')
+		.lightGreen('origin: ').underline('https://github.com/suns-echoes/max-map-editor')
 		.ln('')
 		.reset().log();
 
