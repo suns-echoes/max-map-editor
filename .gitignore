@@ -1,4 +1,4 @@
 ~temp/
 dist/
-src-tauri/target
+target
 node_modules/

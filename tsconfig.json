@@ -1,51 +1,39 @@
 {
 	"compilerOptions": {
-		"target": "ES2022",
+		"target": "ES2024",
 		"useDefineForClassFields": true,
-		"module": "ES2022",
-		"lib": [
-			"ES2022",
-			"ES2023",
-			"ES2024",
-			"DOM",
-			"DOM.Iterable"
-		],
-		"skipLibCheck": false,
+		"module": "ESNext",
+		"lib": ["DOM", "DOM.Iterable", "ES2024"],
+		"skipLibCheck": true,
+
 		/* Bundler mode */
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
 		"resolveJsonModule": true,
 		"isolatedModules": true,
 		"noEmit": true,
+
 		/* Linting */
 		"strict": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
-		"baseUrl": ".",
+		"noFallthroughCasesInSwitch": true,
+
+		/* Path aliases */
 		"paths": {
-			"^actions/*": ["src/actions/*"],
-			"^consts/*": ["src/consts/*"],
-			"^components/*": ["src/components/*"],
-			"^events/*": ["src/events/*"],
-			"^tauri-apps/*": ["src/lib/tauri/@tauri-apps/*"],
-			"^tauri/*": ["src/lib/tauri/*"],
-			"^types/*": ["src/types/*"],
-			"^lib/*": ["src/lib/*"],
-			"^state/*": ["src/state/*"],
-			"^storage/*": ["src/storage/*"],
-			"^styles/*": ["src/styles/*"],
-			"^src/*": ["src/*"]
-		},
+			"^actions/*": ["./front/src/actions/*"],
+			"^consts/*": ["./front/src/consts/*"],
+			"^components/*": ["./front/src/components/*"],
+			"^events/*": ["./front/src/events/*"],
+			"^tauri-apps/*": ["./front/src/lib/tauri/@tauri-apps/*"],
+			"^tauri/*": ["./front/src/lib/tauri/*"],
+			"^types/*": ["./front/src/types/*"],
+			"^lib/*": ["./front/src/lib/*"],
+			"^state/*": ["./front/src/state/*"],
+			"^storage/*": ["./front/src/storage/*"],
+			"^styles/*": ["./front/src/styles/*"],
+			"^src/*": ["./front/src/*"],
+		}
 	},
-	"include": [
-		"node_modules/@suns-echoes/ts-types",
-		"src"
-	],
-	"ts-node": {
-		"esm": true,
-		"experimentalSpecifierResolution": "node",
-		"preferTsExts": true,
-		"logError": true,
-		"transpileOnly": true
-	}
+	"include": ["./front/src/**/*.ts", "./front/src/**/*.d.ts"],
 }

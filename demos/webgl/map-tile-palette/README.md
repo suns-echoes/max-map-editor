@@ -68,7 +68,7 @@ of invalid texture sections.
 
 ## ▰ License
 
-### M.A.X. Game Map Editor
+### M.A.X. Map Editor
 
 Copyright 2024 Aneta Suns, under ISC license.
 

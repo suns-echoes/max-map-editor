@@ -1,0 +1,51 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "max-map-editor",
+	"identifier": "max-map-editor",
+	"mainBinaryName": "max-map-editor",
+	"version": "0.3.0",
+	"build": {
+		"beforeDevCommand": "npm run dev",
+		"devUrl": "http://localhost:1420",
+		"beforeBuildCommand": "npm run build",
+		"frontendDist": "../../front/dist"
+	},
+	"app": {
+		"withGlobalTauri": true,
+		"windows": [
+			{
+				"title": "M.A.X. Map Editor",
+				"width": 800,
+				"height": 600,
+				"minWidth": 640,
+				"minHeight": 480
+			}
+		],
+		"security": {
+			"csp": null
+		}
+	},
+	"bundle": {
+		"active": true,
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		],
+		"resources": {
+			"../../resources/": "resources/"
+		},
+		"targets": [
+			"deb",
+			"nsis"
+		],
+		"linux": {
+			"deb": {
+				"desktopTemplate": "resources/linux/app.desktop",
+				"files": {}
+			}
+		}
+	}
+}

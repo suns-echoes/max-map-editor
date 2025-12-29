@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "crates/tauri",
+]
+resolver = "3"
+
+# common dependencies
+[workspace.dependencies]

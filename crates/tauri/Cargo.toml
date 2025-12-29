@@ -1,0 +1,30 @@
+[package]
+name = "max-map-editor"
+version = "0.3.0"
+description = "M.A.X. Map Editor"
+authors = ["Aneta Suns"]
+edition = "2024"
+
+[lib]
+name = "max_map_editor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = "0.4.41"
+crossbeam = "0.8.4"
+image = "0.25.6"
+lazy_static = "1.5.0"
+md5 = "0.8.0"
+num_cpus = "1.17.0"
+rand = "0.9"
+rayon = "1.10"
+serde = { version = "1.0.21", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+zip = "4.2.0"

@@ -1,14 +1,14 @@
 ![M.A.X.: Mechanized Assault & Exploration Map Editor](./docs/images/title.png)
 
-# The M.A.X. Game Map Editor
+# The M.A.X. Map Editor
 
-> **[M.A.X. Game Map Editor Website](https://suns-echoes.github.io/max-game-map-editor/)**
+> **[M.A.X. Map Editor Website](https://suns-echoes.github.io/max-map-editor/)**
 >
-> **The official M.A.X. Game Map Editor website.**
+> **The official M.A.X. Map Editor website.**
 
-> **[M.A.X. Game Map Editor GitHub Repository](https://github.com/suns-echoes/max-game-map-editor)**
+> **[M.A.X. Map Editor GitHub Repository](https://github.com/suns-echoes/max-map-editor)**
 >
-> **The official M.A.X. Game Map Editor GitHub repository.**
+> **The official M.A.X. Map Editor GitHub repository.**
 
 > **[M.A.X. Port](https://klei1984.github.io/max/)**
 >
@@ -66,74 +66,17 @@ Here’s a sneak peek at some of the features planned for the M.A.X. Map Editor:
 
 [⮝](#)
 
-## ▰ Preparing development environment
-
-### ▰ Setting up IDE
-
-#### ▰ VSCode
-
-To prevent collision with Vite CSS processing mechanism files containing
-web components styles have the `.style` extension. To allow IDE
-to understand what they are, do the following:
-
-1. Open `Settings` by pressing `Ctrl + ,`;
-2. Find `files associations`;
-3. Add new entry item `*.style` with `css` value.
-
-
-
-[⮝](#)
-
 ### ▰ Setting up Linux (Debian / Ubuntu)
 
 > **Tauri v2**
 >
 > https://v2.tauri.app/start/
 
-> **Rust**
->
-> https://www.rust-lang.org/tools/install
-
 #### ▰ Prerequisites
 
-`Ubuntu 18 (or later)` or `Debian 11 (or later)`
-
-#### ▰ Installing Tauri dependencies
-
-```sh
-sudo apt update
-sudo apt install libwebkit2gtk-4.1-dev \
-    build-essential \
-    curl \
-    wget \
-    file \
-    libxdo-dev \
-    libssl-dev \
-    libayatana-appindicator3-dev \
-    librsvg2-dev
-```
-
-#### ▰ Installing Rust
-
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-#### ▰ Installing Node.js LTS v20 (or later)
-
-The official website:
-
-> https://nodejs.org/en
-
-or Node Version Manager:
-
-> https://github.com/nvm-sh/nvm
-
-#### ▰ Installing node/js dependencies
-
-```sh
-npm install
-```
+`Ubuntu 22 (or later)` or `Debian 12 (or later)`
+`Rust`
+`Node.js`
 
 
 [⮝](#)
@@ -149,12 +92,11 @@ Run this command in the project root folder using the native terminal
 npm run tauri build
 ```
 
-The build output directory: `./src-tauri/target/release/bundle`
+The build output directory: `./target/release/bundle`
 
-Generated assets:
+Generated assets (example):
 
-1. The AppImage: `./appimage/tauri-app_X.Y.Z_amd64.AppImage`
-2. The DEB: `./deb/tauri-app_X.Y.Z_amd64.deb`
+2. The DEB: `./deb/max-map-editor_X.Y.Z_amd64.deb`
 
 
 #### ▰ Building frontend only
@@ -165,7 +107,7 @@ Run this command in project root folder:
 npm run build
 ```
 
-The build output directory: `./dist/`
+The build output directory: `./front/dist/`
 
 
 
@@ -232,7 +174,7 @@ npm run coverage
 
 ## ▰ License
 
-### M.A.X. Game Map Editor
+### M.A.X. Map Editor
 
 Licensed under MIT
 
