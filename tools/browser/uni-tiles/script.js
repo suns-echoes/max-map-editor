@@ -157,6 +157,10 @@ let selectedBiome = paletteEnabledBiomes[0]?.[0] ?? 'snow';
 let activePaletteHighlight = null;
 let shouldCopyColor = false;
 const tileCanvasRegistry = [];
+const tileRemixState = new Map();
+const tilePaletteOverrides = new Map();
+let selectedColorIndex = null;
+let selectedColorContext = null;
 
 const loadCustomPaletteButton = document.getElementById('load-custom-palette-btn');
 const saveCustomPaletteButton = document.getElementById('save-custom-palette-btn');
@@ -172,16 +176,85 @@ const resetTilesButton = document.getElementById('reset-tiles-btn');
 const tileGallery = document.getElementById('tile-gallery');
 const tileAnalyzer = document.getElementById('tile-analyzer');
 
+function getTileRemixKey(tileName, biomeName) {
+	return `${biomeName}:${tileName}`;
+}
+function getTileDisplayData(tileName, biomeName) {
+	return tileRemixState.get(getTileRemixKey(tileName, biomeName)) ?? data[biomeName].getTileDataByName(tileName);
+}
+function getTilePaletteForDisplay(tileName, biomeName) {
+	const key = getTileRemixKey(tileName, biomeName);
+	return tilePaletteOverrides.get(key) ?? data[biomeName].paletteData;
+}
+function ensureTileRemixData(tileName, biomeName) {
+	const key = getTileRemixKey(tileName, biomeName);
+	if (!tileRemixState.has(key)) {
+		tileRemixState.set(key, new Uint8Array(data[biomeName].getTileDataByName(tileName)));
+	}
+	return tileRemixState.get(key);
+}
+function toggleColorSelection(index, context) {
+	const isSame = selectedColorIndex === index
+		&& selectedColorContext
+		&& selectedColorContext.type === context.type
+		&& (context.type !== 'biome' || selectedColorContext.biomeName === context.biomeName);
+	if (isSame) {
+		selectedColorIndex = null;
+		selectedColorContext = null;
+	} else {
+		selectedColorIndex = index;
+		selectedColorContext = context;
+	}
+	updateColorSelectionUI();
+}
+function updateColorSelectionUI() {
+	document.querySelectorAll('.color-box.selected').forEach(node => node.classList.remove('selected'));
+	if (selectedColorIndex == null) return;
+	if (selectedColorContext?.type === 'custom') {
+		customPaletteGrid?.querySelectorAll(`.custom-palette-slot[data-index="${selectedColorIndex}"]`).forEach(node => node.classList.add('selected'));
+		return;
+	}
+	if (selectedColorContext?.type === 'biome') {
+		biomePaletteGrid?.querySelectorAll(`.biome-color[data-index="${selectedColorIndex}"][data-biome="${selectedColorContext.biomeName}"]`).forEach(node => node.classList.add('selected'));
+	}
+}
+function handleCustomCanvasClick(event) {
+	if (selectedColorIndex == null) return;
+	const canvas = event.currentTarget;
+	const { tileName, biomeName } = canvas.dataset;
+	if (!tileName || !biomeName) return;
+	const rect = canvas.getBoundingClientRect();
+	const x = Math.floor((event.clientX - rect.left) * (canvas.width / rect.width));
+	const y = Math.floor((event.clientY - rect.top) * (canvas.height / rect.height));
+	if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
+	const tileData = ensureTileRemixData(tileName, biomeName);
+	const clickedIndex = tileData[y * canvas.width + x];
+	if (clickedIndex === selectedColorIndex) return;
+	for (let i = 0; i < tileData.length; i++) {
+		if (tileData[i] === clickedIndex) {
+			tileData[i] = selectedColorIndex;
+		}
+	}
+	renderTileAnalyzer(tileName, biomeName);
+}
+
 function renderTileAnalyzer(tileName, biomeName) {
 	if (!tileAnalyzer) return;
 	const biome = data[biomeName];
-	const tileData = biome.getTileDataByName(tileName);
-	const originalCanvas = biome.getTileAsCanvas(tileName);
+	const referenceCanvas = drawTileOnCanvas(
+		biome.getTileDataByName(tileName),
+		getTilePaletteForDisplay(tileName, biomeName),
+		Object.assign(document.createElement('canvas'), { width: 64, height: 64 }),
+	);
 	const customCanvas = drawTileOnCanvas(
-		tileData,
+		getTileDisplayData(tileName, biomeName),
 		buildCustomPaletteData(),
 		Object.assign(document.createElement('canvas'), { width: 64, height: 64 }),
 	);
+	customCanvas.dataset.tileName = tileName;
+	customCanvas.dataset.biomeName = biomeName;
+	customCanvas.dataset.tileKey = getTileRemixKey(tileName, biomeName);
+	customCanvas.addEventListener('click', handleCustomCanvasClick);
 	const comparison = document.createElement('div');
 	comparison.className = 'tile-comparison';
 
@@ -198,7 +271,7 @@ function renderTileAnalyzer(tileName, biomeName) {
 
 	comparison.append(
 		makePreview('Custom remix', customCanvas, 'Rendered with current custom palette'),
-		makePreview('Original reference', originalCanvas, `Rendered with ${biomeName} palette`),
+		makePreview('Original reference', referenceCanvas, 'Rendered with active gallery palette'),
 	);
 
 	tileAnalyzer.replaceChildren(comparison);
@@ -218,12 +291,20 @@ function buildCustomPaletteData() {
 	});
 	return palette;
 }
-function renderTilesWithPalette(resolver) {
+function renderTilesWithPalette(resolver, options = {}) {
+	const { resetToDefault = false } = options;
 	tileCanvasRegistry.forEach(entry => {
 		const palette = typeof resolver === 'function' ? resolver(entry) : resolver;
 		if (!palette) return;
-		const tileData = data[entry.biomeName].getTileDataByName(entry.tileName);
+		const tileData = getTileDisplayData(entry.tileName, entry.biomeName);
 		drawTileOnCanvas(tileData, palette, entry.canvas);
+		const key = getTileRemixKey(entry.tileName, entry.biomeName);
+		const defaultPalette = data[entry.biomeName].paletteData;
+		if (resetToDefault || palette === defaultPalette) {
+			tilePaletteOverrides.delete(key);
+		} else {
+			tilePaletteOverrides.set(key, palette);
+		}
 	});
 }
 
@@ -335,15 +416,16 @@ biomeSelect.addEventListener('change', event => {
 });
 
 renderWithCustomButton.addEventListener('click', () => {
-	renderTilesWithPalette(buildCustomPaletteData());
+	const customPalette = buildCustomPaletteData();
+	renderTilesWithPalette(() => customPalette);
 });
 
 renderWithSelectedButton.addEventListener('click', () => {
-	renderTilesWithPalette(entry => data[selectedBiome].paletteData);
+	renderTilesWithPalette(() => data[selectedBiome].paletteData);
 });
 
 resetTilesButton.addEventListener('click', () => {
-	renderTilesWithPalette(entry => data[entry.biomeName].paletteData);
+	renderTilesWithPalette(entry => data[entry.biomeName].paletteData, { resetToDefault: true });
 });
 
 function renderCustomPaletteGrid() {
@@ -362,6 +444,9 @@ function renderCustomPaletteGrid() {
 			slot.draggable = true;
 			slot.addEventListener('dragstart', event => {
 				setDragPayload(event, color, { sourceType: 'customSlot', sourceIndex: i, effectAllowed: 'copyMove' });
+			});
+			slot.addEventListener('click', () => {
+				toggleColorSelection(i, { type: 'custom' });
 			});
 		} else {
 			slot.classList.add('empty');
@@ -397,7 +482,6 @@ function renderCustomPaletteGrid() {
 			}
 		});
 		slot.addEventListener('dblclick', () => {
-			if (!color) return;
 			const picker = document.createElement('input');
 			picker.type = 'color';
 			picker.value = rgbToHex(color.r, color.g, color.b);
@@ -414,11 +498,13 @@ function renderCustomPaletteGrid() {
 		slot.addEventListener('auxclick', event => {
 			if (event.button !== 1) return;
 			event.preventDefault();
+			if (!customPaletteState[i]) return;
 			customPaletteState[i] = null;
 			renderCustomPaletteGrid();
 		});
 		customPaletteGrid.appendChild(slot);
 	}
+	updateColorSelectionUI();
 }
 
 function renderCurrentBiomePalette() {
@@ -434,6 +520,8 @@ function renderCurrentBiomePalette() {
 		const b = paletteData[paletteOffset + 2];
 		const colorBox = document.createElement('div');
 		colorBox.className = 'color-box biome-color';
+		colorBox.dataset.index = i;
+		colorBox.dataset.biome = selectedBiome;
 		const hex = rgbToHex(r, g, b);
 		colorBox.style.backgroundColor = hex;
 		colorBox.title = `${selectedBiome}[${i}] ${hex}`;
@@ -448,13 +536,17 @@ function renderCurrentBiomePalette() {
 			setDragPayload(event, { r, g, b });
 		});
 		colorBox.addEventListener('click', event => {
-			if (!event.shiftKey) return;
-			event.preventDefault();
-			customPaletteState[i] = { r, g, b };
-			renderCustomPaletteGrid();
+			if (event.shiftKey) {
+				event.preventDefault();
+				customPaletteState[i] = { r, g, b };
+				renderCustomPaletteGrid();
+				return;
+			}
+			toggleColorSelection(i, { type: 'biome', biomeName: selectedBiome });
 		});
 		biomePaletteGrid.appendChild(colorBox);
 	}
+	updateColorSelectionUI();
 }
 
 function initializePaletteBuilderUI() {

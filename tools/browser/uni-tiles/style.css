@@ -139,8 +139,8 @@ canvas {
 	transition: transform 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
 
-.color-box.drop-ready {
-	outline: 2px dashed var(--accent);
+.color-box.selected {
+	outline: 2px solid var(--accent);
 	outline-offset: 2px;
 }
 
