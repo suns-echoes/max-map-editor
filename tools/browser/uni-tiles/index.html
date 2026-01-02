@@ -6,14 +6,43 @@
 		<title>uni-Tiles</title>
 	</head>
 	<body>
-		<div class="flex-cols">
-			<div class="left-col">
-				<div id="palette-in-use"></div>
-				<div id="tile-info"></div>
-			</div>
-			<div class="right-col">
-				<div id="tile-analyzer"></div>
-			</div>
-		</div>
+		<main class="app-shell">
+			<aside class="sidebar">
+				<section id="custom-palette-section" class="panel">
+					<button id="load-custom-palette-btn" type="button">Load</button>
+					<button id="save-custom-palette-btn" type="button">Save</button>
+					<div class="color-box-container custom-palette"></div>
+				</section>
+				<section id="biome-palette-section" class="panel">
+					<div class="panel-heading inline">
+						<label for="biome-palette-select">Biome palette</label>
+						<select id="biome-palette-select">
+							<option value="crater" selected>CRATER</option>
+							<option value="desert">DESERT</option>
+							<option value="green">GREEN</option>
+							<option value="snow">SNOW</option>
+							<option value="snow_dark">SNOW_DARK</option>
+						</select>
+					</div>
+					<div class="color-box-container biome-palette"></div>
+				</section>
+				<section id="tile-render-controls" class="panel">
+					<div class="button-group">
+						<button id="render-custom-btn" type="button">Render tiles with custom palette</button>
+						<button id="render-selected-btn" type="button">Render tiles with selected biome palette</button>
+						<button id="reset-tiles-btn" type="button">Reset tile rendering</button>
+					</div>
+					<small>Hold Ctrl while dragging to duplicate colors between slots.</small>
+				</section>
+			</aside>
+			<section class="main-pane">
+				<div class="info-strip">
+					<div id="tile-info">Select a tile to inspect its palette usage.</div>
+					<div id="palette-in-use">Colors highlighted in biome palette above.</div>
+				</div>
+				<div id="tile-analyzer" class="panel tile-analyzer"></div>
+				<div id="tile-gallery" class="tile-gallery"></div>
+			</section>
+		</main>
 	</body>
 </html>

@@ -36,6 +36,12 @@ function paletteToArrayBuffer(palette) {
 	const buffer = new ArrayBuffer(256 * 3);
 	const uint8View = new Uint8Array(buffer);
 	for (let i = 0; i < palette.length; i++) {
+		if (!palette[i]) {
+			uint8View[i * 3] = 0;
+			uint8View[i * 3 + 1] = 0;
+			uint8View[i * 3 + 2] = 0;
+			continue;
+		}
 		const r = parseInt(palette[i].substring(1, 3), 16);
 		const g = parseInt(palette[i].substring(3, 5), 16);
 		const b = parseInt(palette[i].substring(5, 7), 16);
@@ -149,69 +155,134 @@ const paletteEnabledBiomes = Object.entries(data).filter(([, biome]) => biome.pa
 const customPaletteState = new Array(256).fill(null);
 let selectedBiome = paletteEnabledBiomes[0]?.[0] ?? 'snow';
 let activePaletteHighlight = null;
+let shouldCopyColor = false;
 const tileCanvasRegistry = [];
 
-const customPaletteSection = document.createElement('section');
-customPaletteSection.id = 'custom-palette-section';
-const customPaletteTitle = document.createElement('h2');
-customPaletteTitle.textContent = 'Custom Palette';
-const customPaletteHint = document.createElement('p');
-customPaletteHint.textContent = 'Drag colors from the biome palette into these slots.';
-const customPaletteGrid = document.createElement('div');
-customPaletteGrid.className = 'color-box-container custom-palette';
-customPaletteSection.append(customPaletteTitle, customPaletteHint, customPaletteGrid);
+const loadCustomPaletteButton = document.getElementById('load-custom-palette-btn');
+const saveCustomPaletteButton = document.getElementById('save-custom-palette-btn');
+const customPaletteSection = document.getElementById('custom-palette-section');
+const customPaletteGrid = customPaletteSection?.querySelector('.color-box-container.custom-palette');
+const biomePaletteSection = document.getElementById('biome-palette-section');
+const biomeSelect = document.getElementById('biome-palette-select');
+const biomePaletteGrid = biomePaletteSection?.querySelector('.color-box-container.biome-palette');
+const tileRenderControls = document.getElementById('tile-render-controls');
+const renderWithCustomButton = document.getElementById('render-custom-btn');
+const renderWithSelectedButton = document.getElementById('render-selected-btn');
+const resetTilesButton = document.getElementById('reset-tiles-btn');
+const tileGallery = document.getElementById('tile-gallery');
+const tileAnalyzer = document.getElementById('tile-analyzer');
 
-const biomePaletteSection = document.createElement('section');
-biomePaletteSection.id = 'biome-palette-section';
-const biomePaletteHeader = document.createElement('div');
-const biomePaletteLabel = document.createElement('label');
-biomePaletteLabel.htmlFor = 'biome-palette-select';
-biomePaletteLabel.textContent = 'Biome palette: ';
-const biomeSelect = document.createElement('select');
-biomeSelect.id = 'biome-palette-select';
-const biomePaletteGrid = document.createElement('div');
-biomePaletteGrid.className = 'color-box-container biome-palette';
+function renderTileAnalyzer(tileName, biomeName) {
+	if (!tileAnalyzer) return;
+	const biome = data[biomeName];
+	const tileData = biome.getTileDataByName(tileName);
+	const originalCanvas = biome.getTileAsCanvas(tileName);
+	const customCanvas = drawTileOnCanvas(
+		tileData,
+		buildCustomPaletteData(),
+		Object.assign(document.createElement('canvas'), { width: 64, height: 64 }),
+	);
+	const comparison = document.createElement('div');
+	comparison.className = 'tile-comparison';
 
-const tileRenderControls = document.createElement('div');
-tileRenderControls.id = 'tile-render-controls';
-const renderWithCustomButton = document.createElement('button');
-renderWithCustomButton.textContent = 'Render tiles with custom palette';
-renderWithCustomButton.addEventListener('click', () => {
-	const customPalette = buildCustomPaletteData();
-	renderTilesWithPalette(() => customPalette);
-});
-const renderWithSelectedButton = document.createElement('button');
-renderWithSelectedButton.textContent = 'Render tiles with selected biome palette';
-renderWithSelectedButton.addEventListener('click', () => {
-	renderTilesWithPalette(() => data[selectedBiome]?.paletteData);
-});
-const resetTilesButton = document.createElement('button');
-resetTilesButton.textContent = 'Reset tile rendering';
-resetTilesButton.addEventListener('click', () => {
-	renderTilesWithPalette(entry => data[entry.biomeName].paletteData);
-});
-tileRenderControls.append(renderWithCustomButton, renderWithSelectedButton, resetTilesButton);
+	const makePreview = (label, canvas, paletteLabel) => {
+		const wrapper = document.createElement('div');
+		wrapper.className = 'tile-preview';
+		const heading = document.createElement('h4');
+		heading.textContent = label;
+		const meta = document.createElement('small');
+		meta.textContent = paletteLabel;
+		wrapper.append(heading, canvas, meta);
+		return wrapper;
+	};
 
-paletteEnabledBiomes.forEach(([biomeName]) => {
-	const option = document.createElement('option');
-	option.value = biomeName;
-	option.textContent = biomeName;
-	if (biomeName === selectedBiome) {
-		option.selected = true;
-	}
-	biomeSelect.appendChild(option);
+	comparison.append(
+		makePreview('Custom remix', customCanvas, 'Rendered with current custom palette'),
+		makePreview('Original reference', originalCanvas, `Rendered with ${biomeName} palette`),
+	);
+
+	tileAnalyzer.replaceChildren(comparison);
+}
+
+function buildCustomPaletteData() {
+	const palette = new Uint8Array(256 * 3);
+	customPaletteState.forEach((color, index) => {
+		const offset = index * 3;
+		if (!color) {
+			palette[offset] = palette[offset + 1] = palette[offset + 2] = 0;
+		} else {
+			palette[offset] = color.r ?? 0;
+			palette[offset + 1] = color.g ?? 0;
+			palette[offset + 2] = color.b ?? 0;
+		}
+	});
+	return palette;
+}
+function renderTilesWithPalette(resolver) {
+	tileCanvasRegistry.forEach(entry => {
+		const palette = typeof resolver === 'function' ? resolver(entry) : resolver;
+		if (!palette) return;
+		const tileData = data[entry.biomeName].getTileDataByName(entry.tileName);
+		drawTileOnCanvas(tileData, palette, entry.canvas);
+	});
+}
+
+const galleryHost = tileGallery ?? document.body;
+['crater', 'desert', 'green', 'snow', 'snow_dark'].forEach(biomeName => {
+	const tileCanvases = data[biomeName].tileIndex
+		.filter(tileName => /.[LS]..../.test(tileName))
+		.map(tileName => {
+			const canvas = data[biomeName].getTileAsCanvas(tileName);
+			canvas.dataset.tileName = tileName;
+			canvas.dataset.biomeName = biomeName;
+			canvas.addEventListener('click', () => {
+				showTileInfo(tileName, biomeName);
+			});
+			tileCanvasRegistry.push({ canvas, biomeName, tileName });
+			return canvas;
+		});
+	const tileGroup = document.createElement('section');
+	tileGroup.className = 'tile-group';
+	const header = document.createElement('header');
+	header.className = 'tile-group-header';
+	const title = document.createElement('h3');
+	title.textContent = `${biomeName} tiles`;
+	header.appendChild(title);
+	const grid = document.createElement('div');
+	grid.className = 'tile-group-grid';
+	grid.append(...tileCanvases);
+	tileGroup.append(header, grid);
+	galleryHost.appendChild(tileGroup);
 });
 
-biomeSelect.addEventListener('change', event => {
-	selectedBiome = event.target.value;
-	activePaletteHighlight = null;
+function showTileInfo(tileName, biomeName) {
+	const biome = data[biomeName];
+	const tileData = biome.getTileDataByName(tileName);
+	const paletteIndexSet = new Set(tileData);
+	const paletteIndicesInUse = [...paletteIndexSet];
+	const colorsInUse = paletteIndicesInUse.map(index => {
+		const colorBuffer = biome.getColorByIndex(index);
+		return `#${colorBuffer[0].toString(16).padStart(2, '0')}${colorBuffer[1].toString(16).padStart(2, '0')}${colorBuffer[2].toString(16).padStart(2, '0')}`;
+	});
+	const togglingSameTile = activePaletteHighlight
+		&& activePaletteHighlight.tileName === tileName
+		&& activePaletteHighlight.biomeName === biomeName;
+	activePaletteHighlight = togglingSameTile ? null : {
+		biomeName,
+		tileName,
+		indices: paletteIndexSet,
+	};
+	selectedBiome = biomeName;
+	biomeSelect.value = biomeName;
 	renderCurrentBiomePalette();
-});
+	renderTileAnalyzer(tileName, biomeName);
+	document.getElementById('tile-info').innerText = `Tile: ${tileName}, colors in use (${colorsInUse.length})`;
+	const paletteInUseEl = document.getElementById('palette-in-use');
+	if (paletteInUseEl) {
+		paletteInUseEl.textContent = 'Colors highlighted in biome palette above.';
+	}
+}
 
-biomePaletteHeader.append(biomePaletteLabel, biomeSelect);
-biomePaletteSection.append(biomePaletteHeader, biomePaletteGrid);
-
-let shouldCopyColor = false;
 window.addEventListener('keydown', event => {
 	if (event.key === 'Control') {
 		shouldCopyColor = true;
@@ -223,7 +294,60 @@ window.addEventListener('keyup', event => {
 	}
 });
 
+loadCustomPaletteButton.addEventListener('click', async () => {
+	const { cssColors, paletteData } = processPaletteText(await fetch('/load-palette', { method: 'POST' }).then(res => res.json()));
+	console.log('Loaded palette data:', cssColors, paletteData);
+	for (let i = 0; i < 256; i++) {
+		const colorHex = cssColors[i];
+		if (colorHex) {
+			const r = parseInt(colorHex.substring(1, 3), 16);
+			const g = parseInt(colorHex.substring(3, 5), 16);
+			const b = parseInt(colorHex.substring(5, 7), 16);
+			customPaletteState[i] = { r, g, b };
+		} else {
+			customPaletteState[i] = null;
+		}
+	}
+	renderCustomPaletteGrid();
+});
+
+saveCustomPaletteButton.addEventListener('click', () => {
+	const paletteToSave = customPaletteState.map(color => {
+		if (!color) return null;
+		return rgbToHex(color.r, color.g, color.b);
+	});
+	fetch('/save-palette', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(paletteToSave),
+	}).then(res => {
+		if (res.ok) {
+			alert('Palette saved successfully.');
+		} else {
+			alert('Failed to save palette.');
+		}
+	});
+});
+
+biomeSelect.addEventListener('change', event => {
+	selectedBiome = event.target.value;
+	renderCurrentBiomePalette();
+});
+
+renderWithCustomButton.addEventListener('click', () => {
+	renderTilesWithPalette(buildCustomPaletteData());
+});
+
+renderWithSelectedButton.addEventListener('click', () => {
+	renderTilesWithPalette(entry => data[selectedBiome].paletteData);
+});
+
+resetTilesButton.addEventListener('click', () => {
+	renderTilesWithPalette(entry => data[entry.biomeName].paletteData);
+});
+
 function renderCustomPaletteGrid() {
+	if (!customPaletteGrid) return;
 	customPaletteGrid.replaceChildren();
 	for (let i = 0; i < 256; i++) {
 		const slot = document.createElement('div');
@@ -287,13 +411,19 @@ function renderCustomPaletteGrid() {
 			document.body.appendChild(picker);
 			picker.click();
 		});
+		slot.addEventListener('auxclick', event => {
+			if (event.button !== 1) return;
+			event.preventDefault();
+			customPaletteState[i] = null;
+			renderCustomPaletteGrid();
+		});
 		customPaletteGrid.appendChild(slot);
 	}
 }
 
 function renderCurrentBiomePalette() {
 	const biome = data[selectedBiome];
-	if (!biome?.paletteData) return;
+	if (!biome?.paletteData || !biomePaletteGrid) return;
 	const { paletteData } = biome;
 	const highlightActive = activePaletteHighlight && activePaletteHighlight.biomeName === selectedBiome;
 	biomePaletteGrid.replaceChildren();
@@ -309,7 +439,10 @@ function renderCurrentBiomePalette() {
 		colorBox.title = `${selectedBiome}[${i}] ${hex}`;
 		colorBox.draggable = true;
 		if (highlightActive) {
-			colorBox.style.opacity = activePaletteHighlight.indices.has(i) ? '1' : '0.25';
+			const isHighlighted = activePaletteHighlight.indices.has(i);
+			colorBox.style.opacity = isHighlighted ? '1' : '0.25';
+			colorBox.style.outline = isHighlighted ? 'none' : '3px solid #000';
+			colorBox.style.outlineOffset = isHighlighted ? '0' : '-5px';
 		}
 		colorBox.addEventListener('dragstart', event => {
 			setDragPayload(event, { r, g, b });
@@ -325,93 +458,12 @@ function renderCurrentBiomePalette() {
 }
 
 function initializePaletteBuilderUI() {
-	if (!paletteEnabledBiomes.length) return;
-	document.body.prepend(biomePaletteSection);
-	document.body.prepend(customPaletteSection);
+	if (!paletteEnabledBiomes.length) {
+		tileRenderControls?.setAttribute('aria-disabled', 'true');
+		return;
+	}
 	renderCustomPaletteGrid();
 	renderCurrentBiomePalette();
 }
 
 initializePaletteBuilderUI();
-if (paletteEnabledBiomes.length) {
-	customPaletteSection.after(tileRenderControls);
-} else {
-	document.body.prepend(tileRenderControls);
-}
-
-const baselinePalette = data.snow.paletteData.slice(0, 256 * 3);
-
-['crater', 'desert', 'green', 'snow', 'snow_dark'].forEach(biomeName => {
-	const snowTileCanvases = data[biomeName].tileIndex
-		// .filter(tileName => /.[LS].001/.test(tileName))
-		.filter(tileName => /.[LS]..../.test(tileName))
-		.map(tileName => {
-			const canvas = data[biomeName].getTileAsCanvas(tileName);
-			canvas.dataset.tileName = tileName;
-			canvas.dataset.biomeName = biomeName;
-			canvas.addEventListener('click', () => {
-				showTileInfo(tileName, biomeName);
-			});
-			tileCanvasRegistry.push({ canvas, biomeName, tileName });
-			return canvas;
-		});
-
-
-	document.body.append(...snowTileCanvases);
-	document.body.append(document.createElement('hr'));
-});
-
-
-
-function showTileInfo(tileName, biomeName) {
-	const biome = data[biomeName];
-	const tileData = biome.getTileDataByName(tileName);
-	const paletteIndexSet = new Set(tileData);
-	const paletteIndicesInUse = [...paletteIndexSet];
-	const colorsInUse = paletteIndicesInUse.map(index => {
-		const colorBuffer = biome.getColorByIndex(index);
-		return `#${colorBuffer[0].toString(16).padStart(2, '0')}${colorBuffer[1].toString(16).padStart(2, '0')}${colorBuffer[2].toString(16).padStart(2, '0')}`;
-	});
-	const togglingSameTile = activePaletteHighlight
-		&& activePaletteHighlight.tileName === tileName
-		&& activePaletteHighlight.biomeName === biomeName;
-	activePaletteHighlight = togglingSameTile ? null : {
-		biomeName,
-		tileName,
-		indices: paletteIndexSet,
-	};
-	selectedBiome = biomeName;
-	biomeSelect.value = biomeName;
-	renderCurrentBiomePalette();
-	document.getElementById('tile-info').innerText = `Tile: ${tileName}, colors in use (${colorsInUse.length})`;
-	const paletteInUseEl = document.getElementById('palette-in-use');
-	if (paletteInUseEl) {
-		paletteInUseEl.textContent = 'Colors highlighted in biome palette above.';
-	}
-}
-
-
-console.log('uni-Tiles data loaded:', window._ = data);
-
-function buildCustomPaletteData() {
-	const palette = new Uint8Array(256 * 3);
-	customPaletteState.forEach((color, index) => {
-		const offset = index * 3;
-		if (!color) {
-			palette[offset] = palette[offset + 1] = palette[offset + 2] = 0;
-		} else {
-			palette[offset] = color.r ?? 0;
-			palette[offset + 1] = color.g ?? 0;
-			palette[offset + 2] = color.b ?? 0;
-		}
-	});
-	return palette;
-}
-function renderTilesWithPalette(resolver) {
-	tileCanvasRegistry.forEach(entry => {
-		const palette = typeof resolver === 'function' ? resolver(entry) : resolver;
-		if (!palette) return;
-		const tileData = data[entry.biomeName].getTileDataByName(entry.tileName);
-		drawTileOnCanvas(tileData, palette, entry.canvas);
-	});
-}

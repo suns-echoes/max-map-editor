@@ -81,14 +81,38 @@ const server = createServer(async (req, res) => {
 	}
 
 	else if (req.method === 'POST') {
+		const customPalettePath = './custom_palette.json';
 		const url = req.url;
 		const body = await readRequestBody(req);
 
-		if (false) {
-			res.statusCode = 200;
-			res.setHeader('Content-Type', 'application/json');
-			// res.end(JSON.stringify({ message: 'Data received', data: body }));
-			res.end('1');
+		if (url === '/save-palette') {
+			try {
+				const paletteData = JSON.parse(body);
+				writeFileSync(customPalettePath, JSON.stringify(paletteData, null, 2), 'utf-8');
+
+				res.statusCode = 200;
+				res.setHeader('Content-Type', 'application/json');
+				res.end(JSON.stringify({ message: 'Palette saved successfully' }));
+			} catch (error: any) {
+				res.statusCode = 500;
+				res.setHeader('Content-Type', 'application/json');
+				res.end(JSON.stringify({ message: 'Error saving palette', error: error.message }));
+			}
+		}
+
+		else if (url === '/load-palette') {
+			try {
+				const fileData = readFileSync(customPalettePath, 'utf-8');
+				const paletteData = JSON.parse(fileData);
+
+				res.statusCode = 200;
+				res.setHeader('Content-Type', 'application/json');
+				res.end(JSON.stringify(paletteData));
+			} catch (error: any) {
+				res.statusCode = 500;
+				res.setHeader('Content-Type', 'application/json');
+				res.end(JSON.stringify({ message: 'Error loading palette', error: error.message }));
+			}
 		}
 
 		else {
