@@ -1,0 +1,93 @@
+:root {
+	color-scheme: dark;
+	--bg: #121212;
+	--surface: #1e1e1e;
+	--border: #333;
+	--text: #f5f5f5;
+	--muted: #a0a0a0;
+	--accent: #4fc3f7;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	min-height: 100%;
+	background: var(--bg);
+	color: var(--text);
+	font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+	line-height: 1.5;
+}
+
+a {
+	color: var(--accent);
+	text-decoration: none;
+}
+
+a:hover,
+a:focus {
+	text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: var(--text);
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	padding: 0.4rem 0.6rem;
+}
+
+button:hover,
+input:hover,
+select:hover,
+textarea:hover,
+button:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	border-color: var(--accent);
+	outline: none;
+}
+
+hr {
+	border: none;
+	border-top: 1px solid var(--border);
+	margin: 1rem 0;
+}
+
+::selection {
+	background: var(--accent);
+	color: #000;
+}
+
+canvas {
+	vertical-align: bottom;
+}
+
+
+
+.color-box-container {
+	display: inline-grid;
+	grid-template-columns: repeat(32, auto);
+}
+
+.color-box {
+	display: block;
+	margin: 1px;
+	width: 40px;
+	height: 40px;
+	border: 2px solid #F0F;
+}
