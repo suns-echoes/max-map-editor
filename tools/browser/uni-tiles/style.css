@@ -87,7 +87,24 @@ canvas {
 .color-box {
 	display: block;
 	margin: 1px;
-	width: 40px;
-	height: 40px;
-	border: 2px solid #F0F;
+	width: 32px;
+	height: 32px;
+	border: 2px solid #333;
+}
+
+
+.flex-cols {
+	display: flex;
+	gap: 20px;
+	padding: 20px;
+}
+
+.left-col {
+	flex: 1;
+	min-width: 300px;
+}
+
+.right-col {
+	flex: 2;
+	min-width: 400px;
 }
