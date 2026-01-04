@@ -25,9 +25,6 @@ export const RustAPI = {
 	readWRLFile: (path: string): Promise<Uint8Array> => invoke('read_wrl_file', { path }),
 	writeWRLFile: (path: string, data: Uint8Array): Promise<boolean> => invoke('write_wrl_file', data, { headers: { path } }),
 
-	getZipFileList: (path: string): Promise<void> => invoke('get_zip_file_list', { path }),
-	loadZipFileContent: (path: string): Promise<void> => invoke('load_zip_file_content', { path }),
-
 	hashMD5: (data: Uint8Array): Promise<string> => invoke('hash_md5', data),
 
 	imageToWRL: (path: string): Promise<[palette: Uint8Array, indexedImage: Uint8Array]> => invoke('image_to_wrl', { path }),

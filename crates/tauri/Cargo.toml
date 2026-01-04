@@ -13,18 +13,17 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-chrono = "0.4.41"
-crossbeam = "0.8.4"
-image = "0.25.6"
-lazy_static = "1.5.0"
-md5 = "0.8.0"
-num_cpus = "1.17.0"
+xini = { path = "../xini" }
+xlog = { path = "../xlog" }
+crossbeam = "0.8"
+image = "0.25"
+num_cpus = "1.17"
 rand = "0.9"
 rayon = "1.10"
-serde = { version = "1.0.21", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-shell = "2"
-zip = "4.2.0"
+tauri-plugin-single-instance = "2"

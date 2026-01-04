@@ -2,6 +2,7 @@
 members = [
     "crates/tauri",
 	"crates/xini",
+	"crates/xlog",
 ]
 resolver = "3"
 

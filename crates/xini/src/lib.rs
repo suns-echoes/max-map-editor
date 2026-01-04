@@ -56,6 +56,10 @@ pub struct XINI {
 }
 
 impl XINI {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
     pub fn parse(input: &str) -> Result<Self, IniError> {
         let mut ini = XINI::default();
         let mut current_section = String::new();
@@ -101,18 +105,20 @@ impl XINI {
 
     pub fn to_string(&self) -> String {
         let mut output = String::new();
+		let mut first_section = true;
 
         if let Some(section) = self.sections.get("") {
             write_section_entries("", section, &mut output);
         }
 
         for (name, section) in self.sections.iter().filter(|(k, _)| !k.is_empty()) {
+			if !first_section {
+				output.push('\n');
+			} else {
+				first_section = false;
+			}
             output.push_str(&format!("[{}]\n", name));
             write_section_entries(name, section, &mut output);
-        }
-
-        if output.ends_with('\n') {
-            output.pop();
         }
 
         output
@@ -168,6 +174,22 @@ impl XINI {
             .or_default()
             .insert(key.into(), value);
     }
+
+	pub fn set_bool(&mut self, section: &str, key: impl Into<String>, value: bool) {
+		self.set_value(section, key, Value::Bool(value));
+	}
+
+	pub fn set_int(&mut self, section: &str, key: impl Into<String>, value: i64) {
+		self.set_value(section, key, Value::Int(value));
+	}
+
+	pub fn set_float(&mut self, section: &str, key: impl Into<String>, value: f64) {
+		self.set_value(section, key, Value::Float(value));
+	}
+
+	pub fn set_string(&mut self, section: &str, key: impl Into<String>, value: impl Into<String>) {
+		self.set_value(section, key, Value::Str(value.into()));
+	}
 }
 
 impl Display for XINI {

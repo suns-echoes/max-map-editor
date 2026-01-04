@@ -1,0 +1,12 @@
+[package]
+name = "xlog"
+version = "0.1.0"
+description = "X-Log: A simple logging library"
+authors = ["Aneta Suns"]
+edition = "2024"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+time = "0.3"
