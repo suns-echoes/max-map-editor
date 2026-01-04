@@ -9,6 +9,7 @@ import { getAppVersion } from '^lib/info/info.ts';
 
 import './styles/global.style.css';
 import './styles/index.style.css';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 
 async function main() {
@@ -38,7 +39,9 @@ async function main() {
 }
 
 try {
+	xlog.info('Front starting up...');
+
 	await main();
 } catch(e) {
-	console.error('Fatal error during application startup:', e);
+	xlog.error('Fatal error during application startup:', e);
 }

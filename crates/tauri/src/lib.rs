@@ -19,6 +19,7 @@ pub fn run() {
             image_to_wrl_command,
             open_devtools_command,
 			validate_max_path_command,
+			xlog_command,
         ])
         .setup(|app| app_setup(app))
         .run(tauri::generate_context!())

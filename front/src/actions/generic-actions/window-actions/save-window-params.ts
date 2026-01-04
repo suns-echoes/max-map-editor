@@ -23,7 +23,7 @@ export async function saveWindowParams(name: string, window: TWindow) {
 
 	return SettingsFile.set({
 		debug: {
-			showDevTools: await RustAPI.isDevToolsOpen(),
+			// showDevTools: await RustAPI.isDevToolsOpen(),
 		},
 		window: {
 			[name]: {
