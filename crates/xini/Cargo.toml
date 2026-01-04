@@ -1,0 +1,9 @@
+[package]
+name = "xini"
+version = "0.1.0"
+description = "X-INI, eXtended INI file parser and writer"
+authors = ["Aneta Suns"]
+edition = "2024"
+
+[lib]
+crate-type = ["rlib"]

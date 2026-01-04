@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/tauri",
+	"crates/xini",
 ]
 resolver = "3"
 
