@@ -1,4 +1,4 @@
-import { Div, Section } from '^lib/reactive/html-node.elements.ts';
+import { Div, Section } from '^reactive/reactive-node.elements.ts';
 
 import { BigOutset } from '../../frames/big-outset.component.ts';
 import { SubmenuButton } from '../../buttons/submenu-button.component.ts';
@@ -24,7 +24,7 @@ export function Submenu({ menu, requestMenuLock: requestBlockMenu, unlockMenu: u
 				if (item.disabled) {
 					button.disable();
 				} else if (item.action) {
-					button.addEventListener('click', async function () {
+					button.on('click', async function () {
 						if (!requestBlockMenu()) return;
 						await item.action?.();
 						unblockMenu();

@@ -3,7 +3,7 @@ import { readTextFile } from '^tauri-apps/plugin-fs.ts';
 import { AppState } from '^state/app-state.ts';
 import { hexToUint8 } from '^lib/array-buffers/hex-to-uint8.ts';
 import { Perf } from '^lib/perf/perf.ts';
-import { Effect } from '^lib/reactive/effect.class.ts';
+import { Effect } from '^reactive/effect.ts';
 
 
 export async function loadPalette(assetName: string) {
@@ -40,4 +40,4 @@ new Effect(function () {
 	const palette = AppState.palette.value;
 	if (!wglMap || !palette) return;
 	wglMap.initPalette(palette);
-}).watch([AppState.wglMap, AppState.palette]);
+}).on([AppState.wglMap, AppState.palette]);

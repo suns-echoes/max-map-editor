@@ -1,4 +1,4 @@
-import { Div } from '^lib/reactive/html-node.elements.ts';
+import { Div } from '^reactive/reactive-node.elements.ts';
 
 import style from './big-inset.module.css';
 
@@ -6,7 +6,7 @@ import style from './big-inset.module.css';
 export function BigInset(debugName?: string) {
 	const bigInset = Div(debugName).class(style.bigInset);
 
-	bigInset.class = function (className: string) {
+	(bigInset as any).class = function (className: string) {
 		bigInset.classes(style.bigInset, className);
 		return bigInset;
 	};

@@ -1,17 +1,17 @@
-import { Div, Section } from '^lib/reactive/html-node.elements.ts';
+import { Div, Section } from '^reactive/reactive-node.elements.ts';
 import { MenuButton } from '^src/ui/components/buttons/menu-button.component';
 
 import { Submenu } from '../submenu/submenu.component.ts';
 
 import type { MainMenu } from './main-menu.types.ts';
 import style from './main-menu.module.css';
-import { HTMLNode } from '^lib/reactive/html-node.class.ts';
+import { ReactiveNode } from '^reactive/reactive-node.class.ts';
 
 
 export function MainMenu(menu: MainMenu) {
 	let previousSubmenu: HTMLElement | null = null;
 	let isMenuBlocked = false;
-	let mainMenu: HTMLNode;
+	let mainMenu: ReactiveNode;
 
 	function closeMenu() {
 		if (previousSubmenu) {
@@ -53,13 +53,13 @@ export function MainMenu(menu: MainMenu) {
 	}
 
 	mainMenu = (
-		Section('main-menu').class(style.mainMenu).onDestroy(handleDestroy).nodes(
+		Section('main-menu').class(style.mainMenu).onDispose(handleDestroy).nodes(
 			menu.map(function (item) {
 				const hasSubmenu = !!item.submenu && item.submenu.length > 0;
 				let menuButton;
 
 				const menuItem = Div().nodes(
-					hasSubmenu ? [
+					(hasSubmenu ? [
 						menuButton = MenuButton().text(item.label),
 						Submenu({
 							menu: item.submenu!,
@@ -68,21 +68,21 @@ export function MainMenu(menu: MainMenu) {
 						}),
 					] : [
 						menuButton = MenuButton().text(item.label),
-					],
+					]) as any,
 				);
 
 				if (item.disabled) {
 					menuButton.disable();
 				} else {
 					if (item.action) {
-						menuButton.addEventListener('click', async function () {
+						menuButton.on('click', async function () {
 							if (requestMenuLock()) return;
 							await item.action?.();
 							unlockMenu();
 						});
 					}
 					if (hasSubmenu) {
-						menuButton.addEventListener('click', function (event) {
+						menuButton.on('click', function (event) {
 							if (isMenuBlocked) return;
 							openSubmenu(event, menuItem.element);
 						});

@@ -1,6 +1,5 @@
 import { BigInset } from '../frames/big-inset.component.ts';
-import { Div } from '^lib/reactive/html-node.elements.ts';
-import { HTMLNode } from '^lib/reactive/html-node.class.ts';
+import { Div } from '^reactive/reactive-node.elements.ts';
 
 import style from './box-screen.module.css';
 
@@ -18,22 +17,22 @@ export function BoxScreen() {
 
 	const boxScreenClass = boxScreen.element.className;
 
-	boxScreen.class = function (className: string) {
+	(boxScreen as any).class = function (className: string) {
 		boxScreen.classes(boxScreenClass, className);
 		return boxScreen;
 	};
 
-	boxScreen.text = function (text: string) {
+	(boxScreen as any).text = function (text: string) {
 		content.text(text);
 		return boxScreen;
 	};
 
-	boxScreen.html = function (html: string) {
+	(boxScreen as any).html = function (html: string) {
 		content.html(html);
 		return boxScreen;
 	};
 
-	boxScreen.nodes = function (nodes: HTMLNode[]) {
+	(boxScreen as any).nodes = function (nodes: any[]) {
 		content.nodes(nodes);
 		return boxScreen;
 	};

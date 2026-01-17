@@ -3,12 +3,25 @@ import { AppState } from '^state/app-state.ts';
 import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
 import { printDebugInfo } from '^lib/debug/debug.ts';
 import { animationFrame } from '^lib/flow-control/animation-frame.ts';
-import { Value } from '^lib/reactive/value.class.ts';
-import { HTMLNode } from '^lib/reactive/html-node.class.ts';
-import { Br, Div } from '^lib/reactive/html-node.elements.ts';
+import { Effect } from '^reactive/effect.ts';
+import { ReactiveNode } from '^reactive/reactive-node.class.ts';
+import { Br, Div } from '^reactive/reactive-node.elements.ts';
 import { SimpleButton } from '^src/ui/components/buttons/simple-button.component.ts';
 
 import style from './map-selector.module.css';
+
+
+function waitForMapSize(): Promise<Size> {
+	return new Promise((resolve) => {
+		const effect = new Effect(() => {
+			const size = AppState.mapSize.value;
+			if (size.width > 0 && size.height > 0) {
+				effect.dispose();
+				resolve(size);
+			}
+		});
+	});
+}
 
 
 const maps = [
@@ -45,7 +58,7 @@ const maps = [
 export function MapSelector() {
 	printDebugInfo('UI::MapSelector');
 
-	const buttons: [fileName: string, button: HTMLNode<HTMLButtonElement>][] = [];
+	const buttons: [fileName: string, button: ReactiveNode<HTMLButtonElement>][] = [];
 
 	const mapSelector = (
 		Div('map-selector').class(style.mapSelector).nodes(
@@ -71,14 +84,14 @@ export function MapSelector() {
 	}
 
 	buttons.forEach(function ([mapFile, button]) {
-		button.addEventListener('click', async () => {
+		button.on('click', async () => {
 			disableAllButtons();
 
 			await animationFrame();
 
 			AppState.reset();
 			await loadMapProject(await resolveTextResource(`resources/maps/${mapFile}.json`));
-			await Value.toPromise(AppState.mapSize, function (size) { return size !== null; });
+			await waitForMapSize();
 
 			await animationFrame();
 

@@ -18,6 +18,7 @@ export default defineConfig(async () => ({
 			'^events': path.resolve(__dirname, './front/src/events'),
 			'^tauri-apps': path.resolve(__dirname, './front/src/lib/tauri/@tauri-apps'),
 			'^tauri': path.resolve(__dirname, './front/src/lib/tauri'),
+			'^reactive': path.resolve(__dirname, './front/modules/reactive/src/core'),
 			'^state': path.resolve(__dirname, './front/src/state'),
 			'^types': path.resolve(__dirname, './front/src/types'),
 			'^lib': path.resolve(__dirname, './front/src/lib'),

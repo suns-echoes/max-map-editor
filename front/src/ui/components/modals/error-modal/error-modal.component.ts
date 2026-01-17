@@ -1,4 +1,4 @@
-import { Div, Img } from '^lib/reactive/html-node.elements.ts';
+import { Div, Img } from '^reactive/reactive-node.elements.ts';
 
 import { BigOutset } from '../../frames/big-outset.component.ts';
 import { LabelScreen } from '../../screens/label-screen.component.ts';
@@ -32,8 +32,8 @@ export function ErrorModal(props: ErrorModalProps) {
 		])
 	);
 
-	closeButton.addEventListener('click', function () {
-		errorPopup.destroy();
+	closeButton.on('click', function () {
+		errorPopup.dispose();
 		props.onClose?.();
 	});
 

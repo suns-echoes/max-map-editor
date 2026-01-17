@@ -1,5 +1,5 @@
 import { getAppVersion } from '^lib/info/info.ts';
-import { Div } from '^lib/reactive/html-node.elements.ts';
+import { Div } from '^reactive/reactive-node.elements.ts';
 
 
 export function BuildInfo() {

@@ -29,6 +29,7 @@
 			"^tauri/*": ["./front/src/lib/tauri/*"],
 			"^types/*": ["./front/src/types/*"],
 			"^lib/*": ["./front/src/lib/*"],
+			"^reactive/*": ["./front/modules/reactive/src/core/*"],
 			"^state/*": ["./front/src/state/*"],
 			"^storage/*": ["./front/src/storage/*"],
 			"^styles/*": ["./front/src/styles/*"],

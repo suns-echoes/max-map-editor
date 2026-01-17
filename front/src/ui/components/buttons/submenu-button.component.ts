@@ -1,4 +1,4 @@
-import { Button } from '^lib/reactive/html-node.elements.ts';
+import { Button } from '^reactive/reactive-node.elements.ts';
 
 import { SquareText } from '../square-text/square-text.component.ts';
 

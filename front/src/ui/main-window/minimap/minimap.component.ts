@@ -1,4 +1,4 @@
-import { Div, Section } from '^lib/reactive/html-node.elements.ts';
+import { Div, Section } from '^reactive/reactive-node.elements.ts';
 
 import { BoxScreen } from '^src/ui/components/screens/box-screen.component.ts';
 

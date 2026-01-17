@@ -1,4 +1,4 @@
-import { Effect } from '^lib/reactive/effect.class.ts';
+import { Effect } from '^reactive/effect.ts';
 import { Perf } from '^lib/perf/perf.ts';
 import { AppState } from '^state/app-state.ts';
 import { loadMap } from './load-map.ts';
@@ -34,7 +34,7 @@ new Effect(function () {
 	const [tileset, layers] = arrangeTilesData(tiles, wglMap.getTileCapability());
 	wglMap.initTilesets(tileset, layers);
 	loadMap(mapProject, tiles);
-}).watch([AppState.wglMap, AppState.mapProject, AppState.tiles]);
+}).on([AppState.wglMap, AppState.mapProject, AppState.tiles]);
 
 
 function arrangeTilesData(tiles: Tiles, tileCapability: WglTileCapability): [tileset: Uint8Array, layers: number] {

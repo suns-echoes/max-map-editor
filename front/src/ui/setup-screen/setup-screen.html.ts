@@ -1,12 +1,12 @@
-import { Button, Div, Section, Span, TextInput } from '^lib/reactive/html-node.elements.ts';
-import { Signal } from '^lib/reactive/signal.class.ts';
+import { Button, Div, Section, Span, TextInput } from '^reactive/reactive-node.elements.ts';
+import { Value } from '^reactive/value.ts';
 import { openFolderDialog } from '^lib/dialogs/open-folder-dialog.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import style from './setup-screen.module.css';
 import { RustAPI } from '../../bff/rust-api.ts';
 
 
-export const setupDoneSignal = new Signal();
+export const setupDoneSignal = new Value<void>(undefined);
 
 
 export function SetupScreen() {
@@ -95,15 +95,15 @@ export function SetupScreen() {
 		}
 
 		showMessage('Setup complete!');
-		browseButton.removeAllEventListeners();
-		doneButton.removeAllEventListeners();
-		setupDoneSignal.dispatch();
+		browseButton.offAll();
+		doneButton.offAll();
+		setupDoneSignal.set(undefined);
 	};
 
 	showMessage('Please provie M.A.X. installation path.');
 
-	browseButton.addEventListener('click', browseForMaxPath);
-	doneButton.addEventListener('click', finishSetup);
+	browseButton.on('click', browseForMaxPath);
+	doneButton.on('click', finishSetup);
 
 	return SetupScreen;
 }

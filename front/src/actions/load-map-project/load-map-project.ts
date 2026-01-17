@@ -2,7 +2,7 @@ import { readTextFile } from '^tauri-apps/plugin-fs.ts';
 import { loadAssets } from '^actions/load-map-project/load-assets/load-assets.ts';
 import { AppState } from '^state/app-state.ts';
 import { Perf } from '^lib/perf/perf.ts';
-import { Effect } from '^lib/reactive/effect.class.ts';
+import { Effect } from '^reactive/effect.ts';
 import { printDebugInfo } from '^lib/debug/debug.ts';
 
 
@@ -30,4 +30,4 @@ new Effect(function () {
 	if (mapProject) {
 		loadAssets(mapProject);
 	}
-}).watch([AppState.mapProject]);
+}).on([AppState.mapProject]);

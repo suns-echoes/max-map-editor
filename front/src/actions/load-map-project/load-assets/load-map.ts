@@ -1,6 +1,6 @@
 import { MAP_LAYERS } from '^consts/map-consts.ts';
 import { AppState } from '^state/app-state.ts';
-import { Effect } from '^lib/reactive/effect.class.ts';
+import { Effect } from '^reactive/effect.ts';
 import { Perf } from '^lib/perf/perf.ts';
 
 
@@ -88,4 +88,4 @@ new Effect(function () {
 	if (!wglMap || !mapSize || !map) return;
 
 	wglMap.initMap(map, mapSize.width, mapSize.height);
-}).watch([AppState.wglMap, AppState.mapSize, AppState.map]);
+}).on([AppState.wglMap, AppState.mapSize, AppState.map]);

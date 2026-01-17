@@ -1,4 +1,4 @@
-import { Div, Span } from '^lib/reactive/html-node.elements.ts';
+import { Div, Span } from '^reactive/reactive-node.elements.ts';
 
 import style from './square-text.module.css';
 

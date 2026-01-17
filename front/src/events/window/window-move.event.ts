@@ -1,10 +1,10 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { TauriEvent } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Signal } from '^lib/reactive/signal.class.ts';
+import { Value } from '^reactive/value.ts';
 
 
-export const windowMoveSignal = new Signal();
+export const windowMoveSignal = new Value<void>(undefined);
 
 export async function initWindowMoveEvent() {
 	if (isTauri()) {
@@ -16,7 +16,7 @@ export async function initWindowMoveEvent() {
 			}
 
 			timeout = setTimeout(function () {
-				windowMoveSignal.dispatch();
+				windowMoveSignal.set(undefined);
 			}, 250);
 		});
 	}

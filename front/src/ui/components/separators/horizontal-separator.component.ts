@@ -1,4 +1,4 @@
-import { Div } from '^lib/reactive/html-node.elements.ts';
+import { Div } from '^reactive/reactive-node.elements.ts';
 
 import styte from './horizontal-separator.module.css';
 

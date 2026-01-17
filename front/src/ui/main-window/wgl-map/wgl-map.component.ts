@@ -3,14 +3,26 @@ import { AppEvents } from '^events/app-events.ts';
 import { AppState } from '^state/app-state.ts';
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { printDebugInfo } from '^lib/debug/debug.ts';
-import { Effect } from '^lib/reactive/effect.class.ts';
-import { Canvas, Div, Section } from '^lib/reactive/html-node.elements.ts';
-import { Value } from '^lib/reactive/value.class.ts';
+import { Effect } from '^reactive/effect.ts';
+import { Canvas, Div, Section } from '^reactive/reactive-node.elements.ts';
 
 import style from './wgl-map.module.css';
 import { BigInset } from '../../components/frames/big-inset.component.ts';
 import { WglMap } from './wgl/wgl-map.ts';
 import { makeMapInteractive } from './utils/make-map-interactive.ts';
+
+
+function waitForMapSize(): Promise<Size> {
+	return new Promise((resolve) => {
+		const effect = new Effect(() => {
+			const size = AppState.mapSize.value;
+			if (size.width > 0 && size.height > 0) {
+				effect.dispose();
+				resolve(size);
+			}
+		});
+	});
+}
 
 
 export function WGLMap() {
@@ -35,7 +47,7 @@ export function WGLMap() {
 		const wglMap = new WglMap(canvasElement);
 		AppState.wglMap.set(wglMap);
 
-		await Value.toPromise(AppState.mapSize, function (size) { return size !== null; });
+		await waitForMapSize();
 
 		wglMap.enableAnimation();
 		wglMap.render();
@@ -51,11 +63,11 @@ export function WGLMap() {
 
 		new Effect(function () {
 			wglMap.onCanvasResize();
-		}).watch([AppEvents.windowResizeSignal]);
+		}).on([AppEvents.windowResizeSignal]);
 
 		new Effect(function () {
 			wglMap.cleanup();
-		}).watch([AppEvents.windowCloseSignal]);
+		}).on([AppEvents.windowCloseSignal]);
 	})();
 
 	return WGLMap;

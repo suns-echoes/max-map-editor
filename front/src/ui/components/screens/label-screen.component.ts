@@ -1,5 +1,4 @@
-import { Div } from '^lib/reactive/html-node.elements.ts';
-import { HTMLNode } from '^lib/reactive/html-node.class.ts';
+import { Div } from '^reactive/reactive-node.elements.ts';
 
 import style from './label-screen.module.css';
 
@@ -11,12 +10,12 @@ export function LabelScreen(debugName?: string) {
 		])
 	);
 
-	labelScreen.class = function (className: string) {
-		HTMLNode.prototype.classes.call(labelScreen, style.labelScreen, className);
+	(labelScreen as any).class = function (className: string) {
+		labelScreen.classes(style.labelScreen, className);
 		return labelScreen;
 	};
 
-	labelScreen.text = function (newText: string) {
+	(labelScreen as any).text = function (newText: string) {
 		labelScreen.element.firstElementChild!.textContent = newText;
 		return labelScreen;
 	}

@@ -1,7 +1,7 @@
-import { Signal } from '^lib/reactive/signal.class.ts';
+import { Value } from '^reactive/value.ts';
 
 
 export const AppEvents = {
-	windowCloseSignal: new Signal(),
-	windowResizeSignal: new Signal(),
+	windowCloseSignal: new Value<void>(undefined),
+	windowResizeSignal: new Value<void>(undefined),
 }
