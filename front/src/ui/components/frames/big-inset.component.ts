@@ -4,12 +4,5 @@ import style from './big-inset.module.css';
 
 
 export function BigInset(debugName?: string) {
-	const bigInset = Div(debugName).class(style.bigInset);
-
-	(bigInset as any).class = function (className: string) {
-		bigInset.classes(style.bigInset, className);
-		return bigInset;
-	};
-
-	return bigInset;
+	return Div(debugName).baseClass(style.bigInset);
 }
