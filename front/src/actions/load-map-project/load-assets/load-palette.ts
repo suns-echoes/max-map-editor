@@ -40,4 +40,4 @@ new Effect(function () {
 	const palette = AppState.palette.value;
 	if (!wglMap || !palette) return;
 	wglMap.initPalette(palette);
-}).on([AppState.wglMap, AppState.palette]);
+}, { strong: true }).on([AppState.wglMap, AppState.palette]);

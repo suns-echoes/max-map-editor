@@ -25,6 +25,10 @@ vec3 getMaxCoord(uint x, uint y, uint z) {
 }
 
 void main() {
+	// DEBUG: Output red to verify rendering works
+	outColor = vec4(1.0, 0.0, 0.0, 1.0);
+	return;
+
 	// Get map texture 2D size.
 	vec2 mapSize = vec2(textureSize(uMapTexture, 0).xy);
 	// Get tileSet 2D size. Tile data is 4096x1 pixels.
@@ -98,7 +102,7 @@ void main() {
 	vec2 tileDataOffset = (tileData.xy + vec2(y * 64.0 + x, 0.0) / tileDataSize) / tileSetSize;
 
 	// Get the palette index from tile pixel value.
-	vec3 tileSampleCoord = vec3(tileDataOffset, 0.0); // Use layer 0, or replace with correct layer if needed
+	vec3 tileSampleCoord = vec3(tileDataOffset, tileData.z);
 	uint paletteIndex = texture(uTilesTexture, tileSampleCoord).r;
 
 	// Cycle palette colors.

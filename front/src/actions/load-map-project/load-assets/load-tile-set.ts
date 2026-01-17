@@ -1,6 +1,6 @@
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
-import { readTextFile } from '^tauri-apps/plugin-fs.ts';
-import { hexToUint8 } from '^lib/array-buffers/hex-to-uint8.ts';
+import { readFile, readTextFile } from '^tauri-apps/plugin-fs.ts';
+import { TILE_LENGTH } from '^consts/tile-consts.ts';
 import { Perf } from '^lib/perf/perf.ts';
 
 
@@ -8,14 +8,15 @@ import { Perf } from '^lib/perf/perf.ts';
 
 
 export async function loadTileSet(outTiles: Tiles, assetName: string) {
-	const [data, match, props, /*variants*/] = await Promise.all([
-		await readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles.data.json`)),
-		await readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles.match.json`)),
-		await readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles.props.json`)),
+	const [dataIndex, dataBin, match, props, /*variants*/] = await Promise.all([
+		readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles-data.json`)),
+		readFile(await resolveTextResource(`resources/assets/${assetName}/tiles-data.bin`)),
+		readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles.match.json`)),
+		readTextFile(await resolveTextResource(`resources/assets/${assetName}/tiles.props.json`)),
 		// await readTextFile(await resolveResource(`resources/assets/${assetName}/tiles.variants.json`)),
 	]);
 
-	const tilesData = parseTilesData(data);
+	const tilesData = parseTilesData(dataIndex, dataBin);
 	const tilesMatch = parseTilesMatch(match);
 	const tilesProps = parseTilesProps(props);
 	// const tilesVariants = parseTilesVariants(variants);
@@ -24,14 +25,18 @@ export async function loadTileSet(outTiles: Tiles, assetName: string) {
 }
 
 
-function parseTilesData(data: string): TilesData {
+function parseTilesData(indexJson: string, dataBin: Uint8Array): TilesData {
 	const perf = Perf('parseTilesData');
 
-	// TODO: Add validation
-	const tilesData = JSON.parse<Record<string, any>>(data);
-	Object.keys(tilesData).forEach((tileId) => {
-		tilesData[tileId] = hexToUint8(tilesData[tileId]);
-	});
+	// Parse index file (array of tile IDs in order)
+	const tileIds = JSON.parse<string[]>(indexJson);
+	const tilesData: TilesData = {};
+
+	// Each tile is TILE_LENGTH bytes (64x64 = 4096)
+	for (let i = 0; i < tileIds.length; i++) {
+		const offset = i * TILE_LENGTH;
+		tilesData[tileIds[i]] = dataBin.subarray(offset, offset + TILE_LENGTH);
+	}
 
 	perf();
 

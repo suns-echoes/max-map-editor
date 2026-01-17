@@ -55,6 +55,7 @@ export class WglMap extends WebGL2 {
 	private _modelMatrix = mat4_createIdentity();
 
 	initModel() {
+		if (this.mapModelHeight === 0) return;
 		this.factor = this.mapModelHeight / this.gl.canvas.height;
 		mat4_identity(this._modelMatrix);
 		// mat4_translate(this.modelMatrix, this.modelMatrix, [0, 0, -1]);

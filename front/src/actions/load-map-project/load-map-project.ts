@@ -30,4 +30,4 @@ new Effect(function () {
 	if (mapProject) {
 		loadAssets(mapProject);
 	}
-}).on([AppState.mapProject]);
+}, { strong: true });

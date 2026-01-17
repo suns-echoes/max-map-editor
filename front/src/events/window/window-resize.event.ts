@@ -4,6 +4,6 @@ import { debounce } from '^lib/flow-control/debounce.ts';
 
 export function initWindowResizeEvent() {
 	window.addEventListener('resize', debounce(function () {
-		AppEvents.windowResizeSignal.dispatch();
+		AppEvents.windowResizeSignal.set(undefined);
 	}, 50));
 }

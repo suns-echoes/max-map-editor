@@ -63,11 +63,14 @@ export function WGLMap() {
 
 		new Effect(function () {
 			wglMap.onCanvasResize();
-		}).on([AppEvents.windowResizeSignal]);
+		}, { strong: true }).on([AppEvents.windowResizeSignal]);
 
+		let initialized = false;
 		new Effect(function () {
+			if (!initialized) { initialized = true; return; }
+			wglMap.disableAnimation();
 			wglMap.cleanup();
-		}).on([AppEvents.windowCloseSignal]);
+		}, { strong: true }).on([AppEvents.windowCloseSignal]);
 	})();
 
 	return WGLMap;
