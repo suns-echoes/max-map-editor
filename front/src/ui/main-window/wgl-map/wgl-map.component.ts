@@ -76,7 +76,8 @@ export function WGLMap() {
 			}
 		});
 
-		canvasElement.addEventListener('mousemove', (e) => {
+		// Use window events for mousemove/mouseup so panning works outside canvas
+		window.addEventListener('mousemove', (e) => {
 			if (isPanning) {
 				const dx = e.clientX - lastX;
 				const dy = e.clientY - lastY;
@@ -89,16 +90,11 @@ export function WGLMap() {
 			}
 		});
 
-		canvasElement.addEventListener('mouseup', (e) => {
-			if (e.button === 2) {
+		window.addEventListener('mouseup', (e) => {
+			if (e.button === 2 && isPanning) {
 				isPanning = false;
 				canvasElement.style.cursor = 'default';
 			}
-		});
-
-		canvasElement.addEventListener('mouseleave', () => {
-			isPanning = false;
-			canvasElement.style.cursor = 'default';
 		});
 
 		render();
