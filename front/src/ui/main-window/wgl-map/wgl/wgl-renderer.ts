@@ -30,6 +30,7 @@ export class WglRenderer {
 	// Textures
 	private paletteTexture: WebGLTexture | null = null;
 	private tileTexture: WebGLTexture | null = null;
+	private tileTextureCache = new Map<string, WebGLTexture>();
 
 	private projectionMatrix = new Float32Array(16);
 
@@ -130,6 +131,81 @@ export class WglRenderer {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
 		console.log('Tile uploaded');
+	}
+
+	/**
+	 * Upload all tiles from the tiles map and cache them
+	 */
+	uploadAllTiles(tiles: Map<string, { data: Uint8Array }>) {
+		const gl = this.gl;
+
+		// Clear existing cache
+		for (const texture of this.tileTextureCache.values()) {
+			gl.deleteTexture(texture);
+		}
+		this.tileTextureCache.clear();
+
+		// Upload each tile
+		for (const [id, tile] of tiles) {
+			const texture = gl.createTexture()!;
+			gl.bindTexture(gl.TEXTURE_2D, texture);
+			gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8UI, 64, 64, 0, gl.RED_INTEGER, gl.UNSIGNED_BYTE, tile.data);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+			this.tileTextureCache.set(id, texture);
+		}
+
+		console.log(`Uploaded ${tiles.size} tiles to GPU`);
+	}
+
+	/**
+	 * Draw a tile by ID at pixel coordinates
+	 */
+	drawTileById(tileId: string, x: number, y: number, size: number = 64): boolean {
+		const texture = this.tileTextureCache.get(tileId);
+		if (!texture || !this.paletteTexture) {
+			return false;
+		}
+
+		const gl = this.gl;
+
+		gl.useProgram(this.tileProgram);
+		gl.bindVertexArray(this.tileVAO);
+
+		// Update projection
+		gl.uniformMatrix4fv(this.uTileProjection, false, this.projectionMatrix);
+
+		// Bind textures
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.uniform1i(this.uTileTexture, 0);
+
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
+		gl.uniform1i(this.uPaletteTexture, 1);
+
+		// Update position buffer
+		const x1 = x;
+		const y1 = y;
+		const x2 = x + size;
+		const y2 = y + size;
+
+		const vertices = new Float32Array([
+			x1, y1,
+			x2, y1,
+			x1, y2,
+			x2, y1,
+			x2, y2,
+			x1, y2,
+		]);
+
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.tilePositionBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+
+		gl.drawArrays(gl.TRIANGLES, 0, 6);
+		return true;
 	}
 
 	/**
@@ -246,6 +322,13 @@ export class WglRenderer {
 	clear(r = 0.1, g = 0.0, b = 0.1, a = 1.0) {
 		this.gl.clearColor(r, g, b, a);
 		this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+	}
+
+	/**
+	 * Get the canvas element
+	 */
+	getCanvas(): HTMLCanvasElement {
+		return this.gl.canvas as HTMLCanvasElement;
 	}
 
 	/**

@@ -26,18 +26,49 @@ export function WGLMap() {
 
 	// Initialize WebGL renderer after component is mounted
 	let renderer: WglRenderer | null = null;
-	let tileUploaded = false;
+	let tilesUploaded = false;
+	let currentMap: MapProject | null = null;
 
 	// Panning state
 	let panX = 0;
 	let panY = 0;
 
+	const TILE_SIZE = 64;
+
 	function render() {
 		if (!renderer) return;
 		renderer.clear(0.1, 0.0, 0.1, 1.0); // dark magenta
 
-		if (tileUploaded) {
-			renderer.drawTile(100 + panX, 100 + panY, 64); // Draw tile with pan offset
+		if (tilesUploaded && currentMap) {
+			// Get canvas dimensions for culling
+			const canvas = renderer.getCanvas();
+			const canvasWidth = canvas.width;
+			const canvasHeight = canvas.height;
+
+			// Calculate visible tile range
+			const startCol = Math.max(0, Math.floor(-panX / TILE_SIZE));
+			const startRow = Math.max(0, Math.floor(-panY / TILE_SIZE));
+			const endCol = Math.min(currentMap.width, Math.ceil((canvasWidth - panX) / TILE_SIZE));
+			const endRow = Math.min(currentMap.height, Math.ceil((canvasHeight - panY) / TILE_SIZE));
+
+			// Render visible tiles
+			for (let row = startRow; row < endRow; row++) {
+				const mapRow = currentMap.map[row];
+				if (!mapRow) continue;
+
+				for (let col = startCol; col < endCol; col++) {
+					const cell = mapRow[col];
+					if (!cell) continue;
+
+					// Get the tile ID (handle both string and array format)
+					const tileId = Array.isArray(cell) ? cell[0] : cell;
+
+					const x = col * TILE_SIZE + panX;
+					const y = row * TILE_SIZE + panY;
+
+					renderer.drawTileById(tileId, x, y, TILE_SIZE);
+				}
+			}
 		} else {
 			// Fallback white square
 			renderer.setColor(1.0, 1.0, 1.0, 1.0);
@@ -100,28 +131,23 @@ export function WGLMap() {
 		render();
 	}, 0);
 
-	// Upload palette and tile when they become available
+	// Upload palette and tiles when they become available
 	new Effect(() => {
 		const palette = AppState.palette.value;
 		const tiles = AppState.tiles.value;
+		const mapProject = AppState.mapProject.value;
 
 		if (renderer && palette && tiles) {
 			// Upload palette
 			renderer.uploadPalette(palette);
 
-			// Get first tile and upload it
-			const firstTileId = tiles.keys().next().value;
-			if (firstTileId) {
-				const firstTile = tiles.get(firstTileId);
-				if (firstTile) {
-					console.log(`Uploading tile: ${firstTileId}`);
-					renderer.uploadTile(firstTile.data);
-					tileUploaded = true;
-					render();
-				}
-			}
+			// Upload all tiles
+			renderer.uploadAllTiles(tiles);
+			tilesUploaded = true;
+			currentMap = mapProject;
+			render();
 		}
-	}).on([AppState.palette, AppState.tiles]);
+	}).on([AppState.palette, AppState.tiles, AppState.mapProject]);
 
 	// Load map project
 	(async () => {
