@@ -101,6 +101,29 @@ export function WGLMap() {
 		return Math.min(zoomX, zoomY, 1.0); // Don't go above 1.0 for min
 	}
 
+	/**
+	 * Clamp pan values so map has at most 50% viewport size as margin
+	 */
+	function clampPan() {
+		if (!renderer || !currentMap) return;
+
+		const canvas = renderer.getCanvas();
+		const mapPixelWidth = currentMap.width * TILE_SIZE * zoom;
+		const mapPixelHeight = currentMap.height * TILE_SIZE * zoom;
+		const marginX = canvas.width * 0.5;
+		const marginY = canvas.height * 0.5;
+
+		// Clamp X: map right edge at least at marginX, map left edge at most at marginX
+		const minPanX = marginX - mapPixelWidth;
+		const maxPanX = canvas.width - marginX;
+		panX = Math.max(minPanX, Math.min(maxPanX, panX));
+
+		// Clamp Y: map bottom edge at least at marginY, map top edge at most at marginY
+		const minPanY = marginY - mapPixelHeight;
+		const maxPanY = canvas.height - marginY;
+		panY = Math.max(minPanY, Math.min(maxPanY, panY));
+	}
+
 	function render() {
 		if (!renderer) return;
 		renderer.clear(0.1, 0.0, 0.1, 1.0); // dark magenta
@@ -195,6 +218,7 @@ export function WGLMap() {
 				// Adjust pan to keep the same map center visible
 				panX += (newWidth - oldWidth) / 2;
 				panY += (newHeight - oldHeight) / 2;
+				clampPan();
 
 				render();
 			}
@@ -227,6 +251,7 @@ export function WGLMap() {
 				panX = mouseX - (mouseX - panX) * scale;
 				panY = mouseY - (mouseY - panY) * scale;
 				zoom = 1.0;
+				clampPan();
 				render();
 			}
 		});
@@ -241,6 +266,7 @@ export function WGLMap() {
 
 				panX += dx;
 				panY += dy;
+				clampPan();
 				render();
 			}
 		});
@@ -271,6 +297,7 @@ export function WGLMap() {
 				panX = mouseX - (mouseX - panX) * scale;
 				panY = mouseY - (mouseY - panY) * scale;
 				zoom = newZoom;
+				clampPan();
 				render();
 			}
 		}, { passive: false });
@@ -385,6 +412,7 @@ export function WGLMap() {
 			const mapPixelHeight = mapProject.height * TILE_SIZE;
 			panX = (canvas.width - mapPixelWidth) / 2;
 			panY = (canvas.height - mapPixelHeight) / 2;
+			clampPan();
 
 			render();
 		}
