@@ -11,13 +11,13 @@ import { SimpleButton } from '^src/ui/components/buttons/simple-button.component
 import style from './map-selector.module.css';
 
 
-function waitForMapSize(): Promise<Size> {
+function waitForMapProject(): Promise<Size> {
 	return new Promise((resolve) => {
-		const effect = new Effect(() => {
-			const size = AppState.mapSize.value;
-			if (size.width > 0 && size.height > 0) {
-				effect.dispose();
-				resolve(size);
+		new Effect((self) => {
+			const mapProject = AppState.mapProject.value;
+			if (mapProject && mapProject.width > 0 && mapProject.height > 0) {
+				self.dispose();
+				resolve({ width: mapProject.width, height: mapProject.height });
 			}
 		}, { strong: true });
 	});
@@ -91,7 +91,7 @@ export function MapSelector() {
 
 			AppState.reset();
 			await loadMapProject(await resolveTextResource(`resources/maps/${mapFile}.json`));
-			await waitForMapSize();
+			await waitForMapProject();
 
 			await animationFrame();
 

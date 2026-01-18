@@ -1,18 +1,22 @@
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { readTextFile } from '^tauri-apps/plugin-fs.ts';
-import { AppState } from '^state/app-state.ts';
 import { hexToUint8 } from '^lib/array-buffers/hex-to-uint8.ts';
 import { Perf } from '^lib/perf/perf.ts';
-import { Effect } from '^reactive/effect.ts';
 
 
-export async function loadPalette(assetName: string) {
-	const palette = parsePalette(await readTextFile(await resolveTextResource(`resources/assets/${assetName}/palette.json`)));
-	AppState.palette.set(palette);
+/**
+ * Load and parse a palette file.
+ * Returns the palette as a Uint8Array (256 colors × 4 bytes RGBA).
+ */
+export async function loadPalette(assetName: string): Promise<Uint8Array> {
+	const paletteJson = await readTextFile(
+		await resolveTextResource(`resources/assets/${assetName}/palette.json`)
+	);
+	return parsePalette(paletteJson);
 }
 
 
-function parsePalette(paletteData: string) {
+function parsePalette(paletteData: string): Uint8Array {
 	const perf = Perf('parsePalette');
 
 	// TODO: add validation
@@ -27,17 +31,10 @@ function parsePalette(paletteData: string) {
 		palette[j + 3] = 255;
 	}
 
+	// First color is transparent
 	palette[3] = 0;
 
 	perf();
 
 	return palette;
 }
-
-
-new Effect(function () {
-	const wglMap = AppState.wglMap.value;
-	const palette = AppState.palette.value;
-	if (!wglMap || !palette) return;
-	wglMap.initPalette(palette);
-}, { strong: true }).on([AppState.wglMap, AppState.palette]);

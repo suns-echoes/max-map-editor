@@ -1,31 +1,22 @@
 import { MAP_LAYERS } from '^consts/map-consts.ts';
-import { AppState } from '^state/app-state.ts';
-import { Effect } from '^reactive/effect.ts';
 import { Perf } from '^lib/perf/perf.ts';
 
 
-export async function loadMap(mapProject: MapProject, tiles: Tiles) {
-	const map = parseMap(mapProject, tiles);
-	AppState.mapSize.set({ width: mapProject.width, height: mapProject.height });
-	AppState.map.set(map);
-}
-
-
 /**
- * The map is stored as 1D array of uint8 quadruples.
- * Each quadruple represents a cell in the map.
- * The first two bytes represent the tile XY position in texture.
- * The third byte represents the texture index where the tile is located.
- * The fourth byte represents the transformation of the tile.
+ * Parse map data into GPU-ready format.
+ * Returns a Uint16Array with tile locations and transformations.
  *
- * The transformation is as follows:
- * 0: N, 1: W, 2: S, 3: E, 4: !N, 5: !W, 6: !S, 7: !E
+ * The map is stored as 1D array of uint16 quadruples per layer.
+ * Each quadruple represents a cell in the map:
+ * - First two values: tile XY position in texture
+ * - Third value: texture layer index
+ * - Fourth value: transformation (0-7)
+ *
+ * Transformations: N=0, W=1, S=2, E=3, !N=4, !E=5, !S=6, !W=7
  */
-
-function parseMap(mapProject: MapProject, tiles: Tiles) {
+export function parseMap(mapProject: MapProject, tiles: Tiles): Uint16Array {
 	const perf = Perf('parseMap');
 
-	// TODO: add validation
 	const mapSize = mapProject.width * mapProject.height * 4;
 	const map = new Uint16Array(mapSize * MAP_LAYERS);
 
@@ -56,12 +47,13 @@ function parseMap(mapProject: MapProject, tiles: Tiles) {
 	return map;
 }
 
-function populateMapCell(cell: string | null, tiles: Tiles, map: Uint16Array, i: number) {
+
+function populateMapCell(cell: string | null, tiles: Tiles, map: Uint16Array, i: number): void {
 	if (!cell) {
-		map[i++] = 0;
-		map[i++] = 0;
-		map[i++] = 0;
-		map[i++] = 255;
+		map[i] = 0;
+		map[i + 1] = 0;
+		map[i + 2] = 0;
+		map[i + 3] = 255; // Empty cell marker
 		return;
 	}
 
@@ -72,20 +64,20 @@ function populateMapCell(cell: string | null, tiles: Tiles, map: Uint16Array, i:
 		throw new Error(`Tile not found: ${tileId}`);
 	}
 
-	map[i++] = tile.location.textureX;
-	map[i++] = tile.location.textureY;
-	map[i++] = tile.location.textureLayer;
-	map[i++] = transformMap[transformation];
+	map[i] = tile.location.textureX;
+	map[i + 1] = tile.location.textureY;
+	map[i + 2] = tile.location.textureLayer;
+	map[i + 3] = TRANSFORM_MAP[transformation];
 }
 
-const transformMap = { 'N': 0x00, 'W': 0x01, 'S': 0x02, 'E': 0x03, '!N': 0x04, '!W': 0x07, '!S': 0x06, '!E': 0x05 } as const;
 
-
-new Effect(function () {
-	const wglMap = AppState.wglMap.value;
-	const mapSize = AppState.mapSize.value;
-	const map = AppState.map.value;
-	if (!wglMap || !mapSize?.width || !mapSize?.height || !map) return;
-
-	wglMap.initMap(map, mapSize.width, mapSize.height);
-}, { strong: true }).on([AppState.wglMap, AppState.mapSize, AppState.map]);
+const TRANSFORM_MAP = {
+	'N': 0x00,
+	'W': 0x01,
+	'S': 0x02,
+	'E': 0x03,
+	'!N': 0x04,
+	'!E': 0x05,
+	'!S': 0x06,
+	'!W': 0x07,
+} as const;
