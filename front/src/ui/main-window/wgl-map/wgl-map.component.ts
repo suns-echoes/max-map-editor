@@ -35,6 +35,48 @@ export function WGLMap() {
 
 	const TILE_SIZE = 64;
 
+	/**
+	 * Parse a tile ID with optional transformation flags.
+	 * Format: "TILEID" or "TILEID:FLAGS"
+	 * Flags: ! = flip horizontal, E = rot 90, S = rot 180, W = rot 270
+	 * Returns [baseTileId, transformValue]
+	 */
+	function parseTileId(tileIdWithFlags: string): [string, number] {
+		const colonIdx = tileIdWithFlags.indexOf(':');
+		if (colonIdx === -1) {
+			return [tileIdWithFlags, 0];
+		}
+
+		const baseTileId = tileIdWithFlags.substring(0, colonIdx);
+		const flags = tileIdWithFlags.substring(colonIdx + 1);
+
+		let transform = 0;
+
+		// Parse rotation (E=90, S=180, W=270)
+		if (flags.includes('E')) {
+			transform = 1; // 90 degrees
+		} else if (flags.includes('S')) {
+			transform = 2; // 180 degrees
+		} else if (flags.includes('W')) {
+			transform = 3; // 270 degrees
+		}
+
+		// Parse flip (! = horizontal flip)
+		if (flags.includes('!')) {
+			transform |= 4; // Add flip flag
+		}
+
+		return [baseTileId, transform];
+	}
+
+	/**
+	 * Draw a single tile with transformation parsing
+	 */
+	function drawTile(tileIdWithFlags: string, x: number, y: number) {
+		const [baseTileId, transform] = parseTileId(tileIdWithFlags);
+		renderer!.drawTileById(baseTileId, x, y, TILE_SIZE, transform);
+	}
+
 	function render() {
 		if (!renderer) return;
 		renderer.clear(0.1, 0.0, 0.1, 1.0); // dark magenta
@@ -60,13 +102,18 @@ export function WGLMap() {
 					const cell = mapRow[col];
 					if (!cell) continue;
 
-					// Get the tile ID (handle both string and array format)
-					const tileId = Array.isArray(cell) ? cell[0] : cell;
-
 					const x = col * TILE_SIZE + panX;
 					const y = row * TILE_SIZE + panY;
 
-					renderer.drawTileById(tileId, x, y, TILE_SIZE);
+					// Handle both string (single tile) and array (multiple layers)
+					if (Array.isArray(cell)) {
+						// Draw all layers from bottom to top
+						for (const tileId of cell) {
+							drawTile(tileId, x, y);
+						}
+					} else {
+						drawTile(cell, x, y);
+					}
 				}
 			}
 		} else {

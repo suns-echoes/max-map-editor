@@ -26,6 +26,7 @@ export class WglRenderer {
 	private uTileProjection: WebGLUniformLocation;
 	private uTileTexture: WebGLUniformLocation;
 	private uPaletteTexture: WebGLUniformLocation;
+	private uTransform: WebGLUniformLocation;
 
 	// Textures
 	private paletteTexture: WebGLTexture | null = null;
@@ -58,6 +59,7 @@ export class WglRenderer {
 		this.uTileProjection = gl.getUniformLocation(this.tileProgram, 'uProjection')!;
 		this.uTileTexture = gl.getUniformLocation(this.tileProgram, 'uTileTexture')!;
 		this.uPaletteTexture = gl.getUniformLocation(this.tileProgram, 'uPaletteTexture')!;
+		this.uTransform = gl.getUniformLocation(this.tileProgram, 'uTransform')!;
 
 		this.tileVAO = gl.createVertexArray()!;
 		gl.bindVertexArray(this.tileVAO);
@@ -162,8 +164,13 @@ export class WglRenderer {
 
 	/**
 	 * Draw a tile by ID at pixel coordinates
+	 * @param tileId - Base tile ID (without transformation flags)
+	 * @param x - X position in pixels
+	 * @param y - Y position in pixels
+	 * @param size - Tile size in pixels
+	 * @param transform - Transformation flags: 0=none, 1=rot90(E), 2=rot180(S), 3=rot270(W), +4=flipH
 	 */
-	drawTileById(tileId: string, x: number, y: number, size: number = 64): boolean {
+	drawTileById(tileId: string, x: number, y: number, size: number = 64, transform: number = 0): boolean {
 		const texture = this.tileTextureCache.get(tileId);
 		if (!texture || !this.paletteTexture) {
 			return false;
@@ -176,6 +183,9 @@ export class WglRenderer {
 
 		// Update projection
 		gl.uniformMatrix4fv(this.uTileProjection, false, this.projectionMatrix);
+
+		// Set transformation
+		gl.uniform1i(this.uTransform, transform);
 
 		// Bind textures
 		gl.activeTexture(gl.TEXTURE0);
