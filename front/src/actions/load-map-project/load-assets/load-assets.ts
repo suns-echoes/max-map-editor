@@ -26,6 +26,16 @@ export async function loadAssets(mapProject: MapProject) {
 }
 
 
+// Effect to call loadMap when mapProject and tiles are ready (independent of wglMap)
+new Effect(function () {
+	const mapProject = AppState.mapProject.value;
+	const tiles = AppState.tiles.value;
+	if (!mapProject || !tiles) return;
+	loadMap(mapProject, tiles);
+}, { strong: true }).on([AppState.mapProject, AppState.tiles]);
+
+
+// Effect to initialize wglMap when available (for future use)
 new Effect(function () {
 	const wglMap = AppState.wglMap.value;
 	const mapProject = AppState.mapProject.value;
@@ -33,7 +43,6 @@ new Effect(function () {
 	if (!wglMap || !mapProject || !tiles) return;
 	const [tileset, layers] = arrangeTilesData(tiles, wglMap.getTileCapability());
 	wglMap.initTilesets(tileset, layers);
-	loadMap(mapProject, tiles);
 }, { strong: true }).on([AppState.wglMap, AppState.mapProject, AppState.tiles]);
 
 

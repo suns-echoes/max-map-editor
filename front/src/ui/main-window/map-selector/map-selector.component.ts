@@ -19,7 +19,7 @@ function waitForMapSize(): Promise<Size> {
 				effect.dispose();
 				resolve(size);
 			}
-		});
+		}, { strong: true });
 	});
 }
 
