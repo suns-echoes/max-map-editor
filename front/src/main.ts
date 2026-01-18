@@ -43,5 +43,5 @@ try {
 
 	await main();
 } catch(e) {
-	xlog.error('Fatal error during application startup:', e);
+	xlog.error('Fatal error during application startup:', String(e));
 }

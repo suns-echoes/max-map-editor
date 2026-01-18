@@ -4,6 +4,8 @@ import { debounce } from '^lib/flow-control/debounce.ts';
 import { fs } from '^lib/fs/fs.ts';
 import { deepAssignEqual } from '^lib/object-utils/deep-assign-equal.ts';
 
+type PartialDeep<T> = T extends object ? { [P in keyof T]?: PartialDeep<T[P]> } : T;
+
 
 interface SettingsFileData {
 	debug: {

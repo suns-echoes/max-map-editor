@@ -26,6 +26,6 @@ export async function showSetupScreen() {
 			if (first) { first = false; return; }
 			effect.dispose();
 			resolve();
-		});
+		}, { strong: true });
 	});
 }
