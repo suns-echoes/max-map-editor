@@ -153,7 +153,19 @@ export function WGLMap() {
 		// Use ResizeObserver to always match parent dimensions
 		const resizeObserver = new ResizeObserver(() => {
 			if (renderer) {
+				const canvas = renderer.getCanvas();
+				const oldWidth = canvas.width;
+				const oldHeight = canvas.height;
+
 				renderer.resize();
+
+				const newWidth = canvas.width;
+				const newHeight = canvas.height;
+
+				// Adjust pan to keep the same map center visible
+				panX += (newWidth - oldWidth) / 2;
+				panY += (newHeight - oldHeight) / 2;
+
 				render();
 			}
 		});
@@ -279,7 +291,7 @@ export function WGLMap() {
 		const tiles = AppState.tiles.value;
 		const mapProject = AppState.mapProject.value;
 
-		if (renderer && palette && tiles) {
+		if (renderer && palette && tiles && mapProject) {
 			// Upload palette
 			renderer.uploadPalette(palette);
 
@@ -287,6 +299,14 @@ export function WGLMap() {
 			renderer.uploadAllTiles(tiles);
 			tilesUploaded = true;
 			currentMap = mapProject;
+
+			// Center the map in the viewport
+			const canvas = renderer.getCanvas();
+			const mapPixelWidth = mapProject.width * TILE_SIZE;
+			const mapPixelHeight = mapProject.height * TILE_SIZE;
+			panX = (canvas.width - mapPixelWidth) / 2;
+			panY = (canvas.height - mapPixelHeight) / 2;
+
 			render();
 		}
 	}).on([AppState.palette, AppState.tiles, AppState.mapProject]);
