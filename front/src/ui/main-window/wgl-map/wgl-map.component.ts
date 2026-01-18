@@ -214,6 +214,20 @@ export function WGLMap() {
 				lastX = e.clientX;
 				lastY = e.clientY;
 				canvasElement.style.cursor = 'grabbing';
+			} else if (e.button === 1) { // Middle mouse button - reset zoom to 1:1
+				e.preventDefault();
+
+				// Get mouse position relative to canvas
+				const rect = canvasElement.getBoundingClientRect();
+				const mouseX = e.clientX - rect.left;
+				const mouseY = e.clientY - rect.top;
+
+				// Adjust pan to zoom towards mouse position
+				const scale = 1.0 / zoom;
+				panX = mouseX - (mouseX - panX) * scale;
+				panY = mouseY - (mouseY - panY) * scale;
+				zoom = 1.0;
+				render();
 			}
 		});
 
