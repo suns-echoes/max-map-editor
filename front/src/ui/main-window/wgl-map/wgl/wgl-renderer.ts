@@ -39,6 +39,9 @@ export class WglRenderer {
 
 	private projectionMatrix = new Float32Array(16);
 
+	// Reusable vertex buffer for quads (2 triangles = 6 vertices * 2 coords = 12 floats)
+	private readonly quadVertices = new Float32Array(12);
+
 	constructor(canvas: HTMLCanvasElement) {
 		const gl = canvas.getContext('webgl2');
 		if (!gl) {
@@ -48,34 +51,62 @@ export class WglRenderer {
 
 		// === Simple color program ===
 		this.simpleProgram = this.createProgram(simpleVS, simpleFS);
-		this.uSimpleProjection = gl.getUniformLocation(this.simpleProgram, 'uProjection')!;
-		this.uSimpleColor = gl.getUniformLocation(this.simpleProgram, 'uColor')!;
 
-		this.simpleVAO = gl.createVertexArray()!;
+		const uSimpleProjection = gl.getUniformLocation(this.simpleProgram, 'uProjection');
+		const uSimpleColor = gl.getUniformLocation(this.simpleProgram, 'uColor');
+		if (!uSimpleProjection || !uSimpleColor) {
+			throw new Error('Failed to get simple program uniform locations');
+		}
+		this.uSimpleProjection = uSimpleProjection;
+		this.uSimpleColor = uSimpleColor;
+
+		const simpleVAO = gl.createVertexArray();
+		const simplePositionBuffer = gl.createBuffer();
+		if (!simpleVAO || !simplePositionBuffer) {
+			throw new Error('Failed to create simple program WebGL resources');
+		}
+		this.simpleVAO = simpleVAO;
+		this.simplePositionBuffer = simplePositionBuffer;
+
 		gl.bindVertexArray(this.simpleVAO);
-		this.simplePositionBuffer = gl.createBuffer()!;
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.simplePositionBuffer);
 		gl.enableVertexAttribArray(0);
 		gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
 		// === Tile program ===
 		this.tileProgram = this.createProgram(tileVS, tileFS);
-		this.uTileProjection = gl.getUniformLocation(this.tileProgram, 'uProjection')!;
-		this.uTileTexture = gl.getUniformLocation(this.tileProgram, 'uTileTexture')!;
-		this.uPaletteTexture = gl.getUniformLocation(this.tileProgram, 'uPaletteTexture')!;
-		this.uTransform = gl.getUniformLocation(this.tileProgram, 'uTransform')!;
 
-		this.tileVAO = gl.createVertexArray()!;
+		const uTileProjection = gl.getUniformLocation(this.tileProgram, 'uProjection');
+		const uTileTexture = gl.getUniformLocation(this.tileProgram, 'uTileTexture');
+		const uPaletteTexture = gl.getUniformLocation(this.tileProgram, 'uPaletteTexture');
+		const uTransform = gl.getUniformLocation(this.tileProgram, 'uTransform');
+		if (!uTileProjection || !uTileTexture || !uPaletteTexture || !uTransform) {
+			throw new Error('Failed to get tile program uniform locations');
+		}
+		this.uTileProjection = uTileProjection;
+		this.uTileTexture = uTileTexture;
+		this.uPaletteTexture = uPaletteTexture;
+		this.uTransform = uTransform;
+
+		const tileVAO = gl.createVertexArray();
+		const tilePositionBuffer = gl.createBuffer();
+		const tileTexCoordBuffer = gl.createBuffer();
+		if (!tileVAO || !tilePositionBuffer || !tileTexCoordBuffer) {
+			throw new Error('Failed to create tile program WebGL resources');
+		}
+		this.tileVAO = tileVAO;
+		this.tilePositionBuffer = tilePositionBuffer;
+		this.tileTexCoordBuffer = tileTexCoordBuffer;
+
 		gl.bindVertexArray(this.tileVAO);
 
 		// Position buffer (location 0)
-		this.tilePositionBuffer = gl.createBuffer()!;
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.tilePositionBuffer);
 		gl.enableVertexAttribArray(0);
 		gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
 		// TexCoord buffer (location 1)
-		this.tileTexCoordBuffer = gl.createBuffer()!;
+		gl.bindBuffer(gl.ARRAY_BUFFER, this.tileTexCoordBuffer);
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.tileTexCoordBuffer);
 		gl.enableVertexAttribArray(1);
 		gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
@@ -93,8 +124,6 @@ export class WglRenderer {
 
 		// Initial setup
 		this.resize();
-
-		console.log('WglRenderer initialized');
 	}
 
 	/**
@@ -118,8 +147,6 @@ export class WglRenderer {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-		console.log('Palette uploaded');
 	}
 
 	/**
@@ -213,8 +240,6 @@ export class WglRenderer {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-		console.log('Tile uploaded');
 	}
 
 	/**
@@ -240,8 +265,6 @@ export class WglRenderer {
 			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 			this.tileTextureCache.set(id, texture);
 		}
-
-		console.log(`Uploaded ${tiles.size} tiles to GPU`);
 	}
 
 	/**
@@ -284,17 +307,16 @@ export class WglRenderer {
 		const x2 = x + size;
 		const y2 = y + size;
 
-		const vertices = new Float32Array([
-			x1, y1,
-			x2, y1,
-			x1, y2,
-			x2, y1,
-			x2, y2,
-			x1, y2,
-		]);
+		const v = this.quadVertices;
+		v[0] = x1; v[1] = y1;
+		v[2] = x2; v[3] = y1;
+		v[4] = x1; v[5] = y2;
+		v[6] = x2; v[7] = y1;
+		v[8] = x2; v[9] = y2;
+		v[10] = x1; v[11] = y2;
 
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.tilePositionBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+		gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
 
 		gl.drawArrays(gl.TRIANGLES, 0, 6);
 		return true;
@@ -332,17 +354,16 @@ export class WglRenderer {
 		const x2 = x + size;
 		const y2 = y + size;
 
-		const vertices = new Float32Array([
-			x1, y1,
-			x2, y1,
-			x1, y2,
-			x2, y1,
-			x2, y2,
-			x1, y2,
-		]);
+		const v = this.quadVertices;
+		v[0] = x1; v[1] = y1;
+		v[2] = x2; v[3] = y1;
+		v[4] = x1; v[5] = y2;
+		v[6] = x2; v[7] = y1;
+		v[8] = x2; v[9] = y2;
+		v[10] = x1; v[11] = y2;
 
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.tilePositionBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+		gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
 
 		gl.drawArrays(gl.TRIANGLES, 0, 6);
 	}
@@ -370,8 +391,6 @@ export class WglRenderer {
 			canvas.height, 0,   // bottom, top (flipped for Y-down)
 			-1, 1               // near, far
 		);
-
-		console.log(`WglRenderer resized: ${canvas.width}x${canvas.height}`);
 	}
 
 	/**
@@ -437,18 +456,17 @@ export class WglRenderer {
 		gl.bindVertexArray(this.simpleVAO);
 		gl.uniformMatrix4fv(this.uSimpleProjection, false, this.projectionMatrix);
 
-		// Two triangles forming a quad
-		const vertices = new Float32Array([
-			x1, y1,  // top-left
-			x2, y1,  // top-right
-			x1, y2,  // bottom-left
-			x2, y1,  // top-right
-			x2, y2,  // bottom-right
-			x1, y2,  // bottom-left
-		]);
+		// Reuse quad vertex buffer
+		const v = this.quadVertices;
+		v[0] = x1; v[1] = y1;
+		v[2] = x2; v[3] = y1;
+		v[4] = x1; v[5] = y2;
+		v[6] = x2; v[7] = y1;
+		v[8] = x2; v[9] = y2;
+		v[10] = x1; v[11] = y2;
 
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.simplePositionBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+		gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
 		gl.drawArrays(gl.TRIANGLES, 0, 6);
 	}
 
@@ -511,5 +529,45 @@ export class WglRenderer {
 		}
 
 		return shader;
+	}
+
+	/**
+	 * Dispose all WebGL resources
+	 */
+	dispose() {
+		const gl = this.gl;
+
+		// Delete tile texture cache
+		for (const texture of this.tileTextureCache.values()) {
+			gl.deleteTexture(texture);
+		}
+		this.tileTextureCache.clear();
+
+		// Delete individual textures
+		if (this.tileTexture) {
+			gl.deleteTexture(this.tileTexture);
+			this.tileTexture = null;
+		}
+		if (this.paletteTexture) {
+			gl.deleteTexture(this.paletteTexture);
+			this.paletteTexture = null;
+		}
+
+		// Delete buffers
+		gl.deleteBuffer(this.simplePositionBuffer);
+		gl.deleteBuffer(this.tilePositionBuffer);
+		gl.deleteBuffer(this.tileTexCoordBuffer);
+
+		// Delete VAOs
+		gl.deleteVertexArray(this.simpleVAO);
+		gl.deleteVertexArray(this.tileVAO);
+
+		// Delete programs
+		gl.deleteProgram(this.simpleProgram);
+		gl.deleteProgram(this.tileProgram);
+
+		// Clear palette data
+		this.basePalette = null;
+		this.workingPalette = null;
 	}
 }

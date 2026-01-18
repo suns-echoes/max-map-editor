@@ -8,19 +8,57 @@ import { WglRenderer } from './wgl/wgl-renderer.ts';
 
 import style from './wgl-map.module.css';
 
+// Default map to load on startup
+const DEFAULT_MAP_PATH = 'resources/maps/GREEN_1.json';
+
+// Color cycling animation configuration
+// Each range defines palette indices that cycle for animated effects (water, lava, etc.)
+const COLOR_CYCLE_RANGES = [
+	{ start: 9, end: 12, direction: 0, fps: 9 },
+	{ start: 13, end: 16, direction: 1, fps: 6 },
+	{ start: 17, end: 20, direction: 1, fps: 9 },
+	{ start: 21, end: 24, direction: 1, fps: 6 },
+	{ start: 25, end: 30, direction: 1, fps: 2 },
+	{ start: 31, end: 31, direction: 1, fps: 6 },
+	{ start: 96, end: 102, direction: 1, fps: 8 },
+	{ start: 103, end: 109, direction: 1, fps: 8 },
+	{ start: 110, end: 116, direction: 1, fps: 10 },
+	{ start: 117, end: 122, direction: 1, fps: 6 },
+	{ start: 123, end: 127, direction: 1, fps: 6 },
+] as const;
+
+// Rendering constants
+const TILE_SIZE = 64;
+const BACKGROUND_COLOR = { r: 0.1, g: 0.0, b: 0.1, a: 1.0 }; // dark magenta
+
+// Zoom constants
+const MIN_ZOOM = 0.05;  // Will be dynamically adjusted to fit whole map
+const MAX_ZOOM = 2.0;   // 2:1 zoom
+const ZOOM_FACTOR_IN = 1.1;
+const ZOOM_FACTOR_OUT = 0.9;
+
+// Pan margin as fraction of viewport (0.5 = 50%)
+const PAN_MARGIN_FRACTION = 0.5;
+
+// Cursor animation
+const CURSOR_BLINK_PERIOD = 1500; // ms for full blink cycle
+const CURSOR_OPACITY_MIN = 0.3;
+const CURSOR_OPACITY_MAX = 0.7;
+const CURSOR_OPACITY_THRESHOLD = 0.01; // minimum change to trigger redraw
+
 
 export function WGLMap() {
 	printDebugInfo('UI::WGLMap');
 
 	const canvas = Canvas('map-canvas');
-	const debugInfo = Pre().class(style.debugInfo);
+	// Debug panel only shown in development mode
+	const debugInfo = import.meta.env.DEV ? Pre().class(style.debugInfo) : null;
 
 	const component = (
 		Section('wgl-map').class(style.wglMap).nodes([
-			Div().class(style.canvasContainer).nodes([
-				canvas,
-				debugInfo,
-			]),
+			Div().class(style.canvasContainer).nodes(
+				[canvas, debugInfo].filter(Boolean) as [typeof canvas, ...typeof canvas[]]
+			),
 		])
 	);
 
@@ -35,16 +73,11 @@ export function WGLMap() {
 
 	// Zoom state (1.0 = 100%, 2.0 = 200%, 0.5 = 50%)
 	let zoom = 1.0;
-	const MIN_ZOOM = 0.05; // Will be dynamically adjusted to fit whole map
-	const MAX_ZOOM = 2.0;  // 2:1 zoom
 
 	// Cursor state (tile coordinates)
 	let cursorCol = -1;
 	let cursorRow = -1;
-	let cursorOpacity = 0.5;
-	const CURSOR_BLINK_PERIOD = 1500; // ms for full blink cycle
-
-	const TILE_SIZE = 64;
+	let cursorOpacity = (CURSOR_OPACITY_MIN + CURSOR_OPACITY_MAX) / 2;
 
 	/**
 	 * Parse a tile ID with optional transformation flags.
@@ -110,8 +143,8 @@ export function WGLMap() {
 		const canvas = renderer.getCanvas();
 		const mapPixelWidth = currentMap.width * TILE_SIZE * zoom;
 		const mapPixelHeight = currentMap.height * TILE_SIZE * zoom;
-		const marginX = canvas.width * 0.5;
-		const marginY = canvas.height * 0.5;
+		const marginX = canvas.width * PAN_MARGIN_FRACTION;
+		const marginY = canvas.height * PAN_MARGIN_FRACTION;
 
 		// Clamp X: map right edge at least at marginX, map left edge at most at marginX
 		const minPanX = marginX - mapPixelWidth;
@@ -126,7 +159,7 @@ export function WGLMap() {
 
 	function render() {
 		if (!renderer) return;
-		renderer.clear(0.1, 0.0, 0.1, 1.0); // dark magenta
+		renderer.clear(BACKGROUND_COLOR.r, BACKGROUND_COLOR.g, BACKGROUND_COLOR.b, BACKGROUND_COLOR.a);
 
 		if (tilesUploaded && currentMap) {
 			// Get canvas dimensions for culling
@@ -200,7 +233,11 @@ export function WGLMap() {
 	// Initialize after a small delay to ensure canvas is in DOM
 	setTimeout(() => {
 		const canvasElement = canvas.element as HTMLCanvasElement;
-		const container = canvasElement.parentElement!;
+		const container = canvasElement.parentElement;
+		if (!container) {
+			console.error('WGLMap: Canvas has no parent element');
+			return;
+		}
 		renderer = new WglRenderer(canvasElement);
 
 		// Use ResizeObserver to always match parent dimensions
@@ -257,7 +294,8 @@ export function WGLMap() {
 		});
 
 		// Use window events for mousemove/mouseup so panning works outside canvas
-		window.addEventListener('mousemove', (e) => {
+		// Store references for cleanup
+		const handleMouseMove = (e: MouseEvent) => {
 			if (isPanning) {
 				const dx = e.clientX - lastX;
 				const dy = e.clientY - lastY;
@@ -269,14 +307,17 @@ export function WGLMap() {
 				clampPan();
 				render();
 			}
-		});
+		};
 
-		window.addEventListener('mouseup', (e) => {
+		const handleMouseUp = (e: MouseEvent) => {
 			if (e.button === 2 && isPanning) {
 				isPanning = false;
 				canvasElement.style.cursor = 'default';
 			}
-		});
+		};
+
+		window.addEventListener('mousemove', handleMouseMove);
+		window.addEventListener('mouseup', handleMouseUp);
 
 		// Mouse wheel for zooming
 		canvasElement.addEventListener('wheel', (e) => {
@@ -288,7 +329,7 @@ export function WGLMap() {
 			const mouseY = e.clientY - rect.top;
 
 			// Calculate zoom factor
-			const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+			const zoomFactor = e.deltaY > 0 ? ZOOM_FACTOR_OUT : ZOOM_FACTOR_IN;
 			const newZoom = Math.max(getMinZoom(), Math.min(MAX_ZOOM, zoom * zoomFactor));
 
 			if (newZoom !== zoom) {
@@ -329,24 +370,8 @@ export function WGLMap() {
 			render();
 		});
 
-		// Color cycling animation data
-		// Format: { startIndex, endIndex, direction, intervalMs }
-		const colorCycleData = [
-			{ start: 9, end: 12, direction: 0, fps: 9 },
-			{ start: 13, end: 16, direction: 1, fps: 6 },
-			{ start: 17, end: 20, direction: 1, fps: 9 },
-			{ start: 21, end: 24, direction: 1, fps: 6 },
-			{ start: 25, end: 30, direction: 1, fps: 2 },
-			{ start: 31, end: 31, direction: 1, fps: 6 },
-			{ start: 96, end: 102, direction: 1, fps: 8 },
-			{ start: 103, end: 109, direction: 1, fps: 8 },
-			{ start: 110, end: 116, direction: 1, fps: 10 },
-			{ start: 117, end: 122, direction: 1, fps: 6 },
-			{ start: 123, end: 127, direction: 1, fps: 6 },
-		];
-
 		// Track last cycle time for each color range
-		const lastCycleTime = colorCycleData.map(() => 0);
+		const lastCycleTime = COLOR_CYCLE_RANGES.map(() => 0);
 
 		// Animation loop for color cycling and cursor blinking
 		let animationFrameId: number;
@@ -359,8 +384,8 @@ export function WGLMap() {
 			let needsUpdate = false;
 
 			// Update color cycling
-			for (let i = 0; i < colorCycleData.length; i++) {
-				const cycle = colorCycleData[i];
+			for (let i = 0; i < COLOR_CYCLE_RANGES.length; i++) {
+				const cycle = COLOR_CYCLE_RANGES[i];
 				const intervalMs = 1000 / cycle.fps;
 
 				if (timestamp - lastCycleTime[i] >= intervalMs) {
@@ -370,9 +395,11 @@ export function WGLMap() {
 				}
 			}
 
-			// Update cursor opacity (smooth fade between 0.3 and 0.7)
-			const newCursorOpacity = 0.5 + 0.2 * Math.sin(timestamp / CURSOR_BLINK_PERIOD * Math.PI * 2);
-			if (Math.abs(newCursorOpacity - cursorOpacity) > 0.01) {
+			// Update cursor opacity (smooth fade between min and max)
+			const opacityMid = (CURSOR_OPACITY_MIN + CURSOR_OPACITY_MAX) / 2;
+			const opacityRange = (CURSOR_OPACITY_MAX - CURSOR_OPACITY_MIN) / 2;
+			const newCursorOpacity = opacityMid + opacityRange * Math.sin(timestamp / CURSOR_BLINK_PERIOD * Math.PI * 2);
+			if (Math.abs(newCursorOpacity - cursorOpacity) > CURSOR_OPACITY_THRESHOLD) {
 				cursorOpacity = newCursorOpacity;
 				needsUpdate = true;
 			}
@@ -388,11 +415,30 @@ export function WGLMap() {
 		// Start the animation loop
 		animationFrameId = requestAnimationFrame(animateColorCycling);
 
+		// Register cleanup for all resources
+		component.cleanup(() => {
+			// Cancel animation frame
+			cancelAnimationFrame(animationFrameId);
+
+			// Remove window event listeners
+			window.removeEventListener('mousemove', handleMouseMove);
+			window.removeEventListener('mouseup', handleMouseUp);
+
+			// Disconnect resize observer
+			resizeObserver.disconnect();
+
+			// Dispose WebGL resources
+			if (renderer) {
+				renderer.dispose();
+				renderer = null;
+			}
+		});
+
 		render();
 	}, 0);
 
 	// Upload palette and tiles when they become available
-	new Effect(() => {
+	const mapDataEffect = new Effect(() => {
 		const palette = AppState.palette.value;
 		const tiles = AppState.tiles.value;
 		const mapProject = AppState.mapProject.value;
@@ -418,55 +464,70 @@ export function WGLMap() {
 		}
 	}).on([AppState.palette, AppState.tiles, AppState.mapProject]);
 
+	// Register cleanup for Effects
+	component.cleanup(() => {
+		mapDataEffect.dispose();
+	});
+
 	// Load map project
 	(async () => {
-		await loadMapProject(await resolveTextResource('resources/maps/GREEN_1.json'));
+		try {
+			await loadMapProject(await resolveTextResource(DEFAULT_MAP_PATH));
+		} catch (error) {
+			console.error('Failed to load map project:', error);
+		}
 	})();
 
-	// Update debug info when state changes
-	new Effect(() => {
-		const mapProject = AppState.mapProject.value;
-		const tiles = AppState.tiles.value;
+	// Update debug info when state changes (dev mode only)
+	if (import.meta.env.DEV && debugInfo) {
+		const debugEffect = new Effect(() => {
+			const mapProject = AppState.mapProject.value;
+			const tiles = AppState.tiles.value;
 
-		let info = '=== MAP DEBUG INFO ===\n\n';
+			let info = '=== MAP DEBUG INFO ===\n\n';
 
-		if (mapProject) {
-			info += `Map: ${mapProject.name}\n`;
-			info += `Size: ${mapProject.width} x ${mapProject.height}\n`;
-			info += `Description: ${mapProject.description?.substring(0, 100)}...\n\n`;
+			if (mapProject) {
+				info += `Map: ${mapProject.name}\n`;
+				info += `Size: ${mapProject.width} x ${mapProject.height}\n`;
+				info += `Description: ${mapProject.description?.substring(0, 100)}...\n\n`;
 
-			info += `Tilesets used:\n`;
-			for (const asset of mapProject.use) {
-				info += `  - ${asset.name} (tileset: ${asset.tileset}, palette: ${asset.palette})\n`;
-			}
-			info += '\n';
-		} else {
-			info += 'Map project: NOT LOADED\n\n';
-		}
-
-		if (tiles) {
-			info += `Tiles loaded: ${tiles.size}\n\n`;
-
-			let totalBytes = 0;
-			const tileIds: string[] = [];
-
-			for (const [id, tile] of tiles) {
-				tileIds.push(id);
-				totalBytes += tile.data.byteLength;
+				info += `Tilesets used:\n`;
+				for (const asset of mapProject.use) {
+					info += `  - ${asset.name} (tileset: ${asset.tileset}, palette: ${asset.palette})\n`;
+				}
+				info += '\n';
+			} else {
+				info += 'Map project: NOT LOADED\n\n';
 			}
 
-			info += `Total tile data: ${(totalBytes / 1024).toFixed(2)} KB\n\n`;
-			info += `Tile IDs (first 50):\n`;
-			info += tileIds.slice(0, 50).join(', ');
-			if (tileIds.length > 50) {
-				info += `\n... and ${tileIds.length - 50} more`;
-			}
-		} else {
-			info += 'Tiles: NOT LOADED\n';
-		}
+			if (tiles) {
+				info += `Tiles loaded: ${tiles.size}\n\n`;
 
-		debugInfo.text(info);
-	}).on([AppState.mapProject, AppState.tiles]);
+				let totalBytes = 0;
+				const tileIds: string[] = [];
+
+				for (const [id, tile] of tiles) {
+					tileIds.push(id);
+					totalBytes += tile.data.byteLength;
+				}
+
+				info += `Total tile data: ${(totalBytes / 1024).toFixed(2)} KB\n\n`;
+				info += `Tile IDs (first 50):\n`;
+				info += tileIds.slice(0, 50).join(', ');
+				if (tileIds.length > 50) {
+					info += `\n... and ${tileIds.length - 50} more`;
+				}
+			} else {
+				info += 'Tiles: NOT LOADED\n';
+			}
+
+			debugInfo.text(info);
+		}).on([AppState.mapProject, AppState.tiles]);
+
+		component.cleanup(() => {
+			debugEffect.dispose();
+		});
+	}
 
 	return component;
 }
