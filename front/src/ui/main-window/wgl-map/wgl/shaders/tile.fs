@@ -41,14 +41,14 @@ void main() {
 	// Get palette index from tile texture (0-255)
 	uint paletteIndex = texture(uTileTexture, tc).r;
 
-	// Look up color from palette
-	// Palette is 256x1, so we sample at (index/255, 0.5)
-	vec4 color = texture(uPaletteTexture, vec2(float(paletteIndex) / 255.0, 0.5));
-
 	// Index 0 is transparent
 	if (paletteIndex == 0u) {
 		discard;
 	}
+
+	// Look up color from palette
+	// Palette is 256x1, so we sample at (index + 0.5) / 256.0 to center on texel
+	vec4 color = texture(uPaletteTexture, vec2((float(paletteIndex) + 0.5) / 256.0, 0.5));
 
 	outColor = color;
 }
