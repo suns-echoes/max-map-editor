@@ -219,6 +219,57 @@ export function WGLMap() {
 			}
 		}, { passive: false });
 
+		// Color cycling animation data
+		// Format: { startIndex, endIndex, direction, intervalMs }
+		const colorCycleData = [
+			{ start: 9, end: 12, direction: 0, fps: 9 },
+			{ start: 13, end: 16, direction: 1, fps: 6 },
+			{ start: 17, end: 20, direction: 1, fps: 9 },
+			{ start: 21, end: 24, direction: 1, fps: 6 },
+			{ start: 25, end: 30, direction: 1, fps: 2 },
+			{ start: 31, end: 31, direction: 1, fps: 6 },
+			{ start: 96, end: 102, direction: 1, fps: 8 },
+			{ start: 103, end: 109, direction: 1, fps: 8 },
+			{ start: 110, end: 116, direction: 1, fps: 10 },
+			{ start: 117, end: 122, direction: 1, fps: 6 },
+			{ start: 123, end: 127, direction: 1, fps: 6 },
+		];
+
+		// Track last cycle time for each color range
+		const lastCycleTime = colorCycleData.map(() => 0);
+
+		// Animation loop for color cycling
+		let animationFrameId: number;
+		function animateColorCycling(timestamp: number) {
+			if (!renderer) {
+				animationFrameId = requestAnimationFrame(animateColorCycling);
+				return;
+			}
+
+			let needsUpdate = false;
+
+			for (let i = 0; i < colorCycleData.length; i++) {
+				const cycle = colorCycleData[i];
+				const intervalMs = 1000 / cycle.fps;
+
+				if (timestamp - lastCycleTime[i] >= intervalMs) {
+					renderer.cycleColors(cycle.start, cycle.end, cycle.direction);
+					lastCycleTime[i] = timestamp;
+					needsUpdate = true;
+				}
+			}
+
+			if (needsUpdate) {
+				renderer.updatePaletteTexture();
+				render();
+			}
+
+			animationFrameId = requestAnimationFrame(animateColorCycling);
+		}
+
+		// Start the animation loop
+		animationFrameId = requestAnimationFrame(animateColorCycling);
+
 		render();
 	}, 0);
 

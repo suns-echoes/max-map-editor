@@ -33,6 +33,10 @@ export class WglRenderer {
 	private tileTexture: WebGLTexture | null = null;
 	private tileTextureCache = new Map<string, WebGLTexture>();
 
+	// Palette data for color cycling
+	private basePalette: Uint8Array | null = null;
+	private workingPalette: Uint8Array | null = null;
+
 	private projectionMatrix = new Float32Array(16);
 
 	constructor(canvas: HTMLCanvasElement) {
@@ -99,6 +103,10 @@ export class WglRenderer {
 	uploadPalette(paletteData: Uint8Array) {
 		const gl = this.gl;
 
+		// Store base palette for color cycling
+		this.basePalette = new Uint8Array(paletteData);
+		this.workingPalette = new Uint8Array(paletteData);
+
 		if (this.paletteTexture) {
 			gl.deleteTexture(this.paletteTexture);
 		}
@@ -112,6 +120,80 @@ export class WglRenderer {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
 		console.log('Palette uploaded');
+	}
+
+	/**
+	 * Cycle colors in a palette range
+	 * @param startIndex - First palette index in the range
+	 * @param endIndex - Last palette index in the range
+	 * @param direction - 0 = backward (shift colors down), 1 = forward (shift colors up)
+	 */
+	cycleColors(startIndex: number, endIndex: number, direction: number) {
+		if (!this.basePalette || !this.workingPalette) return;
+
+		const rangeSize = endIndex - startIndex + 1;
+		if (rangeSize < 2) return;
+
+		if (direction === 1) {
+			// Forward: shift colors up (index N gets color from index N-1, first gets last)
+			// Save the last color
+			const lastR = this.workingPalette[(endIndex) * 4];
+			const lastG = this.workingPalette[(endIndex) * 4 + 1];
+			const lastB = this.workingPalette[(endIndex) * 4 + 2];
+			const lastA = this.workingPalette[(endIndex) * 4 + 3];
+
+			// Shift colors up
+			for (let i = endIndex; i > startIndex; i--) {
+				const dstIdx = i * 4;
+				const srcIdx = (i - 1) * 4;
+				this.workingPalette[dstIdx] = this.workingPalette[srcIdx];
+				this.workingPalette[dstIdx + 1] = this.workingPalette[srcIdx + 1];
+				this.workingPalette[dstIdx + 2] = this.workingPalette[srcIdx + 2];
+				this.workingPalette[dstIdx + 3] = this.workingPalette[srcIdx + 3];
+			}
+
+			// First gets last
+			const firstIdx = startIndex * 4;
+			this.workingPalette[firstIdx] = lastR;
+			this.workingPalette[firstIdx + 1] = lastG;
+			this.workingPalette[firstIdx + 2] = lastB;
+			this.workingPalette[firstIdx + 3] = lastA;
+		} else {
+			// Backward: shift colors down (index N gets color from index N+1, last gets first)
+			// Save the first color
+			const firstR = this.workingPalette[(startIndex) * 4];
+			const firstG = this.workingPalette[(startIndex) * 4 + 1];
+			const firstB = this.workingPalette[(startIndex) * 4 + 2];
+			const firstA = this.workingPalette[(startIndex) * 4 + 3];
+
+			// Shift colors down
+			for (let i = startIndex; i < endIndex; i++) {
+				const dstIdx = i * 4;
+				const srcIdx = (i + 1) * 4;
+				this.workingPalette[dstIdx] = this.workingPalette[srcIdx];
+				this.workingPalette[dstIdx + 1] = this.workingPalette[srcIdx + 1];
+				this.workingPalette[dstIdx + 2] = this.workingPalette[srcIdx + 2];
+				this.workingPalette[dstIdx + 3] = this.workingPalette[srcIdx + 3];
+			}
+
+			// Last gets first
+			const lastIdx = endIndex * 4;
+			this.workingPalette[lastIdx] = firstR;
+			this.workingPalette[lastIdx + 1] = firstG;
+			this.workingPalette[lastIdx + 2] = firstB;
+			this.workingPalette[lastIdx + 3] = firstA;
+		}
+	}
+
+	/**
+	 * Update the palette texture with current working palette (call after cycling)
+	 */
+	updatePaletteTexture() {
+		if (!this.workingPalette || !this.paletteTexture) return;
+
+		const gl = this.gl;
+		gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
+		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.workingPalette);
 	}
 
 	/**
