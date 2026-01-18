@@ -38,6 +38,12 @@ export function WGLMap() {
 	const MIN_ZOOM = 0.05; // Will be dynamically adjusted to fit whole map
 	const MAX_ZOOM = 2.0;  // 2:1 zoom
 
+	// Cursor state (tile coordinates)
+	let cursorCol = -1;
+	let cursorRow = -1;
+	let cursorOpacity = 0.5;
+	const CURSOR_BLINK_PERIOD = 1500; // ms for full blink cycle
+
 	const TILE_SIZE = 64;
 
 	/**
@@ -137,6 +143,30 @@ export function WGLMap() {
 					}
 				}
 			}
+
+			// Render cursor if within map bounds
+			if (cursorCol >= 0 && cursorRow >= 0 && cursorCol < currentMap.width && cursorRow < currentMap.height) {
+				const cursorX = cursorCol * scaledTileSize + panX;
+				const cursorY = cursorRow * scaledTileSize + panY;
+
+				// Calculate cursor line width: 2px at 1:1, 4px at 2:1, 1px at 1:2, never less than 1px
+				const cursorWidth = Math.max(1, Math.round(zoom * 2));
+
+				// Draw cursor rectangle outline with additive blending
+				renderer.enableAdditiveBlend();
+				renderer.setColor(cursorOpacity, cursorOpacity, cursorOpacity, 1.0); // White with varying intensity
+
+				// Top edge
+				renderer.drawRect(cursorX, cursorY, scaledTileSize, cursorWidth);
+				// Bottom edge
+				renderer.drawRect(cursorX, cursorY + scaledTileSize - cursorWidth, scaledTileSize, cursorWidth);
+				// Left edge
+				renderer.drawRect(cursorX, cursorY, cursorWidth, scaledTileSize);
+				// Right edge
+				renderer.drawRect(cursorX + scaledTileSize - cursorWidth, cursorY, cursorWidth, scaledTileSize);
+
+				renderer.disableBlend();
+			}
 		} else {
 			// Fallback white square
 			renderer.setColor(1.0, 1.0, 1.0, 1.0);
@@ -231,6 +261,33 @@ export function WGLMap() {
 			}
 		}, { passive: false });
 
+		// Track mouse position for cursor
+		canvasElement.addEventListener('mousemove', (e) => {
+			if (isPanning) return; // Don't update cursor while panning
+
+			const rect = canvasElement.getBoundingClientRect();
+			const mouseX = e.clientX - rect.left;
+			const mouseY = e.clientY - rect.top;
+
+			// Convert to tile coordinates
+			const scaledTileSize = TILE_SIZE * zoom;
+			const newCursorCol = Math.floor((mouseX - panX) / scaledTileSize);
+			const newCursorRow = Math.floor((mouseY - panY) / scaledTileSize);
+
+			if (newCursorCol !== cursorCol || newCursorRow !== cursorRow) {
+				cursorCol = newCursorCol;
+				cursorRow = newCursorRow;
+				render();
+			}
+		});
+
+		// Hide cursor when mouse leaves canvas
+		canvasElement.addEventListener('mouseleave', () => {
+			cursorCol = -1;
+			cursorRow = -1;
+			render();
+		});
+
 		// Color cycling animation data
 		// Format: { startIndex, endIndex, direction, intervalMs }
 		const colorCycleData = [
@@ -250,7 +307,7 @@ export function WGLMap() {
 		// Track last cycle time for each color range
 		const lastCycleTime = colorCycleData.map(() => 0);
 
-		// Animation loop for color cycling
+		// Animation loop for color cycling and cursor blinking
 		let animationFrameId: number;
 		function animateColorCycling(timestamp: number) {
 			if (!renderer) {
@@ -260,6 +317,7 @@ export function WGLMap() {
 
 			let needsUpdate = false;
 
+			// Update color cycling
 			for (let i = 0; i < colorCycleData.length; i++) {
 				const cycle = colorCycleData[i];
 				const intervalMs = 1000 / cycle.fps;
@@ -269,6 +327,13 @@ export function WGLMap() {
 					lastCycleTime[i] = timestamp;
 					needsUpdate = true;
 				}
+			}
+
+			// Update cursor opacity (smooth fade between 0.3 and 0.7)
+			const newCursorOpacity = 0.5 + 0.2 * Math.sin(timestamp / CURSOR_BLINK_PERIOD * Math.PI * 2);
+			if (Math.abs(newCursorOpacity - cursorOpacity) > 0.01) {
+				cursorOpacity = newCursorOpacity;
+				needsUpdate = true;
 			}
 
 			if (needsUpdate) {

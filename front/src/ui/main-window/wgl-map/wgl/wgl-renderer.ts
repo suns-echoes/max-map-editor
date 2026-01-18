@@ -461,6 +461,22 @@ export class WglRenderer {
 	}
 
 	/**
+	 * Enable additive blending (color = src + dst)
+	 */
+	enableAdditiveBlend() {
+		const gl = this.gl;
+		gl.enable(gl.BLEND);
+		gl.blendFunc(gl.ONE, gl.ONE);
+	}
+
+	/**
+	 * Disable blending
+	 */
+	disableBlend() {
+		this.gl.disable(this.gl.BLEND);
+	}
+
+	/**
 	 * Compile and link shader program
 	 */
 	private createProgram(vsSource: string, fsSource: string): WebGLProgram {
