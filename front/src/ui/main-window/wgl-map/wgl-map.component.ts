@@ -33,6 +33,11 @@ export function WGLMap() {
 	let panX = 0;
 	let panY = 0;
 
+	// Zoom state (1.0 = 100%, 2.0 = 200%, 0.5 = 50%)
+	let zoom = 1.0;
+	const MIN_ZOOM = 0.05; // Will be dynamically adjusted to fit whole map
+	const MAX_ZOOM = 2.0;  // 2:1 zoom
+
 	const TILE_SIZE = 64;
 
 	/**
@@ -72,9 +77,22 @@ export function WGLMap() {
 	/**
 	 * Draw a single tile with transformation parsing
 	 */
-	function drawTile(tileIdWithFlags: string, x: number, y: number) {
+	function drawTile(tileIdWithFlags: string, x: number, y: number, tileSize: number) {
 		const [baseTileId, transform] = parseTileId(tileIdWithFlags);
-		renderer!.drawTileById(baseTileId, x, y, TILE_SIZE, transform);
+		renderer!.drawTileById(baseTileId, x, y, tileSize, transform);
+	}
+
+	/**
+	 * Calculate minimum zoom to fit whole map on screen
+	 */
+	function getMinZoom(): number {
+		if (!renderer || !currentMap) return MIN_ZOOM;
+		const canvas = renderer.getCanvas();
+		const mapPixelWidth = currentMap.width * TILE_SIZE;
+		const mapPixelHeight = currentMap.height * TILE_SIZE;
+		const zoomX = canvas.width / mapPixelWidth;
+		const zoomY = canvas.height / mapPixelHeight;
+		return Math.min(zoomX, zoomY, 1.0); // Don't go above 1.0 for min
 	}
 
 	function render() {
@@ -87,11 +105,14 @@ export function WGLMap() {
 			const canvasWidth = canvas.width;
 			const canvasHeight = canvas.height;
 
-			// Calculate visible tile range
-			const startCol = Math.max(0, Math.floor(-panX / TILE_SIZE));
-			const startRow = Math.max(0, Math.floor(-panY / TILE_SIZE));
-			const endCol = Math.min(currentMap.width, Math.ceil((canvasWidth - panX) / TILE_SIZE));
-			const endRow = Math.min(currentMap.height, Math.ceil((canvasHeight - panY) / TILE_SIZE));
+			// Calculate scaled tile size
+			const scaledTileSize = TILE_SIZE * zoom;
+
+			// Calculate visible tile range (accounting for zoom)
+			const startCol = Math.max(0, Math.floor(-panX / scaledTileSize));
+			const startRow = Math.max(0, Math.floor(-panY / scaledTileSize));
+			const endCol = Math.min(currentMap.width, Math.ceil((canvasWidth - panX) / scaledTileSize));
+			const endRow = Math.min(currentMap.height, Math.ceil((canvasHeight - panY) / scaledTileSize));
 
 			// Render visible tiles
 			for (let row = startRow; row < endRow; row++) {
@@ -102,24 +123,24 @@ export function WGLMap() {
 					const cell = mapRow[col];
 					if (!cell) continue;
 
-					const x = col * TILE_SIZE + panX;
-					const y = row * TILE_SIZE + panY;
+					const x = col * scaledTileSize + panX;
+					const y = row * scaledTileSize + panY;
 
 					// Handle both string (single tile) and array (multiple layers)
 					if (Array.isArray(cell)) {
 						// Draw all layers from bottom to top
 						for (const tileId of cell) {
-							drawTile(tileId, x, y);
+							drawTile(tileId, x, y, scaledTileSize);
 						}
 					} else {
-						drawTile(cell, x, y);
+						drawTile(cell, x, y, scaledTileSize);
 					}
 				}
 			}
 		} else {
 			// Fallback white square
 			renderer.setColor(1.0, 1.0, 1.0, 1.0);
-			renderer.drawRect(100 + panX, 100 + panY, 64, 64);
+			renderer.drawRect(100 + panX, 100 + panY, 64 * zoom, 64 * zoom);
 		}
 	}
 
@@ -174,6 +195,29 @@ export function WGLMap() {
 				canvasElement.style.cursor = 'default';
 			}
 		});
+
+		// Mouse wheel for zooming
+		canvasElement.addEventListener('wheel', (e) => {
+			e.preventDefault();
+
+			// Get mouse position relative to canvas
+			const rect = canvasElement.getBoundingClientRect();
+			const mouseX = e.clientX - rect.left;
+			const mouseY = e.clientY - rect.top;
+
+			// Calculate zoom factor
+			const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+			const newZoom = Math.max(getMinZoom(), Math.min(MAX_ZOOM, zoom * zoomFactor));
+
+			if (newZoom !== zoom) {
+				// Adjust pan to zoom towards mouse position
+				const scale = newZoom / zoom;
+				panX = mouseX - (mouseX - panX) * scale;
+				panY = mouseY - (mouseY - panY) * scale;
+				zoom = newZoom;
+				render();
+			}
+		}, { passive: false });
 
 		render();
 	}, 0);
