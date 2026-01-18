@@ -25,6 +25,37 @@ export function perspective(out: Mat4x4, fovy: Radians, aspect: Float, near: Flo
 	return out;
 }
 
+
+/**
+ * Creates an orthographic projection matrix.
+ * Maps coordinates from [left, right] x [bottom, top] x [near, far] to [-1, 1]^3.
+ */
+export function orthographic(out: Mat4x4, left: number, right: number, bottom: number, top: number, near: number, far: number): Mat4x4 {
+	const lr = 1 / (left - right);
+	const bt = 1 / (bottom - top);
+	const nf = 1 / (near - far);
+
+	out[0] = -2 * lr;
+	out[1] = 0;
+	out[2] = 0;
+	out[3] = 0;
+	out[4] = 0;
+	out[5] = -2 * bt;
+	out[6] = 0;
+	out[7] = 0;
+	out[8] = 0;
+	out[9] = 0;
+	out[10] = 2 * nf;
+	out[11] = 0;
+	out[12] = (left + right) * lr;
+	out[13] = (top + bottom) * bt;
+	out[14] = (far + near) * nf;
+	out[15] = 1;
+
+	return out;
+}
+
+
 export function lookAt(out: Mat4x4, eye: Vec3, center: Vec3, up: Vec3): Mat4x4 {
 	const z = vec3_normalize(vec3_create(), vec3_sub(vec3_create(), eye, center));
 	const x = vec3_normalize(vec3_create(), vec3_cross(vec3_create(), up, z));

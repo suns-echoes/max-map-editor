@@ -1,77 +1,181 @@
-import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
-import { AppEvents } from '^events/app-events.ts';
-import { AppState } from '^state/app-state.ts';
-import { resolveTextResource } from '^tauri-apps/api/path.ts';
+import { Canvas, Div, Pre, Section } from '^reactive/reactive-node.elements.ts';
 import { printDebugInfo } from '^lib/debug/debug.ts';
+import { AppState } from '^state/app-state.ts';
 import { Effect } from '^reactive/effect.ts';
-import { Canvas, Div, Section } from '^reactive/reactive-node.elements.ts';
+import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
+import { resolveTextResource } from '^tauri-apps/api/path.ts';
+import { WglRenderer } from './wgl/wgl-renderer.ts';
 
 import style from './wgl-map.module.css';
-import { BigInset } from '../../components/frames/big-inset.component.ts';
-import { WglMap } from './wgl/wgl-map.ts';
-import { makeMapInteractive } from './utils/make-map-interactive.ts';
-
-
-function waitForMapSize(): Promise<Size> {
-	return new Promise((resolve) => {
-		const effect = new Effect(() => {
-			const size = AppState.mapSize.value;
-			if (size.width > 0 && size.height > 0) {
-				effect.dispose();
-				resolve(size);
-			}
-		});
-	});
-}
 
 
 export function WGLMap() {
 	printDebugInfo('UI::WGLMap');
 
-	let canvas;
+	const canvas = Canvas('map-canvas');
+	const debugInfo = Pre().class(style.debugInfo);
 
-	const WGLMap = (
+	const component = (
 		Section('wgl-map').class(style.wglMap).nodes([
-			BigInset().nodes([
-				Div().nodes([
-					canvas = Canvas('canvas'),
-				]),
+			Div().class(style.canvasContainer).nodes([
+				canvas,
+				debugInfo,
 			]),
 		])
 	);
 
-	(async () => {
-		const canvasElement = canvas.element;
-		await loadMapProject(await resolveTextResource('resources/maps/SNOW_5.json'));
+	// Initialize WebGL renderer after component is mounted
+	let renderer: WglRenderer | null = null;
+	let tileUploaded = false;
 
-		const wglMap = new WglMap(canvasElement);
-		AppState.wglMap.set(wglMap);
+	// Panning state
+	let panX = 0;
+	let panY = 0;
 
-		await waitForMapSize();
+	function render() {
+		if (!renderer) return;
+		renderer.clear(0.1, 0.0, 0.1, 1.0); // dark magenta
 
-		wglMap.enableAnimation();
-		wglMap.render();
+		if (tileUploaded) {
+			renderer.drawTile(100 + panX, 100 + panY, 64); // Draw tile with pan offset
+		} else {
+			// Fallback white square
+			renderer.setColor(1.0, 1.0, 1.0, 1.0);
+			renderer.drawRect(100 + panX, 100 + panY, 64, 64);
+		}
+	}
 
-		makeMapInteractive(canvasElement, (cursorX: number, cursorY: number, panDeltaX: number, panDeltaY: number, zoomDelta: number) => {
-			if (panDeltaX !== 0 || panDeltaY !== 0 || zoomDelta !== 0) {
-				wglMap.moveCamera(panDeltaX, panDeltaY, zoomDelta, cursorX, cursorY);
+	// Initialize after a small delay to ensure canvas is in DOM
+	setTimeout(() => {
+		const canvasElement = canvas.element as HTMLCanvasElement;
+		const container = canvasElement.parentElement!;
+		renderer = new WglRenderer(canvasElement);
+
+		// Use ResizeObserver to always match parent dimensions
+		const resizeObserver = new ResizeObserver(() => {
+			if (renderer) {
+				renderer.resize();
+				render();
 			}
-			if (cursorX !== 0 || cursorY !== 0) {
-				wglMap.moveCursor(cursorX, cursorY);
+		});
+		resizeObserver.observe(container);
+
+		// Setup panning with right mouse button
+		let isPanning = false;
+		let lastX = 0;
+		let lastY = 0;
+
+		canvasElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+		canvasElement.addEventListener('mousedown', (e) => {
+			if (e.button === 2) { // Right mouse button
+				isPanning = true;
+				lastX = e.clientX;
+				lastY = e.clientY;
+				canvasElement.style.cursor = 'grabbing';
 			}
 		});
 
-		new Effect(function () {
-			wglMap.onCanvasResize();
-		}, { strong: true }).on([AppEvents.windowResizeSignal]);
+		canvasElement.addEventListener('mousemove', (e) => {
+			if (isPanning) {
+				const dx = e.clientX - lastX;
+				const dy = e.clientY - lastY;
+				lastX = e.clientX;
+				lastY = e.clientY;
 
-		let initialized = false;
-		new Effect(function () {
-			if (!initialized) { initialized = true; return; }
-			wglMap.disableAnimation();
-			wglMap.cleanup();
-		}, { strong: true }).on([AppEvents.windowCloseSignal]);
+				panX += dx;
+				panY += dy;
+				render();
+			}
+		});
+
+		canvasElement.addEventListener('mouseup', (e) => {
+			if (e.button === 2) {
+				isPanning = false;
+				canvasElement.style.cursor = 'default';
+			}
+		});
+
+		canvasElement.addEventListener('mouseleave', () => {
+			isPanning = false;
+			canvasElement.style.cursor = 'default';
+		});
+
+		render();
+	}, 0);
+
+	// Upload palette and tile when they become available
+	new Effect(() => {
+		const palette = AppState.palette.value;
+		const tiles = AppState.tiles.value;
+
+		if (renderer && palette && tiles) {
+			// Upload palette
+			renderer.uploadPalette(palette);
+
+			// Get first tile and upload it
+			const firstTileId = tiles.keys().next().value;
+			if (firstTileId) {
+				const firstTile = tiles.get(firstTileId);
+				if (firstTile) {
+					console.log(`Uploading tile: ${firstTileId}`);
+					renderer.uploadTile(firstTile.data);
+					tileUploaded = true;
+					render();
+				}
+			}
+		}
+	}).on([AppState.palette, AppState.tiles]);
+
+	// Load map project
+	(async () => {
+		await loadMapProject(await resolveTextResource('resources/maps/GREEN_1.json'));
 	})();
 
-	return WGLMap;
+	// Update debug info when state changes
+	new Effect(() => {
+		const mapProject = AppState.mapProject.value;
+		const tiles = AppState.tiles.value;
+
+		let info = '=== MAP DEBUG INFO ===\n\n';
+
+		if (mapProject) {
+			info += `Map: ${mapProject.name}\n`;
+			info += `Size: ${mapProject.width} x ${mapProject.height}\n`;
+			info += `Description: ${mapProject.description?.substring(0, 100)}...\n\n`;
+
+			info += `Tilesets used:\n`;
+			for (const asset of mapProject.use) {
+				info += `  - ${asset.name} (tileset: ${asset.tileset}, palette: ${asset.palette})\n`;
+			}
+			info += '\n';
+		} else {
+			info += 'Map project: NOT LOADED\n\n';
+		}
+
+		if (tiles) {
+			info += `Tiles loaded: ${tiles.size}\n\n`;
+
+			let totalBytes = 0;
+			const tileIds: string[] = [];
+
+			for (const [id, tile] of tiles) {
+				tileIds.push(id);
+				totalBytes += tile.data.byteLength;
+			}
+
+			info += `Total tile data: ${(totalBytes / 1024).toFixed(2)} KB\n\n`;
+			info += `Tile IDs (first 50):\n`;
+			info += tileIds.slice(0, 50).join(', ');
+			if (tileIds.length > 50) {
+				info += `\n... and ${tileIds.length - 50} more`;
+			}
+		} else {
+			info += 'Tiles: NOT LOADED\n';
+		}
+
+		debugInfo.text(info);
+	}).on([AppState.mapProject, AppState.tiles]);
+
+	return component;
 }

@@ -85,7 +85,7 @@ new Effect(function () {
 	const wglMap = AppState.wglMap.value;
 	const mapSize = AppState.mapSize.value;
 	const map = AppState.map.value;
-	if (!wglMap || !mapSize.width || !mapSize.height || !map) return;
+	if (!wglMap || !mapSize?.width || !mapSize?.height || !map) return;
 
 	wglMap.initMap(map, mapSize.width, mapSize.height);
 }, { strong: true }).on([AppState.wglMap, AppState.mapSize, AppState.map]);

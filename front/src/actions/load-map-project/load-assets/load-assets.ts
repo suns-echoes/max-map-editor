@@ -34,7 +34,7 @@ new Effect(function () {
 	const [tileset, layers] = arrangeTilesData(tiles, wglMap.getTileCapability());
 	wglMap.initTilesets(tileset, layers);
 	loadMap(mapProject, tiles);
-}, { strong: true });
+}, { strong: true }).on([AppState.wglMap, AppState.mapProject, AppState.tiles]);
 
 
 function arrangeTilesData(tiles: Tiles, tileCapability: WglTileCapability): [tileset: Uint8Array, layers: number] {
