@@ -42,9 +42,11 @@ export function WGLMap() {
 		AppState.wglMap.value = wglMap;
 
 		// ResizeObserver for canvas resizing
+		let canvasRect = canvasElement.getBoundingClientRect();  // Cache for mouse events
 		const resizeObserver = new ResizeObserver(() => {
 			if (wglMap) {
 				wglMap.onCanvasResize();
+				canvasRect = canvasElement.getBoundingClientRect();  // Update cache on resize
 			}
 		});
 		resizeObserver.observe(container);
@@ -97,9 +99,8 @@ export function WGLMap() {
 			e.preventDefault();
 			if (!wglMap) return;
 
-			const rect = canvasElement.getBoundingClientRect();
-			const cursorX = e.clientX - rect.left;
-			const cursorY = e.clientY - rect.top;
+			const cursorX = e.clientX - canvasRect.left;
+			const cursorY = e.clientY - canvasRect.top;
 
 			// Positive deltaY = scroll down = zoom out
 			const dz = e.deltaY > 0 ? -1 : 1;
@@ -110,9 +111,8 @@ export function WGLMap() {
 		canvasElement.addEventListener('mousemove', (e) => {
 			if (isPanning || !wglMap) return;
 
-			const rect = canvasElement.getBoundingClientRect();
-			const screenX = e.clientX - rect.left;
-			const screenY = e.clientY - rect.top;
+			const screenX = e.clientX - canvasRect.left;
+			const screenY = e.clientY - canvasRect.top;
 			wglMap.moveCursor(screenX, screenY);
 		});
 

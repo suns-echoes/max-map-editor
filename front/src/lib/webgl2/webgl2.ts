@@ -108,25 +108,21 @@ export class WebGL2 {
 		let isIntegerTexture: boolean = false;
 
 		if (data instanceof Uint16Array && format === this.gl.RGBA16UI) {
-			console.info("Creating RGBA16UI texture (16-bit unsigned integer).");
 			internalFormat = this.gl.RGBA16UI;
 			pixelFormat = this.gl.RGBA_INTEGER;
 			pixelType = this.gl.UNSIGNED_SHORT;
 			isIntegerTexture = true;
 		} else if (data instanceof Uint8Array && format === this.gl.R8UI) {
-			console.info("Creating R8UI texture (8-bit unsigned integer).");
 			internalFormat = this.gl.R8UI;
 			pixelFormat = this.gl.RED_INTEGER;
 			pixelType = this.gl.UNSIGNED_BYTE;
 			isIntegerTexture = true;
 		} else if (data instanceof Uint8Array && format === this.gl.RGBA8UI) {
-			console.info("Creating RGBA8UI texture (8-bit unsigned integer).");
 			internalFormat = this.gl.RGBA8UI;
 			pixelFormat = this.gl.RGBA_INTEGER;
 			pixelType = this.gl.UNSIGNED_BYTE;
 			isIntegerTexture = true;
 		} else if (data instanceof Uint8Array && format === this.gl.RGBA) {
-			console.info("Creating RGBA8 texture (8-bit normalized unsigned).");
 			internalFormat = this.gl.RGBA8;
 			pixelFormat = this.gl.RGBA;
 			pixelType = this.gl.UNSIGNED_BYTE;

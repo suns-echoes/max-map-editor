@@ -46,11 +46,10 @@ export class WglMap extends WebGL2 {
 
 	/** Update screen size uniform when canvas resizes */
 	private updateScreenSize(): void {
-		const canvas = this.gl.canvas as HTMLCanvasElement;
-		canvas.width = canvas.parentElement!.clientWidth;
-		canvas.height = canvas.parentElement!.clientHeight;
-		this.gl.viewport(0, 0, canvas.width, canvas.height);
-		this.gl.uniform2f(this.uniformLocations.uScreenSize, canvas.width, canvas.height);
+		this.canvas.width = this.canvas.parentElement!.clientWidth;
+		this.canvas.height = this.canvas.parentElement!.clientHeight;
+		this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+		this.gl.uniform2f(this.uniformLocations.uScreenSize, this.canvas.width, this.canvas.height);
 	}
 
 	onCanvasResize() {
@@ -64,10 +63,9 @@ export class WglMap extends WebGL2 {
 	private _cursor: Vec2 = new Float32Array([0, 0]);
 
 	moveCursor(screenX: number, screenY: number) {
-		const canvas = this.gl.canvas as HTMLCanvasElement;
 		// Convert screen position to world position
-		const worldX = (screenX - canvas.width * 0.5) / this._zoom + this._panX + this.mapWidth * 32;
-		const worldY = (screenY - canvas.height * 0.5) / this._zoom + this._panY + this.mapHeight * 32;
+		const worldX = (screenX - this.canvas.width * 0.5) / this._zoom + this._panX + this.mapWidth * 32;
+		const worldY = (screenY - this.canvas.height * 0.5) / this._zoom + this._panY + this.mapHeight * 32;
 
 		// Convert to cell coordinates
 		this._cursor[0] = Math.floor(worldX / 64);
@@ -83,8 +81,6 @@ export class WglMap extends WebGL2 {
 	private _zoom: number = 1;
 
 	public moveCamera(dx: number, dy: number, dz: number, cursorX: number = 0, cursorY: number = 0) {
-		const canvas = this.gl.canvas as HTMLCanvasElement;
-
 		if (dz !== 0) {
 			// Zoom towards cursor
 			const oldZoom = this._zoom;
@@ -92,8 +88,8 @@ export class WglMap extends WebGL2 {
 			this._limitMapZoom();
 
 			// Adjust pan to zoom towards cursor
-			const cursorOffsetX = cursorX - canvas.width * 0.5;
-			const cursorOffsetY = cursorY - canvas.height * 0.5;
+			const cursorOffsetX = cursorX - this.canvas.width * 0.5;
+			const cursorOffsetY = cursorY - this.canvas.height * 0.5;
 
 			// Convert cursor offset to world coordinates at old zoom, then adjust
 			this._panX += cursorOffsetX / oldZoom - cursorOffsetX / this._zoom;
@@ -110,10 +106,9 @@ export class WglMap extends WebGL2 {
 	}
 
 	private _limitMapZoom() {
-		const canvas = this.gl.canvas as HTMLCanvasElement;
 		const minZoom = Math.min(
-			canvas.width / this.mapModelWidth,
-			canvas.height / this.mapModelHeight
+			this.canvas.width / this.mapModelWidth,
+			this.canvas.height / this.mapModelHeight
 		);
 		const maxZoom = 2;
 
@@ -122,12 +117,11 @@ export class WglMap extends WebGL2 {
 	}
 
 	private _limitMapPan() {
-		const canvas = this.gl.canvas as HTMLCanvasElement;
 		const margin = 128 / this._zoom;
 
 		// Maximum pan is half the map size minus half the visible area plus margin
-		const visibleW = canvas.width / this._zoom;
-		const visibleH = canvas.height / this._zoom;
+		const visibleW = this.canvas.width / this._zoom;
+		const visibleH = this.canvas.height / this._zoom;
 
 		const maxPanX = Math.max(0, (this.mapModelWidth - visibleW) * 0.5 + margin);
 		const maxPanY = Math.max(0, (this.mapModelHeight - visibleH) * 0.5 + margin);
