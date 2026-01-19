@@ -7,6 +7,63 @@ import { xlog } from '^lib/xlog/xlog.ts';
 import { FPS } from '^lib/webgl2/fps.ts';
 
 
+// =============================================================================
+// Camera Constants
+// =============================================================================
+
+/** Maximum zoom level (2x = pixel doubling) */
+const MAX_ZOOM = 2;
+
+/** Zoom speed multiplier per scroll step (10% per step) */
+const ZOOM_SPEED = 0.1;
+
+/** Margin in world pixels to allow panning beyond map edge */
+const PAN_MARGIN = 128;
+
+/** Animation loop runs at 30 FPS for smooth color cycling */
+const ANIMATION_FPS = 30;
+
+// =============================================================================
+// Tile Geometry (in world pixels)
+// =============================================================================
+
+/** Size of a single tile in world pixels */
+const TILE_SIZE = 64;
+
+/** Half tile size, used for coordinate conversion */
+const HALF_TILE_SIZE = 32;
+
+// =============================================================================
+// Palette Color Cycling
+// Color cycling creates animated effects (water, lava, etc.) by rotating
+// palette indices at different speeds.
+//
+// Each range defines:
+//   - start/end: palette indices to cycle (inclusive)
+//   - direction: 0 = backward (dark to light), 1 = forward (light to dark)
+//   - fps: animation speed for this range
+//
+// Ranges are from the original M.A.X. game palette format.
+// =============================================================================
+
+const COLOR_CYCLE_RANGES = [
+	// Water shimmer effects (indices 9-31)
+	{ start: 9, end: 12, direction: 0, fps: 9 },   // Fast backward shimmer
+	{ start: 13, end: 16, direction: 1, fps: 6 },  // Medium forward ripple
+	{ start: 17, end: 20, direction: 1, fps: 9 },  // Fast forward sparkle
+	{ start: 21, end: 24, direction: 1, fps: 6 },  // Medium forward wave
+	{ start: 25, end: 30, direction: 1, fps: 2 },  // Slow forward deep water
+	{ start: 31, end: 31, direction: 1, fps: 6 },  // Single color pulse
+
+	// Special effects (indices 96-127)
+	{ start: 96, end: 102, direction: 1, fps: 8 },  // Lava/energy glow
+	{ start: 103, end: 109, direction: 1, fps: 8 }, // Plasma effect
+	{ start: 110, end: 116, direction: 1, fps: 10 },// Fast energy crackle
+	{ start: 117, end: 122, direction: 1, fps: 6 }, // Medium glow pulse
+	{ start: 123, end: 127, direction: 1, fps: 6 }, // Ambient light cycle
+] as const;
+
+
 export class WglMap extends WebGL2 {
 	constructor(canvas: HTMLCanvasElement) {
 		xlog.info('WglMap::constructor');
@@ -64,12 +121,12 @@ export class WglMap extends WebGL2 {
 
 	moveCursor(screenX: number, screenY: number) {
 		// Convert screen position to world position
-		const worldX = (screenX - this.canvas.width * 0.5) / this._zoom + this._panX + this.mapWidth * 32;
-		const worldY = (screenY - this.canvas.height * 0.5) / this._zoom + this._panY + this.mapHeight * 32;
+		const worldX = (screenX - this.canvas.width * 0.5) / this._zoom + this._panX + this.mapWidth * HALF_TILE_SIZE;
+		const worldY = (screenY - this.canvas.height * 0.5) / this._zoom + this._panY + this.mapHeight * HALF_TILE_SIZE;
 
 		// Convert to cell coordinates
-		this._cursor[0] = Math.floor(worldX / 64);
-		this._cursor[1] = Math.floor(worldY / 64);
+		this._cursor[0] = Math.floor(worldX / TILE_SIZE);
+		this._cursor[1] = Math.floor(worldY / TILE_SIZE);
 
 		this.gl.uniform2fv(this.uniformLocations.uCursor, this._cursor);
 		this.render();
@@ -84,7 +141,7 @@ export class WglMap extends WebGL2 {
 		if (dz !== 0) {
 			// Zoom towards cursor
 			const oldZoom = this._zoom;
-			this._zoom *= 1 + dz * 0.1;
+			this._zoom *= 1 + dz * ZOOM_SPEED;
 			this._limitMapZoom();
 
 			// Adjust pan to zoom towards cursor
@@ -110,14 +167,13 @@ export class WglMap extends WebGL2 {
 			this.canvas.width / this.mapModelWidth,
 			this.canvas.height / this.mapModelHeight
 		);
-		const maxZoom = 2;
 
 		if (this._zoom < minZoom) this._zoom = minZoom;
-		if (this._zoom > maxZoom) this._zoom = maxZoom;
+		if (this._zoom > MAX_ZOOM) this._zoom = MAX_ZOOM;
 	}
 
 	private _limitMapPan() {
-		const margin = 128 / this._zoom;
+		const margin = PAN_MARGIN / this._zoom;
 
 		// Maximum pan is half the map size minus half the visible area plus margin
 		const visibleW = this.canvas.width / this._zoom;
@@ -147,23 +203,7 @@ export class WglMap extends WebGL2 {
 
 	// Base and working palette for color cycling
 	private _workingPalette: Uint8Array | null = null;
-
-	// Color cycling ranges: [start, end, direction, fps]
-	// direction: 0 = backward, 1 = forward
-	private readonly _colorCycleRanges = [
-		{ start: 9, end: 12, direction: 0, fps: 9 },
-		{ start: 13, end: 16, direction: 1, fps: 6 },
-		{ start: 17, end: 20, direction: 1, fps: 9 },
-		{ start: 21, end: 24, direction: 1, fps: 6 },
-		{ start: 25, end: 30, direction: 1, fps: 2 },
-		{ start: 31, end: 31, direction: 1, fps: 6 },
-		{ start: 96, end: 102, direction: 1, fps: 8 },
-		{ start: 103, end: 109, direction: 1, fps: 8 },
-		{ start: 110, end: 116, direction: 1, fps: 10 },
-		{ start: 117, end: 122, direction: 1, fps: 6 },
-		{ start: 123, end: 127, direction: 1, fps: 6 },
-	];
-	private _lastCycleTime: number[] = this._colorCycleRanges.map(() => 0);
+	private _lastCycleTime: number[] = COLOR_CYCLE_RANGES.map(() => 0);
 
 	/** Cycle colors in a palette range */
 	private _cycleColors(start: number, end: number, direction: number): void {
@@ -220,8 +260,8 @@ export class WglMap extends WebGL2 {
 		}
 		this.mapWidth = width;
 		this.mapHeight = height;
-		this.mapModelWidth = width * 64;
-		this.mapModelHeight = height * 64;
+		this.mapModelWidth = width * TILE_SIZE;
+		this.mapModelHeight = height * TILE_SIZE;
 
 		this.textures[this.MAP_TEXTURE] = this.createTexture(
 			this.MAP_TEXTURE, mapData, width, height, this.gl.RGBA16UI, '3d', MAP_LAYERS
@@ -275,7 +315,7 @@ export class WglMap extends WebGL2 {
 
 	enableAnimation() {
 		if (this._animationTimer !== null) return;
-		this._animationTimer = setInterval(() => this._animationFrame(), FPS(30));
+		this._animationTimer = setInterval(() => this._animationFrame(), FPS(ANIMATION_FPS));
 	}
 
 	private _animationFrame() {
@@ -283,8 +323,8 @@ export class WglMap extends WebGL2 {
 
 		// Color cycling
 		let paletteChanged = false;
-		for (let i = 0; i < this._colorCycleRanges.length; i++) {
-			const range = this._colorCycleRanges[i];
+		for (let i = 0; i < COLOR_CYCLE_RANGES.length; i++) {
+			const range = COLOR_CYCLE_RANGES[i];
 			const intervalMs = 1000 / range.fps;
 			if (now - this._lastCycleTime[i] >= intervalMs) {
 				this._cycleColors(range.start, range.end, range.direction);
