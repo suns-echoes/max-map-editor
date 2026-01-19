@@ -1,4 +1,4 @@
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { Section } from '^reactive/reactive-node.elements.ts';
 
 import style from './status-bar.module.css';
@@ -6,7 +6,7 @@ import { LabelScreen } from '../../components/screens/label-screen.component.ts'
 
 
 export function StatusBar() {
-	printDebugInfo('UI::StatusBar');
+	xlog.info('UI::StatusBar');
 
 	return (
 		Section('status-bar').class(style.statusBar).nodes([

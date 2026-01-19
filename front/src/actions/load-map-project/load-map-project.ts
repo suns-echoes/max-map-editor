@@ -1,7 +1,7 @@
 import { readTextFile } from '^tauri-apps/plugin-fs.ts';
 import { AppState } from '^state/app-state.ts';
 import { Perf } from '^lib/perf/perf.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { loadPalette } from './load-assets/load-palette.ts';
 import { loadTileSet } from './load-assets/load-tile-set.ts';
 import { parseMap } from './load-assets/load-map.ts';
@@ -14,7 +14,7 @@ import { arrangeTilesData } from '^state/app-state.ts';
  * All loading is done imperatively in sequence, then state is updated.
  */
 export async function loadMapProject(projectFilePath: string): Promise<void> {
-	printDebugInfo('loadMapProject');
+	xlog.info('loadMapProject');
 	const perf = Perf('loadMapProject');
 
 	// 1. Parse map project file

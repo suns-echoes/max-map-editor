@@ -1,11 +1,11 @@
 import { restoreMainWindow } from './restore-main-window.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { initWindowEvents } from './init-window-events.ts';
 import { MainWindow } from '../../ui/main-window/main-window.component.ts';
 
 
 export async function showMainWindow() {
-	await printDebugInfo('App::showMainWindow');
+	xlog.info('App::showMainWindow');
 
 	await restoreMainWindow();
 	await initWindowEvents();

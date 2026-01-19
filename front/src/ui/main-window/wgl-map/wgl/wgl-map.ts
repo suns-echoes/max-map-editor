@@ -3,13 +3,13 @@ import fragmentShaderSource from './shaders/map.fs?raw';
 import { Perf } from '^lib/perf/perf.ts';
 import { WebGL2 } from '^lib/webgl2/webgl2.ts';
 import { MAP_LAYERS } from '^consts/map-consts.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { FPS } from '^lib/webgl2/fps.ts';
 
 
 export class WglMap extends WebGL2 {
 	constructor(canvas: HTMLCanvasElement) {
-		printDebugInfo('WglMap::constructor');
+		xlog.info('WglMap::constructor');
 		super(canvas);
 
 		this.tileCapability = this.getTileCapability();
@@ -27,7 +27,7 @@ export class WglMap extends WebGL2 {
 		this.gl.enable(this.gl.BLEND);
 		this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
 
-		printDebugInfo('WglMap::constructor done');
+		xlog.info('WglMap::constructor done');
 	}
 
 	/** Create a single full-screen quad in clip space */

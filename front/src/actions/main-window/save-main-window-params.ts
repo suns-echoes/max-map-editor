@@ -1,10 +1,10 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { saveWindowParams } from '^actions/generic-actions/window-actions/save-window-params.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 
 export async function saveMainWindowParams() {
-	await printDebugInfo('MainWindow::saveMainWindowParams');
+	xlog.info('MainWindow::saveMainWindowParams');
 
 	return saveWindowParams('main', getCurrentWindow());
 }

@@ -2,12 +2,12 @@ import { getCurrentWindow } from '^tauri-apps/api/window.ts';
 import { PhysicalPosition, PhysicalSize } from '^tauri-apps/api/dpi.ts';
 
 import { RustAPI } from '^src/bff/rust-api';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 
 
 export async function restoreMainWindow() {
-	await printDebugInfo('restoreMainWindow');
+	xlog.info('restoreMainWindow');
 
 	const settings = SettingsFile.getAll();
 

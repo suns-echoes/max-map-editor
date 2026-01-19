@@ -1,13 +1,13 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 
 type TWindow = ReturnType<typeof getCurrentWindow>;
 
 
 export async function saveWindowParams(name: string, window: TWindow) {
-	await printDebugInfo('saveMainWindowParams');
+	xlog.info('saveMainWindowParams');
 
 	const outerPosition = await window.outerPosition();
 	const innerSize = await window.innerSize();

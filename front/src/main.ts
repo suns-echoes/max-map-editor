@@ -4,21 +4,20 @@ import { saveMainWindowParams } from '^actions/main-window/save-main-window-para
 import { showSetupScreen } from '^actions/main-window/setup-screen/show-setup-screen';
 import { showMainWindow } from '^actions/main-window/show-main-window.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
 import { getAppVersion } from '^lib/info/info.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 import './styles/global.style.css';
 import './styles/index.style.css';
-import { xlog } from '^lib/xlog/xlog.ts';
 
 
 async function main() {
-	await printDebugInfo('M.A.X. Map Editor');
-	await printDebugInfo('version: ' + getAppVersion());
+	xlog.info('M.A.X. Map Editor');
+	xlog.info('version:', getAppVersion());
 
-	await printDebugInfo('$APPDATA: ' + await appDataDir());
-	await printDebugInfo('$APPLOCALDATA: ' + await appLocalDataDir());
-	await printDebugInfo('$RESOURCE: ' + await resourceDir());
+	xlog.info('$APPDATA:', await appDataDir());
+	xlog.info('$APPLOCALDATA:', await appLocalDataDir());
+	xlog.info('$RESOURCE:', await resourceDir());
 
 
 	await SettingsFile.sync();

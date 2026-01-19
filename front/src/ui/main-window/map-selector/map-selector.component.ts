@@ -1,7 +1,7 @@
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { AppState } from '^state/app-state.ts';
 import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { animationFrame } from '^lib/flow-control/animation-frame.ts';
 import { Effect } from '^reactive/effect.ts';
 import { ReactiveNode } from '^reactive/reactive-node.class.ts';
@@ -56,7 +56,7 @@ const maps = [
 
 
 export function MapSelector() {
-	printDebugInfo('UI::MapSelector');
+	xlog.info('UI::MapSelector');
 
 	const buttons: [fileName: string, button: ReactiveNode<HTMLButtonElement>][] = [];
 

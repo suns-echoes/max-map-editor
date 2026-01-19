@@ -1,11 +1,11 @@
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { initWindowCloseEvent } from '^events/window/window-close.event.ts';
 import { initWindowMoveEvent } from '^events/window/window-move.event.ts';
 import { initWindowResizeEvent } from '^events/window/window-resize.event.ts';
 
 
 export async function initWindowEvents() {
-	await printDebugInfo('initWindowEvents');
+	xlog.info('initWindowEvents');
 	initWindowCloseEvent();
 	initWindowMoveEvent();
 	initWindowResizeEvent();

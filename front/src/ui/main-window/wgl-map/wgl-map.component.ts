@@ -1,5 +1,5 @@
 import { Canvas, Div, Pre, Section } from '^reactive/reactive-node.elements.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { AppState } from '^state/app-state.ts';
 import { Effect } from '^reactive/effect.ts';
 import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
@@ -13,7 +13,7 @@ const DEFAULT_MAP_PATH = 'resources/maps/GREEN_1.json';
 
 
 export function WGLMap() {
-	printDebugInfo('UI::WGLMap');
+	xlog.info('UI::WGLMap');
 
 	const canvas = Canvas('map-canvas');
 	const debugInfo = import.meta.env.DEV ? Pre().class(style.debugInfo) : null;

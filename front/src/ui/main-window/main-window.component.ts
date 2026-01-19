@@ -1,6 +1,6 @@
 import { Section } from '^reactive/reactive-node.elements.ts';
 import { WGLMap } from './wgl-map/wgl-map.component.ts';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { saveMainWindowParams } from '^actions/main-window/save-main-window-params.ts';
 import { AppEvents } from '^events/app-events.ts';
 import { AsyncEffect } from '^reactive/effect.ts';
@@ -14,7 +14,7 @@ import { MapSelector } from './map-selector/map-selector.component.ts';
 
 
 export function MainWindow() {
-	printDebugInfo('UI::MainWindow');
+	xlog.info('UI::MainWindow');
 
 	new AsyncEffect(saveMainWindowParams).on([AppEvents.windowResizeSignal]);
 

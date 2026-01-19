@@ -1,11 +1,11 @@
 import { showErrorModalAction } from '^src/ui/actions/show-error-modal/show-error-modal.action';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { openFileDialog } from '^lib/dialogs/open-file-dialog.ts';
 import { RustAPI } from '^src/bff/rust-api';
 
 
 export function NewMapFromImageAction(): LockPromise {
-	printDebugInfo('Actions::NewMapFromImageAction');
+	xlog.info('Actions::NewMapFromImageAction');
 
 	return new Promise<void>(async function (resolve) {
 		try {
@@ -18,13 +18,13 @@ export function NewMapFromImageAction(): LockPromise {
 			});
 
 			if (filePath) {
-				printDebugInfo(`Actions::NewMapFromImageAction::File selected: ${filePath}`);
+				xlog.info('Actions::NewMapFromImageAction::File selected:', filePath);
 
 				const [palette, indexedImage] = await RustAPI.imageToWRL(filePath);
-				printDebugInfo(`Actions::NewMapFromImageAction::Palette size: ${palette.length}, Indexed Image size: ${indexedImage.length}`);
+				xlog.info('Actions::NewMapFromImageAction::Palette size:', String(palette.length), 'Indexed Image size:', String(indexedImage.length));
 			}
 		} catch (error) {
-			printDebugInfo(`Actions::NewMapFromImageAction::Error opening file dialog: ${error}`);
+			xlog.error('Actions::NewMapFromImageAction::Error opening file dialog:', String(error));
 
 			await showErrorModalAction({
 				title: `ERROR 0x${Math.floor(Math.random() * 0x10000).toString(16).padStart(4, '0')}`,
@@ -34,7 +34,7 @@ export function NewMapFromImageAction(): LockPromise {
 					<p>${error}</p>
 				`.trim(),
 				onClose: () => {
-					printDebugInfo('Error popup closed');
+					xlog.info('Error popup closed');
 				},
 			});
 		} finally {

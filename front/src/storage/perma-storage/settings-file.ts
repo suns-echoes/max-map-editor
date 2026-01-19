@@ -1,5 +1,5 @@
 import { isTauri } from '@tauri-apps/api/core';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { debounce } from '^lib/flow-control/debounce.ts';
 import { fs } from '^lib/fs/fs.ts';
 import { deepAssignEqual } from '^lib/object-utils/deep-assign-equal.ts';
@@ -27,7 +27,7 @@ interface SettingsFileData {
 
 export const SettingsFile = new class SettingsFile {
 	async sync() {
-		await printDebugInfo('SettingsFile::sync');
+		xlog.info('SettingsFile::sync');
 
 		if (!isTauri()) {
 			this.#data.setup = false;
@@ -73,7 +73,7 @@ export const SettingsFile = new class SettingsFile {
 	#loaded = false;
 
 	async #initialize() {
-		await printDebugInfo('SettingsFile::#initialize');
+		xlog.info('SettingsFile::#initialize');
 		if (!(await fs.appLocalDataDir.exists('./settings.json'))) {
 			this.#needSync = true;
 			await this.#write();
@@ -84,7 +84,7 @@ export const SettingsFile = new class SettingsFile {
 	}
 
 	async #load() {
-		await printDebugInfo('SettingsFile::#load');
+		xlog.info('SettingsFile::#load');
 		this.#data = await fs.appLocalDataDir.readJSONFile('./settings.json');
 	}
 
@@ -93,12 +93,12 @@ export const SettingsFile = new class SettingsFile {
 	 */
 	#write = (() => debounce(async (): Promise<boolean> => {
 		if (this.#needSync) {
-			await printDebugInfo('SettingsFile::#write');
+			xlog.info('SettingsFile::#write');
 			await fs.appLocalDataDir.writeJSONFile('./settings.json', this.#data);
 			this.#needSync = false;
 			return true;
 		} else {
-			await printDebugInfo('SettingsFile::#write (skipped)');
+			xlog.info('SettingsFile::#write (skipped)');
 		}
 		return false;
 	}, 1000))();

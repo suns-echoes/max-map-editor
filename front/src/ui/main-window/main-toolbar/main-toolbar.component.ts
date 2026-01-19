@@ -1,5 +1,5 @@
 import { SimpleButton } from '^src/ui/components/buttons/simple-button.component';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { Section } from '^reactive/reactive-node.elements.ts';
 import { VerticalSeparator } from '^src/ui/components/separators/vertical-separator.component';
 
@@ -7,7 +7,7 @@ import style from './main-toolbar.module.css';
 
 
 export function MainToolbar() {
-	printDebugInfo('UI::MainToolbar');
+	xlog.info('UI::MainToolbar');
 
 	return (
 		Section('main-toolbar').class(style.mainToolbar).nodes([

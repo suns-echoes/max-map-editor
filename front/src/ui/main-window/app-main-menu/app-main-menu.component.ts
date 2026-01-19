@@ -1,4 +1,4 @@
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 import { CloseAppAction } from '^actions/app/close-app.action.ts';
 import { NewMapFromImageAction } from '^actions/new-map/new-map-from-image.action.ts';
@@ -7,7 +7,7 @@ import { MainMenu } from '^src/ui/components/menus/main-menu/main-menu.component
 
 
 export function AppMainMenu() {
-	printDebugInfo('UI::AppMainMenu');
+	xlog.info('UI::AppMainMenu');
 
 	return MainMenu([
 		{

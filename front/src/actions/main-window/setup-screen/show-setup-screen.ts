@@ -1,11 +1,11 @@
 import { getCurrentWindow, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
-import { printDebugInfo } from '^lib/debug/debug.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 import { setupDoneSignal, SetupScreen } from '^src/ui/setup-screen/setup-screen.html';
 import { Effect } from '^reactive/effect.ts';
 
 
 export async function showSetupScreen() {
-	await printDebugInfo('App::showSetupScreen');
+	xlog.info('App::showSetupScreen');
 
 	const width = 640;
 	const height = 480;
