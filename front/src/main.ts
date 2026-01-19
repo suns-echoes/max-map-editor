@@ -6,7 +6,8 @@ import { showMainWindow } from '^actions/main-window/show-main-window.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { getAppVersion } from '^lib/info/info.ts';
 import { xlog } from '^lib/xlog/xlog.ts';
-import { initErrorBoundary } from '^lib/errors/errors.ts';
+import { initErrorBoundary, disposeErrorBoundary } from '^lib/errors/errors.ts';
+import { hmrDispose, hmrAccept } from '^lib/hmr/hmr.ts';
 
 import './styles/global.style.css';
 import './styles/index.style.css';
@@ -16,6 +17,10 @@ import './styles/index.style.css';
 initErrorBoundary({
 	alwaysLog: true,
 });
+
+// HMR support: cleanup error boundary when module is hot-replaced
+hmrDispose(import.meta, disposeErrorBoundary);
+hmrAccept(import.meta);
 
 
 async function main() {

@@ -3,6 +3,7 @@ import { Value } from '^reactive/value.ts';
 import { Effect } from '^reactive/effect.ts';
 import { Perf } from '^lib/perf/perf.ts';
 import { TILE_LENGTH } from '^consts/tile-consts.ts';
+import { hmrDisposeAll, hmrAccept } from '^lib/hmr/hmr.ts';
 
 
 export const AppState = {
@@ -31,7 +32,7 @@ export const AppState = {
 /**
  * Initialize palette in WebGL when wglMap + palette are ready.
  */
-new Effect(function initWglPalette() {
+const initWglPaletteEffect = new Effect(function initWglPalette() {
 	const wglMap = AppState.wglMap.value;
 	const palette = AppState.palette.value;
 	if (!wglMap || !palette) return;
@@ -43,7 +44,7 @@ new Effect(function initWglPalette() {
 /**
  * Initialize tilesets in WebGL when wglMap + tiles are ready.
  */
-new Effect(function initWglTilesets() {
+const initWglTilesetsEffect = new Effect(function initWglTilesets() {
 	const wglMap = AppState.wglMap.value;
 	const tiles = AppState.tiles.value;
 	if (!wglMap || !tiles) return;
@@ -56,7 +57,7 @@ new Effect(function initWglTilesets() {
 /**
  * Initialize map in WebGL when wglMap + mapProject + map are ready.
  */
-new Effect(function initWglMap() {
+const initWglMapEffect = new Effect(function initWglMap() {
 	const wglMap = AppState.wglMap.value;
 	const mapProject = AppState.mapProject.value;
 	const map = AppState.map.value;
@@ -64,6 +65,11 @@ new Effect(function initWglMap() {
 
 	wglMap.initMap(map, mapProject.width, mapProject.height);
 }, { strong: true }).on([AppState.wglMap, AppState.mapProject, AppState.map]);
+
+
+// HMR support: dispose effects when module is hot-replaced
+hmrDisposeAll(import.meta, [initWglPaletteEffect, initWglTilesetsEffect, initWglMapEffect]);
+hmrAccept(import.meta);
 
 
 /**
