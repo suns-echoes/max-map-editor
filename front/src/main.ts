@@ -6,9 +6,16 @@ import { showMainWindow } from '^actions/main-window/show-main-window.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { getAppVersion } from '^lib/info/info.ts';
 import { xlog } from '^lib/xlog/xlog.ts';
+import { initErrorBoundary } from '^lib/errors/errors.ts';
 
 import './styles/global.style.css';
 import './styles/index.style.css';
+
+
+// Initialize global error boundary first
+initErrorBoundary({
+	alwaysLog: true,
+});
 
 
 async function main() {
