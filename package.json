@@ -8,8 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "node --no-warnings --enable-source-maps --import ./ts-node.loader.js --import ./node-test.loader.js --test ./src/**/*.test.ts",
-    "coverage": "node --no-warnings --experimental-test-coverage --enable-source-maps --import ./ts-node.loader.js --import ./node-test.loader.js --test ./src/**/*.test.ts"
+    "test": "node --no-warnings --enable-source-maps --import ./node-test.loader.js --test './front/src/**/*.spec.ts'",
+    "coverage": "node --no-warnings --experimental-test-coverage --enable-source-maps --import ./node-test.loader.js --test './front/src/**/*.spec.ts'"
   },
   "devDependencies": {
     "@suns-echoes/ts-types": "^2.4.0",
