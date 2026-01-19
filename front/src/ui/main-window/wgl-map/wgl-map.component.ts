@@ -1,7 +1,7 @@
 import { Canvas, Div, Pre, Section } from '^reactive/reactive-node.elements.ts';
 import { xlog } from '^lib/xlog/xlog.ts';
 import { AppState } from '^state/app-state.ts';
-import { AsyncEffect, Effect } from '^reactive/effect.ts';
+import { Effect } from '^reactive/effect.ts';
 import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { WglMap } from './wgl/wgl-map.ts';
@@ -168,14 +168,13 @@ export function WGLMap() {
 	});
 
 	// Load map project on startup
-	new AsyncEffect(async function loadDefaultMap(self) {
-		self.dispose(); // Run once only
+	(async function loadDefaultMap() {
 		try {
 			await loadMapProject(await resolveTextResource(DEFAULT_MAP_PATH));
 		} catch (error) {
 			xlog.error('Failed to load map project:', String(error));
 		}
-	}, { strong: true });
+	})();
 
 	// Debug info panel (dev mode only)
 	if (import.meta.env.DEV && debugInfo) {

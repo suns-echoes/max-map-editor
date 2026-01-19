@@ -11,14 +11,14 @@ import {
 
 function validMapProject(): object {
 	return {
-		version: 0.1,
+		version: 1,
 		name: 'Test Map',
 		description: 'A test map',
 		width: 2,
 		height: 2,
 		use: [
-			{ name: 'WATER', tileset: true, version: 0.1 },
-			{ name: 'GREEN', tileset: true, palette: true, version: 0.1 },
+			{ name: 'WATER', tileset: true, version: 1 },
+			{ name: 'GREEN', tileset: true, palette: true, version: 1 },
 		],
 		map: [
 			['WATR01', 'WATR02'],
@@ -113,7 +113,7 @@ describe('validateMapProject', () => {
 // ============================================================================
 
 describe('validateMapProject version', () => {
-	describe('When version is 0.1', () => {
+	describe('When version is 1', () => {
 		it('should not throw', () => {
 			// Arrange
 			const data = validMapProject();
@@ -132,7 +132,7 @@ describe('validateMapProject version', () => {
 			// Act & Assert
 			assert.throws(
 				() => validateMapProject(data),
-				/version.*Expected 0.1/
+				/version.*Expected 1/
 			);
 		});
 	});
@@ -145,7 +145,7 @@ describe('validateMapProject version', () => {
 			// Act & Assert
 			assert.throws(
 				() => validateMapProject(data),
-				/version.*Expected 0.1, got 0.2/
+				/version.*Expected 1, got 0.2/
 			);
 		});
 	});
@@ -309,7 +309,7 @@ describe('validateMapProject use array', () => {
 	describe('When use item has no name', () => {
 		it('should throw use[0].name validation error', () => {
 			// Arrange
-			const data = { ...validMapProject(), use: [{ version: 0.1 }] };
+			const data = { ...validMapProject(), use: [{ version: 1 }] };
 
 			// Act & Assert
 			assert.throws(
@@ -335,7 +335,7 @@ describe('validateMapProject use array', () => {
 	describe('When use item tileset is not boolean', () => {
 		it('should throw use[0].tileset validation error', () => {
 			// Arrange
-			const data = { ...validMapProject(), use: [{ name: 'TEST', version: 0.1, tileset: 'yes' }] };
+			const data = { ...validMapProject(), use: [{ name: 'TEST', version: 1, tileset: 'yes' }] };
 
 			// Act & Assert
 			assert.throws(

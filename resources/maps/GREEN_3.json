@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "High Impact",
 	"description": "This world is generally resourceless except for the region around the impact crater from a major asteroid strike. A combatant can win using just land and air forces. However, control of the inner sea could be important.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: the game can be very long.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "GREEN",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

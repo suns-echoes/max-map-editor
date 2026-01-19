@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "Ice Berg",
 	"description": "These chunks of ice poking up out of the frozen sea are widely enough separated that participants should have plenty of time to build up naval and air forces to pursue their goals.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: Games in this area are likely to be long.",
 	"width": 112,
@@ -8,12 +8,12 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "SNOW_DARK", "tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

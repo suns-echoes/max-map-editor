@@ -50,9 +50,9 @@ export function validateMapProject(data: unknown): asserts data is MapProject {
 
 	const obj = data as Record<string, unknown>;
 
-	// version: must be exactly 0.1
-	if (obj.version !== 0.1) {
-		throw new MapProjectValidationError('version', `Expected 0.1, got ${obj.version}`);
+	// version: must be 1
+	if (obj.version !== 1) {
+		throw new MapProjectValidationError('version', `Expected 1, got ${obj.version}`);
 	}
 
 	// name: required string

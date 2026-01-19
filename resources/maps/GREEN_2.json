@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "Middle Sea",
 	"description": "The useful parts of this world are split apart by a central sea. Control of the central sea with seaborne assets will be essential unless the participants all land on the same continent.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: will be long unless two participants land close together.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "GREEN",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

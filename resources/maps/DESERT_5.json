@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "Flash Point",
 	"description": "The central island of this planet makes a natural battleground for all participants, whether they start there or not. Start on one of the corner lands t gain a reasonable amount of time for a strategic buildup.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: Games on this world are likely to be very long.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "DESERT",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

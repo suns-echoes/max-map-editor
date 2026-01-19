@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "Long Floes",
 	"description": "The nature of this land mass makes construction of water platforms mandatory for a successful colonization. The chance of a preemptive strike by an opponent is high, though not as high as from other single-land areas.\nNumber of Participants: Two to three participants is preferable.\nGame Time: Games in this area should be of medium to long length.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "SNOW_DARK",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

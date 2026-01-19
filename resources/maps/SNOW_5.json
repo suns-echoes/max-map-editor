@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "Ultima Thule",
 	"description": "Participants who land on one of the smaller land masses should have plenty of time to build production before encountering an opponent. Landing two on the same land mass will cause instant combat.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: Games in this area are likely to be long.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "SNOW",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

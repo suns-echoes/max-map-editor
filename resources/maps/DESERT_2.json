@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "Sandspit",
 	"description": "Very few lumps of sand poke out of the ocean on this planet. Its situation demands heavy use of water platforms and naval assets. Two participants are very unlikely to end up on the same land mass.\nNumber of Participants: Two to three participants is preferable.\nGame Time: Most games in this location will be long games.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "DESERT",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

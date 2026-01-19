@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "Sanctuary",
 	"description": "This archipelago with a slice of mainland is suited to a balanced combined arm force with extensive resource building. Taking sanctuary from the incessant naval action on the slice of mainland is a legitimate tactic, of course.\nNumber of Participants: Two to three participants is preferable.\nGame Time: The game will probably be long.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "GREEN",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

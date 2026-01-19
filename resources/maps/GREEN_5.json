@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "Islandia",
 	"description": "This archipelago is best suited to a concentration on sea borne forces. Extensive engineering will be necessary to create areas for proper exploitation of the planetary resources.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: The necessary construction makes this a long game.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "GREEN",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [

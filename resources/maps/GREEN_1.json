@@ -1,5 +1,5 @@
 {
-	"version": 0.1,
+	"version": 1,
 	"name": "New Luzon",
 	"description": "This archipelago is tightly grouped in the middle of the planetary sea. There are opportunities for extensive air and sea resources, though an entirely land-and-air-based campaign could be successful.\nNumber of Participants: Two to three participants is preferable.\nGame Time: varies greatly depending on the landing points of the participants.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 0.1
+			"version": 1
 		},
 		{
 			"name": "GREEN",
 			"tileset": true,
 			"palette": true,
-			"version": 0.1
+			"version": 1
 		}
 	],
 	"map": [
