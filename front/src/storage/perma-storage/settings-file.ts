@@ -1,3 +1,5 @@
+// TODO: Refactor `SettingsFile` logic, and place it in BE code, then expose the API
+
 import { isTauri } from '@tauri-apps/api/core';
 import { xlog } from '^lib/xlog/xlog.ts';
 import { debounce } from '^lib/flow-control/debounce.ts';

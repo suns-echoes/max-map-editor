@@ -24,6 +24,22 @@ export class xlog {
 
 function prepareMessageString(messages: any[]): string {
 	return messages.map(function (message: any) {
+		if (typeof message === 'string') {
+			return message;
+		}
+
+		if (typeof message === 'number') {
+			return message.toString(10);
+		}
+
+		if (typeof message === undefined) {
+			return '[undefined]';
+		}
+
+		if (message === null) {
+			return 'null';
+		}
+
 		if (isObject(message)) {
 			if (isError(message)) {
 				let errorMessage = message.message;
@@ -34,6 +50,12 @@ function prepareMessageString(messages: any[]): string {
 			}
 
 			return JSON.stringify(message);
+		}
+
+		try {
+			return message.toString();
+		} catch {
+			return message;
 		}
 	}).join(' ');
 }
