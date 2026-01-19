@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "The Cooler",
 	"description": "This single land mass with surrounding islands is so small that two participants starting on the mass makes immediate contact with the enemy very likely. Start on one of the outlying islands to gain plenty of time for force increase.\nNumber of Participants: Two to three participants is preferable.\nGame Time: Games in this area can be very short.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "SNOW_DARK",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [

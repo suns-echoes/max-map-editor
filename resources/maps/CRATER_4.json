@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "Valentine's Planet",
 	"description": "Named for the heart-shaped great lake in the center of the land mass, this world can be won by land and air forces alone, but the use of sea forces in the central lake could be crucial.\nNumber of Participants: Two to four can be easily accomodated.\nGame Time: This is likely to be a long campaign.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "CRATER",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [

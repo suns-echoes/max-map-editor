@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "Three Rings",
 	"description": "The name of this world refers to the three lakes encompassed by the otherwise solid land mass of the world. There is a chance that a production-first strategy can run afoul of a preemptory strike by another participant.\nNumber of Participants: Two to three participants is preferable.\nGame Time: Probably short.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "CRATER",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [

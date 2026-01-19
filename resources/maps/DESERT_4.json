@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "Long Passage",
 	"description": "The sea passage that separates the two main land masses makes naval action likely here. Those who wish to follow a production strategy might land on the island to the north east.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: this is likely to be a long game.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "DESERT",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [

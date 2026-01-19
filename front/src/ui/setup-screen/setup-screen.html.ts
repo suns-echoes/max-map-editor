@@ -4,6 +4,7 @@ import { openFolderDialog } from '^lib/dialogs/open-folder-dialog.ts';
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import style from './setup-screen.module.css';
 import { RustAPI } from '../../bff/rust-api.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 
 export const setupDoneSignal = new Value<void>(undefined);
@@ -60,10 +61,10 @@ export function SetupScreen() {
 				return 'Invalid directory.<br>Please provide a valid M.A.X. installation path.';
 		} catch (e) {
 			if (typeof e === 'string' && e.startsWith('ERROR_') && e in RustAPI) {
-				console.error(errorMessage);
+				xlog.error(errorMessage);
 				return RustAPI[e as keyof typeof RustAPI] as string;
 			} else {
-				console.error(e);
+				xlog.error(e);
 				return 'Unknown error occurred while validating the path.';
 			}
 		}
@@ -83,15 +84,15 @@ export function SetupScreen() {
 
 		try {
 			showMessage('Updating setting file.');
-			console.info('Updating settings file:', { max: { path }, setup: false });
+			xlog.info('Updating settings file:', { max: { path }, setup: false });
 			await SettingsFile.set({ max: { path }, setup: false }).sync();
 		} catch (e) {
 			showError('Could not sync settings file.<br>This is a critical error.');
-			console.error('Could not sync settings file:', e);
+			xlog.error('Could not sync settings file:', e);
 		}
 		if (!await RustAPI.reloadMAXPath()) {
 			showError('Backend could not reload M.A.X. path.<br>This is a critical error.');
-			console.error('Fatal: Tauri could not reload M.A.X. path.');
+			xlog.error('Fatal: Tauri could not reload M.A.X. path.');
 		}
 
 		showMessage('Setup complete!');

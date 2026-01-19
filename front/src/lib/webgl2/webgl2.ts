@@ -2,6 +2,7 @@ import { TILE_LENGTH, TILE_SIZE } from '^consts/tile-consts.ts';
 import { MAX_TEXTURE_SIZE_LIMIT } from '^consts/wgl-consts.ts';
 import { perspective } from '^lib/math/3d.ts';
 import { mat4_createIdentity } from '^lib/math/mat4.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 
 export class WebGL2 {
@@ -234,7 +235,7 @@ export class WebGL2 {
 	}
 
 	cleanup() {
-		console.info('WglMap::cleanup');
+		xlog.info('WglMap::cleanup');
 
 		const numTextureUnits = this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS);
 		for (let unit = 0; unit < numTextureUnits; unit++) {

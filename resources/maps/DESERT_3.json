@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "Great Circle",
 	"description": "Like any other world where all the land is connected, this can be very risky for a high-production strategy. However, its size does give some protection against a preemptive strike by another participant.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: medium to long unless participants' landing points are close.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "DESERT",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [

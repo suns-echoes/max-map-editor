@@ -1,27 +1,47 @@
 import { RustAPI } from '^src/bff/rust-api.ts';
 
 export class xlog {
-	static success(...messages: string[]) {
-		const message = messages.join(' ');
-		console.log(`%c[SUCCESS] ${message}`, 'color: green;');
-		RustAPI.xlog('SUCCESS', message);
+	static success(...messages: any[]) {
+		console.log(...messages);
+		RustAPI.xlog('SUCCESS', prepareMessageString(messages));
 	}
 
-	static info(...messages: string[]) {
-		const message = messages.join(' ');
-		console.info(`%c[INFO] ${message}`, 'color: skyblue;');
-		RustAPI.xlog('INFO', message);
+	static info(...messages: any[]) {
+		console.info(...messages);
+		RustAPI.xlog('INFO', prepareMessageString(messages));
 	}
 
-	static warn(...messages: string[]) {
-		const message = messages.join(' ');
-		console.warn(`%c[WARN] ${message}`, 'color: orange;');
-		RustAPI.xlog('WARN', message);
+	static warn(...messages: any[]) {
+		console.warn(...messages);
+		RustAPI.xlog('WARN', prepareMessageString(messages));
 	}
 
-	static error(...messages: string[]) {
-		const message = messages.join(' ');
-		console.error(`%c[ERROR] ${message}`, 'color: red;');
-		RustAPI.xlog('ERROR', message);
+	static error(...messages: any[]) {
+		console.error(...messages);
+		RustAPI.xlog('ERROR', prepareMessageString(messages));
 	}
+}
+
+function prepareMessageString(messages: any[]): string {
+	return messages.map(function (message: any) {
+		if (isObject(message)) {
+			if (isError(message)) {
+				let errorMessage = message.message;
+				if (message.stack) {
+					errorMessage + '\n' + message.stack;
+				}
+				return errorMessage;
+			}
+
+			return JSON.stringify(message);
+		}
+	}).join(' ');
+}
+
+function isObject(value: any): value is Record<any, any> {
+	return typeof value === 'object' && value !== null;
+}
+
+function isError(value: any): value is Error {
+	return value instanceof Error;
 }

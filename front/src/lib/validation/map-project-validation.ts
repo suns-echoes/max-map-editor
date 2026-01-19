@@ -50,9 +50,9 @@ export function validateMapProject(data: unknown): asserts data is MapProject {
 
 	const obj = data as Record<string, unknown>;
 
-	// version: must be 1
-	if (obj.version !== 1) {
-		throw new MapProjectValidationError('version', `Expected 1, got ${obj.version}`);
+	// version: required string
+	if (typeof obj.version !== 'string' || obj.version.length === 0) {
+		throw new MapProjectValidationError('version', `Expected non-empty string`);
 	}
 
 	// name: required string
@@ -119,8 +119,8 @@ function validateAssetReference(data: unknown, path: string): void {
 	}
 
 	// version: required number
-	if (typeof obj.version !== 'number') {
-		throw new MapProjectValidationError(`${path}.version`, 'Expected number');
+	if (typeof obj.version !== 'string' || obj.version.length === 0) {
+		throw new MapProjectValidationError(`${path}.version`, 'Expected non-empty string');
 	}
 
 	// tileset: optional boolean

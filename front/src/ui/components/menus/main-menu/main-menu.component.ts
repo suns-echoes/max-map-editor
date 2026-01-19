@@ -41,7 +41,6 @@ export function MainMenu(menu: MainMenu) {
 	}
 
 	function requestMenuLock() {
-		console.debug('MainMenu::blockMenu');
 		if (isMenuBlocked) return false;
 		mainMenu.element.classList.add(style.blocked);
 		return isMenuBlocked = true;

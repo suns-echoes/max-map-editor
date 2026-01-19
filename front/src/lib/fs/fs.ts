@@ -8,8 +8,6 @@ export const fs = {
 	appLocalDataDir: {
 
 		async exists(path: string): Promise<boolean> {
-			console.log(await appLocalDataDir());
-
 			if (path === '.') return exists(await appLocalDataDir());
 			return exists(path, { baseDir: BaseDirectory.AppLocalData });
 		},

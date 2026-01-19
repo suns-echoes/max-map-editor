@@ -1,4 +1,5 @@
 import { getAllWindows } from '@tauri-apps/api/window';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 
 export async function CloseAppAction() {
@@ -10,12 +11,12 @@ export async function CloseAppAction() {
 				try {
 					await window.close();
 				} catch (error) {
-					console.error(`Error closing window ${window.label}:`, error);
+					xlog.error(`Error closing window ${window.label}:`, error);
 					return;
 				}
 			}
 		}
 	} catch(error) {
-		console.error('Error getting windows:', error);
+		xlog.error('Error getting windows:', error);
 	}
 }

@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "Bottleneck",
 	"description": "This world gets its name from the land bottleneck controllable by sea forces and the sea bottleneck controllable by land forces. Both are in the center of the map. Extensive use of all forces is likely in this location.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: Most games on this world are likely to be very long.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "DESERT",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [

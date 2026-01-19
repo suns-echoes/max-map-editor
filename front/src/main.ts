@@ -33,7 +33,7 @@ async function main() {
 
 
 	await SettingsFile.sync();
-	console.info('Settings:', SettingsFile.getAll());
+	xlog.info('Settings:', SettingsFile.getAll());
 
 
 	// SETUP

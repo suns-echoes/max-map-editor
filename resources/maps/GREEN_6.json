@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "Hammerhead",
 	"description": "The extensive land area on this planet makes it ideal for extensive land-based warfare. Sea borne assets may play a necessary but secondary role, depending on initial placement.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: this is likely to be a long game.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "GREEN",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [

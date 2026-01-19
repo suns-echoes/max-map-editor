@@ -1,12 +1,13 @@
 import { SettingsFile } from '^storage/perma-storage/settings-file.ts';
 import { fileExists } from '^lib/fs/file-exists.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 
 export async function updateMaxPath(path: string): Promise<void> {
 	if (await doesAllFilesExists(path)) {
 		SettingsFile.set({ max: { path } });
 	} else {
-		console.error('Missing files, is this the correct path MAX?');
+		xlog.error('Missing files, is this the correct path MAX?');
 		return;
 	}
 }

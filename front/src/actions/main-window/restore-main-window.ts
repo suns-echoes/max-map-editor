@@ -12,7 +12,9 @@ export async function restoreMainWindow() {
 	const settings = SettingsFile.getAll();
 
 	if (settings.debug.showDevTools) {
-		RustAPI.openDevTools().catch(console.error);
+		RustAPI.openDevTools().catch(
+			xlog.error,
+		);
 	}
 
 	const currentWindow = getCurrentWindow();

@@ -4,12 +4,15 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 
 import { saveMainWindowParams } from '^actions/main-window/save-main-window-params';
 import { AppEvents } from '^events/app-events.ts';
+import { xlog } from '^lib/xlog/xlog.ts';
 
 
 export async function initWindowCloseEvent() {
 	if (isTauri()) {
 		getCurrentWindow().listen(TauriEvent.WINDOW_CLOSE_REQUESTED, async function () {
-			await saveMainWindowParams().catch(console.error);
+			await saveMainWindowParams().catch(
+				xlog.error,
+			);
 
 			AppEvents.windowCloseSignal.set(undefined);
 

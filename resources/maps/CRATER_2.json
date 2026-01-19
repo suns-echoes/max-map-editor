@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "Splatterscape",
 	"description": "This archipelago of closely placed islands could be the scene of an entirely land and bridge based campaign, though sea and air assets would be useful.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: Likely to be long unless there are only two participants and they both land on the same island.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "CRATER",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [

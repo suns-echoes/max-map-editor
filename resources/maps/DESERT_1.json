@@ -1,5 +1,5 @@
 {
-	"version": 1,
+	"version": "1",
 	"name": "Freckles",
 	"description": "This planet gets its name from its appearance when seen from space. The mountains jutting out of the desert give it a decidedly freckled appearance. There might be extensive use of naval assets, or none.\nNumber of Participants: two to four can be easily accommodated.\nGame Time: Most games in this location will be long games.",
 	"width": 112,
@@ -8,13 +8,13 @@
 		{
 			"name": "WATER",
 			"tileset": true,
-			"version": 1
+			"version": "1"
 		},
 		{
 			"name": "DESERT",
 			"tileset": true,
 			"palette": true,
-			"version": 1
+			"version": "1"
 		}
 	],
 	"map": [
