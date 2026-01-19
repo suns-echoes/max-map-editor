@@ -222,7 +222,7 @@ export class WglMap extends WebGL2 {
 
 	initMap(mapData: Uint16Array, width: number, height: number) {
 		if (this.textures[this.MAP_TEXTURE]) {
-			this.gl.deleteTexture(this.mapTexture);
+			this.gl.deleteTexture(this.textures[this.MAP_TEXTURE]);
 		}
 		this.mapWidth = width;
 		this.mapHeight = height;
@@ -322,7 +322,6 @@ export class WglMap extends WebGL2 {
 	mapHeight: number = 0;
 	mapModelWidth: number = 0;
 	mapModelHeight: number = 0;
-	mapTexture: WebGLTexture | null = null;
 
 	uniformLocations: Record<string, WebGLUniformLocation> = {
 		uScreenSize: null!,
