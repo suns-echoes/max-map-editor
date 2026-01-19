@@ -1,7 +1,7 @@
 import { Canvas, Div, Pre, Section } from '^reactive/reactive-node.elements.ts';
 import { xlog } from '^lib/xlog/xlog.ts';
 import { AppState } from '^state/app-state.ts';
-import { Effect } from '^reactive/effect.ts';
+import { AsyncEffect, Effect } from '^reactive/effect.ts';
 import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
 import { WglMap } from './wgl/wgl-map.ts';
@@ -27,29 +27,52 @@ export function WGLMap() {
 	);
 
 	let wglMap: WglMap | null = null;
+	let initialized = false;
 
-	// Initialize after component is mounted
-	setTimeout(() => {
-		const canvasElement = canvas.element as HTMLCanvasElement;
-		const container = canvasElement.parentElement;
-		if (!container) {
-			console.error('WGLMap: Canvas has no parent element');
-			return;
+	// Cache for mouse position calculations (updated on resize)
+	let canvasRect: DOMRect | null = null;
+
+	// Event handlers (defined here so we can remove them in cleanup)
+	let handleMouseMove: ((e: MouseEvent) => void) | null = null;
+	let handleMouseUp: ((e: MouseEvent) => void) | null = null;
+
+	const canvasElement = canvas.element as HTMLCanvasElement;
+	const container = canvasElement.parentElement;
+
+	// Use ResizeObserver for DOM-ready initialization
+	// ResizeObserver only fires when element has dimensions (is in DOM and laid out)
+	const resizeObserver = new ResizeObserver((entries) => {
+		const entry = entries[0];
+		if (!entry || entry.contentRect.width === 0 || entry.contentRect.height === 0) {
+			return; // Not ready yet
 		}
+
+		// First resize = DOM is ready, initialize WebGL
+		if (!initialized) {
+			initialized = true;
+			initializeWebGL();
+		}
+
+		// Update on every resize
+		if (wglMap) {
+			wglMap.onCanvasResize();
+			canvasRect = canvasElement.getBoundingClientRect();
+		}
+	});
+
+	if (container) {
+		resizeObserver.observe(container);
+	} else {
+		xlog.error('WGLMap: Canvas has no parent element');
+	}
+
+	function initializeWebGL() {
+		xlog.info('WGLMap::initializeWebGL');
 
 		// Create the optimized WebGL map renderer
 		wglMap = new WglMap(canvasElement);
 		AppState.wglMap.value = wglMap;
-
-		// ResizeObserver for canvas resizing
-		let canvasRect = canvasElement.getBoundingClientRect();  // Cache for mouse events
-		const resizeObserver = new ResizeObserver(() => {
-			if (wglMap) {
-				wglMap.onCanvasResize();
-				canvasRect = canvasElement.getBoundingClientRect();  // Update cache on resize
-			}
-		});
-		resizeObserver.observe(container);
+		canvasRect = canvasElement.getBoundingClientRect();
 
 		// Panning with right mouse button
 		let isPanning = false;
@@ -68,13 +91,12 @@ export function WGLMap() {
 				// Middle click: reset zoom to 1:1
 				e.preventDefault();
 				if (wglMap) {
-					// Use moveCamera with a zoom reset (handled internally)
 					wglMap.moveCamera(0, 0, 0);
 				}
 			}
 		});
 
-		const handleMouseMove = (e: MouseEvent) => {
+		handleMouseMove = (e: MouseEvent) => {
 			if (isPanning && wglMap) {
 				const dx = e.clientX - lastX;
 				const dy = e.clientY - lastY;
@@ -84,7 +106,7 @@ export function WGLMap() {
 			}
 		};
 
-		const handleMouseUp = (e: MouseEvent) => {
+		handleMouseUp = (e: MouseEvent) => {
 			if (e.button === 2 && isPanning) {
 				isPanning = false;
 				canvasElement.style.cursor = 'default';
@@ -97,7 +119,7 @@ export function WGLMap() {
 		// Mouse wheel for zooming
 		canvasElement.addEventListener('wheel', (e) => {
 			e.preventDefault();
-			if (!wglMap) return;
+			if (!wglMap || !canvasRect) return;
 
 			const cursorX = e.clientX - canvasRect.left;
 			const cursorY = e.clientY - canvasRect.top;
@@ -109,7 +131,7 @@ export function WGLMap() {
 
 		// Track mouse for cursor highlight
 		canvasElement.addEventListener('mousemove', (e) => {
-			if (isPanning || !wglMap) return;
+			if (isPanning || !wglMap || !canvasRect) return;
 
 			const screenX = e.clientX - canvasRect.left;
 			const screenY = e.clientY - canvasRect.top;
@@ -124,30 +146,36 @@ export function WGLMap() {
 
 		// Enable animation (water effects, etc.)
 		wglMap.enableAnimation();
+	}
 
-		// Cleanup
-		component.cleanup(() => {
-			resizeObserver.disconnect();
+	// Cleanup
+	component.cleanup(() => {
+		resizeObserver.disconnect();
+
+		if (handleMouseMove) {
 			window.removeEventListener('mousemove', handleMouseMove);
+		}
+		if (handleMouseUp) {
 			window.removeEventListener('mouseup', handleMouseUp);
+		}
 
-			if (wglMap) {
-				wglMap.disableAnimation();
-				wglMap.cleanup();
-				wglMap = null;
-				AppState.wglMap.value = null;
-			}
-		});
-	}, 0);
+		if (wglMap) {
+			wglMap.disableAnimation();
+			wglMap.cleanup();
+			wglMap = null;
+			AppState.wglMap.value = null;
+		}
+	});
 
 	// Load map project on startup
-	(async () => {
+	new AsyncEffect(async function loadDefaultMap(self) {
+		self.dispose(); // Run once only
 		try {
 			await loadMapProject(await resolveTextResource(DEFAULT_MAP_PATH));
 		} catch (error) {
-			console.error('Failed to load map project:', error);
+			xlog.error('Failed to load map project:', String(error));
 		}
-	})();
+	}, { strong: true });
 
 	// Debug info panel (dev mode only)
 	if (import.meta.env.DEV && debugInfo) {
