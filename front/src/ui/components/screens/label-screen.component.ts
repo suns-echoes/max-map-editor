@@ -3,9 +3,9 @@ import { Div } from '^reactive/reactive-node.elements.ts';
 import style from './label-screen.module.css';
 
 
-export function LabelScreen(debugName?: string) {
+export function LabelScreen(text?: string) {
 	const labelScreen = (
-		Div(debugName).baseClass(style.labelScreen).nodes([
+		Div(text).baseClass(style.labelScreen).nodes([
 			Div(),
 		])
 	);

@@ -5,8 +5,8 @@ import { SquareText } from '../square-text/square-text.component.ts';
 import style from './submenu-button.module.css';
 
 
-export function SubmenuButton(text: string, debugName?: string) {
-	return Button(debugName).class(style.submenuButton).nodes([
+export function SubmenuButton(text: string) {
+	return Button().baseClass(style.submenuButton).nodes([
 		SquareText(text),
 	]);
 }
