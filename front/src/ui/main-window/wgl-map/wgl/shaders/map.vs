@@ -1,19 +1,17 @@
 #version 300 es
 precision highp float;
 
-// Matrices
-uniform mat4 uModel;
-uniform mat4 uView;
-uniform mat4 uProjection;
+// Simple full-screen quad vertex shader
+// Vertices are in clip space: (-1,-1) to (1,1)
+layout (location=0) in vec2 aPosition;
 
-// Vertex attributes
-layout (location=0) in vec3 aMapPosition;
-layout (location=1) in vec2 aTexCoord;
+// Pass screen position to fragment shader (in pixels, centered at 0,0)
+out vec2 vScreenPos;
 
-// Outputs to fragment shader
-out vec2 vTexCoord;
+uniform vec2 uScreenSize;  // Canvas width, height
 
 void main() {
-	gl_Position = uProjection * uView * uModel * vec4(aMapPosition.xy * 0.5, 0.0, 1.0);
-	vTexCoord = aTexCoord;
+	gl_Position = vec4(aPosition, 0.0, 1.0);
+	// Convert from clip space [-1,1] to screen pixels centered at origin
+	vScreenPos = aPosition * uScreenSize * 0.5;
 }

@@ -3,8 +3,6 @@ import fragmentShaderSource from './shaders/map.fs?raw';
 import { Perf } from '^lib/perf/perf.ts';
 import { WebGL2 } from '^lib/webgl2/webgl2.ts';
 import { MAP_LAYERS } from '^consts/map-consts.ts';
-import { mat4_createIdentity, mat4_identity, mat4_scale, mat4_translate } from '^lib/math/mat4.ts';
-import { orthographic } from '^lib/math/3d.ts';
 import { printDebugInfo } from '^lib/debug/debug.ts';
 import { FPS } from '^lib/webgl2/fps.ts';
 
@@ -21,13 +19,8 @@ export class WglMap extends WebGL2 {
 		this.gl.useProgram(program);
 
 		this.getUniformLocations(program);
-
-		this.initViewport();
-		this.initView();
-		this.initModel();
-		this.initCursor();
-		this.createMapTexCoordBuffer();
-		this.createMapMeshBuffer();
+		this.createQuadBuffer();
+		this.updateScreenSize();
 
 		this.clear();
 
@@ -37,197 +30,196 @@ export class WglMap extends WebGL2 {
 		printDebugInfo('WglMap::constructor done');
 	}
 
-	onCanvasResize() {
-		this.initViewport();
-		this.initModel();
+	/** Create a single full-screen quad in clip space */
+	private createQuadBuffer(): void {
+		// Full-screen quad: two triangles covering [-1,1] x [-1,1]
+		const quadVertices = new Float32Array([
+			-1, -1,  // Bottom-left
+			 1, -1,  // Bottom-right
+			-1,  1,  // Top-left
+			-1,  1,  // Top-left
+			 1, -1,  // Bottom-right
+			 1,  1,  // Top-right
+		]);
+		this.buffers.quad = this.createBuffer(quadVertices, 0, 2);
 	}
 
-	/**
-	 * Initialize viewport with orthographic projection for 2D map rendering.
-	 * Maps screen coordinates where (0,0) is center, positive X is right, positive Y is up.
-	 */
-	override initViewport() {
+	/** Update screen size uniform when canvas resizes */
+	private updateScreenSize(): void {
 		const canvas = this.gl.canvas as HTMLCanvasElement;
 		canvas.width = canvas.parentElement!.clientWidth;
 		canvas.height = canvas.parentElement!.clientHeight;
-		this.aspect = canvas.width / canvas.height;
-
-		// Orthographic projection: half-width and half-height in screen pixels
-		const halfWidth = canvas.width * 0.5;
-		const halfHeight = canvas.height * 0.5;
-
-		orthographic(
-			this.viewportProjectionMatrix,
-			-halfWidth, halfWidth,    // left, right
-			-halfHeight, halfHeight,  // bottom, top
-			-1, 1                     // near, far
-		);
-
-		this.gl.uniformMatrix4fv(this.uniformLocations.uProjection, false, this.viewportProjectionMatrix);
 		this.gl.viewport(0, 0, canvas.width, canvas.height);
+		this.gl.uniform2f(this.uniformLocations.uScreenSize, canvas.width, canvas.height);
 	}
 
-	private _viewMatrix = mat4_createIdentity();
-
-	initView() {
-		// With orthographic projection, view is just identity (camera at origin)
-		mat4_identity(this._viewMatrix);
-		this.gl.uniformMatrix4fv(this.uniformLocations.uView, false, this._viewMatrix);
+	onCanvasResize() {
+		this.updateScreenSize();
+		this._limitMapZoom();
+		this._limitMapPan();
+		this._updateUniforms();
+		this.render();
 	}
 
-	private _modelMatrix = mat4_createIdentity();
+	private _cursor: Vec2 = new Float32Array([0, 0]);
 
-	initModel() {
-		if (this.mapModelHeight === 0) return;
+	moveCursor(screenX: number, screenY: number) {
+		const canvas = this.gl.canvas as HTMLCanvasElement;
+		// Convert screen position to world position
+		const worldX = (screenX - canvas.width * 0.5) / this._zoom + this._panX + this.mapWidth * 32;
+		const worldY = (screenY - canvas.height * 0.5) / this._zoom + this._panY + this.mapHeight * 32;
 
-		// factor = ratio of map pixels to screen pixels at zoom 1
-		this.factor = this.mapModelHeight / this.gl.canvas.height;
-
-		// Scale model to map's pixel dimensions (centered at origin)
-		// Vertices are [-0.5, 0.5] so scaling by mapModelWidth/Height gives pixel size
-		mat4_identity(this._modelMatrix);
-		mat4_scale(this._modelMatrix, this._modelMatrix, [this.mapModelWidth, this.mapModelHeight, 1]);
-		this.gl.uniformMatrix4fv(this.uniformLocations.uModel, false, this._modelMatrix);
-	}
-
-	private _cursor: Vec2 = new Float32Array([56, 56]);
-
-	initCursor() {
-		this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
-		this.gl.uniform2fv(this.uniformLocations.uCursor, this._cursor);
-	}
-
-	private _mapPanX: number = 0;
-	private _mapPanY: number = 0;
-
-	moveCursor(x: number, y: number) {
-		const cursorX = x - this.gl.canvas.width * 0.5 - this._mapPanX;
-		const cursorY = y - this.gl.canvas.height * 0.5 + this._mapPanY;
-		const invTileSizeAndZoom = 0.015625 / this.mapZoom;
-
-		this._cursor[0] = Math.floor(cursorX * invTileSizeAndZoom + this.mapWidth * 0.5);
-		this._cursor[1] = Math.floor(cursorY * invTileSizeAndZoom + this.mapHeight * 0.5);
+		// Convert to cell coordinates
+		this._cursor[0] = Math.floor(worldX / 64);
+		this._cursor[1] = Math.floor(worldY / 64);
 
 		this.gl.uniform2fv(this.uniformLocations.uCursor, this._cursor);
 		this.render();
 	}
 
-	private _updateZoom(dz: number) {
-		// Smooth zoom: multiply by a factor based on scroll delta
-		const zoomSpeed = 0.1;
-		this.mapZoom *= 1 + dz * zoomSpeed;
-		this._limitMapZoom();
+	// Camera state: pan in world pixels (map pixels), zoom factor
+	private _panX: number = 0;
+	private _panY: number = 0;
+	private _zoom: number = 1;
+
+	public moveCamera(dx: number, dy: number, dz: number, cursorX: number = 0, cursorY: number = 0) {
+		const canvas = this.gl.canvas as HTMLCanvasElement;
+
+		if (dz !== 0) {
+			// Zoom towards cursor
+			const oldZoom = this._zoom;
+			this._zoom *= 1 + dz * 0.1;
+			this._limitMapZoom();
+
+			// Adjust pan to zoom towards cursor
+			const cursorOffsetX = cursorX - canvas.width * 0.5;
+			const cursorOffsetY = cursorY - canvas.height * 0.5;
+
+			// Convert cursor offset to world coordinates at old zoom, then adjust
+			this._panX += cursorOffsetX / oldZoom - cursorOffsetX / this._zoom;
+			this._panY += cursorOffsetY / oldZoom - cursorOffsetY / this._zoom;
+		}
+
+		// Pan in world coordinates
+		this._panX -= dx / this._zoom;
+		this._panY -= dy / this._zoom;
+
+		this._limitMapPan();
+		this._updateUniforms();
+		this.render();
 	}
 
-	/**
-	 * Limit zoom range:
-	 * - Max: 2x (each map pixel = 2 screen pixels)
-	 * - Min: fit map to smallest window dimension
-	 */
 	private _limitMapZoom() {
+		const canvas = this.gl.canvas as HTMLCanvasElement;
 		const minZoom = Math.min(
-			this.gl.canvas.width / this.mapModelWidth,
-			this.gl.canvas.height / this.mapModelHeight
+			canvas.width / this.mapModelWidth,
+			canvas.height / this.mapModelHeight
 		);
 		const maxZoom = 2;
 
-		if (this.mapZoom < minZoom) {
-			this.mapZoom = minZoom;
-		} else if (this.mapZoom > maxZoom) {
-			this.mapZoom = maxZoom;
-		}
+		if (this._zoom < minZoom) this._zoom = minZoom;
+		if (this._zoom > maxZoom) this._zoom = maxZoom;
 	}
-
-	/**
-	 * Zoom map relative to the screen center.
-	 */
-	// private _updatePanToScreenCenter(dx: number, dy: number, zoomFactor: number) {
-	// 	this._mapPanX = (this._mapPanX + dx) * zoomFactor;
-	// 	this._mapPanY = (this._mapPanY - dy) * zoomFactor;
-	// 	this._limitMapPan();
-	// }
-
-	/**
-	 * Zoom map relative to the cursor position.
-	 */
-	private _updatePanToCursor(dx: number, dy: number, zoomFactor: number, cursorX: number, cursorY: number) {
-		const cursorToCenterX = cursorX - this.gl.canvas.width * 0.5;
-		const cursorToCenterY = cursorY - this.gl.canvas.height * 0.5;
-		this._mapPanX = (this._mapPanX + dx - cursorToCenterX) * zoomFactor + cursorToCenterX;
-		this._mapPanY = (this._mapPanY - dy + cursorToCenterY) * zoomFactor - cursorToCenterY;
-		this._limitMapPan();
-	}
-
-	/**
-	 * Update map pan (no zoom).
-	 */
-	private _updatePan(dx: number, dy: number) {
-		this._mapPanX += dx;
-		this._mapPanY -= dy;
-		this._limitMapPan();
-	}
-
-	private _mapMargin = 64 * 2;
 
 	private _limitMapPan() {
-		const mapMargin = this._mapMargin / this.mapZoom;
-		if ((this.mapModelWidth + mapMargin) * this.mapZoom >= this.gl.canvas.width) {
-			const maxPanX = (this.mapModelWidth * 0.5 + mapMargin) * this.mapZoom - this.gl.canvas.width * 0.5;
-			if (this._mapPanX < -maxPanX) {
-				this._mapPanX = -maxPanX;
-			} else if (this._mapPanX > maxPanX) {
-				this._mapPanX = maxPanX;
-			}
-		} else {
-			this._mapPanX = 0;
-		}
-		if ((this.mapModelHeight + mapMargin) * this.mapZoom >= this.gl.canvas.height) {
-			const maxPanY = (this.mapModelHeight * 0.5 + mapMargin) * this.mapZoom - this.gl.canvas.height * 0.5;
-			if (this._mapPanY < -maxPanY) {
-				this._mapPanY = -maxPanY;
-			} else if (this._mapPanY > maxPanY) {
-				this._mapPanY = maxPanY;
-			}
-		} else {
-			this._mapPanY = 0;
-		}
+		const canvas = this.gl.canvas as HTMLCanvasElement;
+		const margin = 128 / this._zoom;
+
+		// Maximum pan is half the map size minus half the visible area plus margin
+		const visibleW = canvas.width / this._zoom;
+		const visibleH = canvas.height / this._zoom;
+
+		const maxPanX = Math.max(0, (this.mapModelWidth - visibleW) * 0.5 + margin);
+		const maxPanY = Math.max(0, (this.mapModelHeight - visibleH) * 0.5 + margin);
+
+		if (this._panX < -maxPanX) this._panX = -maxPanX;
+		if (this._panX > maxPanX) this._panX = maxPanX;
+		if (this._panY < -maxPanY) this._panY = -maxPanY;
+		if (this._panY > maxPanY) this._panY = maxPanY;
 	}
 
-	public moveCamera(dx: number, dy: number, dz: number, cursorX: number = 0, cursorY: number = 0) {
-		if (dz !== 0) {
-			const oldZoom = this.mapZoom;
-			this._updateZoom(dz);
-			const zoomFactor = this.mapZoom / oldZoom;
-
-			this.gl.uniform1f(this.uniformLocations.uZoom, this.mapZoom);
-			this._updatePanToCursor(dx, dy, zoomFactor, cursorX, cursorY);
-		} else {
-			this._updatePan(dx, dy);
-		}
-
-		// With orthographic projection, pan is directly in pixels
-		this.camera[0] = this._mapPanX;
-		this.camera[1] = this._mapPanY;
-		this.camera[2] = 0;
-
-		// Apply zoom and pan via view matrix
-		const view = mat4_createIdentity();
-		mat4_scale(view, view, [this.mapZoom, this.mapZoom, 1]);
-		mat4_translate(view, view, this.camera);
-
-		this.gl.uniformMatrix4fv(this.uniformLocations.uView, false, view);
-		this.render();
+	private _updateUniforms() {
+		this.gl.uniform2f(this.uniformLocations.uPan, this._panX, this._panY);
+		this.gl.uniform1f(this.uniformLocations.uZoom, this._zoom);
+		this.gl.uniform2f(this.uniformLocations.uMapSize, this.mapWidth, this.mapHeight);
 	}
 
 	initPalette(paletteData: Uint8Array) {
-		this.createTexture(this.PALETTE_TEXTURE, paletteData, 256, 1, this.gl.RGBA);
+		// Store working palette for color cycling
+		this._workingPalette = new Uint8Array(paletteData);
+		this.createTexture(this.PALETTE_TEXTURE, this._workingPalette, 256, 1, this.gl.RGBA);
 		this.gl.uniform1i(this.uniformLocations.uPaletteTexture, this.PALETTE_TEXTURE);
 	}
 
-	/**
-	 * Initialize or reinitialize the map texture.
-	 * Use this method whenever the map size changes.
-	 */
+	// Base and working palette for color cycling
+	private _workingPalette: Uint8Array | null = null;
+
+	// Color cycling ranges: [start, end, direction, fps]
+	// direction: 0 = backward, 1 = forward
+	private readonly _colorCycleRanges = [
+		{ start: 9, end: 12, direction: 0, fps: 9 },
+		{ start: 13, end: 16, direction: 1, fps: 6 },
+		{ start: 17, end: 20, direction: 1, fps: 9 },
+		{ start: 21, end: 24, direction: 1, fps: 6 },
+		{ start: 25, end: 30, direction: 1, fps: 2 },
+		{ start: 31, end: 31, direction: 1, fps: 6 },
+		{ start: 96, end: 102, direction: 1, fps: 8 },
+		{ start: 103, end: 109, direction: 1, fps: 8 },
+		{ start: 110, end: 116, direction: 1, fps: 10 },
+		{ start: 117, end: 122, direction: 1, fps: 6 },
+		{ start: 123, end: 127, direction: 1, fps: 6 },
+	];
+	private _lastCycleTime: number[] = this._colorCycleRanges.map(() => 0);
+
+	/** Cycle colors in a palette range */
+	private _cycleColors(start: number, end: number, direction: number): void {
+		if (!this._workingPalette) return;
+		const palette = this._workingPalette;
+		const startIdx = start * 4;
+		const endIdx = end * 4;
+
+		if (direction === 1) {
+			// Forward: shift colors up, wrap last to first
+			const lastR = palette[endIdx];
+			const lastG = palette[endIdx + 1];
+			const lastB = palette[endIdx + 2];
+			const lastA = palette[endIdx + 3];
+			for (let i = endIdx; i > startIdx; i -= 4) {
+				palette[i] = palette[i - 4];
+				palette[i + 1] = palette[i - 3];
+				palette[i + 2] = palette[i - 2];
+				palette[i + 3] = palette[i - 1];
+			}
+			palette[startIdx] = lastR;
+			palette[startIdx + 1] = lastG;
+			palette[startIdx + 2] = lastB;
+			palette[startIdx + 3] = lastA;
+		} else {
+			// Backward: shift colors down, wrap first to last
+			const firstR = palette[startIdx];
+			const firstG = palette[startIdx + 1];
+			const firstB = palette[startIdx + 2];
+			const firstA = palette[startIdx + 3];
+			for (let i = startIdx; i < endIdx; i += 4) {
+				palette[i] = palette[i + 4];
+				palette[i + 1] = palette[i + 5];
+				palette[i + 2] = palette[i + 6];
+				palette[i + 3] = palette[i + 7];
+			}
+			palette[endIdx] = firstR;
+			palette[endIdx + 1] = firstG;
+			palette[endIdx + 2] = firstB;
+			palette[endIdx + 3] = firstA;
+		}
+	}
+
+	/** Update palette texture after color cycling */
+	private _updatePaletteTexture(): void {
+		if (!this._workingPalette) return;
+		this.gl.activeTexture(this.gl.TEXTURE0 + this.PALETTE_TEXTURE);
+		this.gl.texSubImage2D(this.gl.TEXTURE_2D, 0, 0, 0, 256, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, this._workingPalette);
+	}
+
 	initMap(mapData: Uint16Array, width: number, height: number) {
 		if (this.textures[this.MAP_TEXTURE]) {
 			this.gl.deleteTexture(this.mapTexture);
@@ -236,18 +228,26 @@ export class WglMap extends WebGL2 {
 		this.mapHeight = height;
 		this.mapModelWidth = width * 64;
 		this.mapModelHeight = height * 64;
-		this.textures[this.MAP_TEXTURE] = this.createTexture(this.MAP_TEXTURE, mapData, width, height, this.gl.RGBA16UI, '3d', MAP_LAYERS);
-		this.gl.uniform1i(this.uniformLocations.uMapTexture, this.MAP_TEXTURE);
 
-		this.initModel();
+		this.textures[this.MAP_TEXTURE] = this.createTexture(
+			this.MAP_TEXTURE, mapData, width, height, this.gl.RGBA16UI, '3d', MAP_LAYERS
+		);
+		this.gl.uniform1i(this.uniformLocations.uMapTexture, this.MAP_TEXTURE);
+		this.gl.uniform2f(this.uniformLocations.uMapSize, width, height);
+
+		// Reset camera
+		this._panX = 0;
+		this._panY = 0;
+		this._zoom = 1;
+		this._limitMapZoom();
+		this._updateUniforms();
 	}
 
 	initTilesets(tilesetData: Uint8Array, layers: number) {
 		const perf = Perf('WglMap::uploadTilesets');
 
-		const textureUnit = this.TILES_TEXTURE;
 		this.createTexture(
-			textureUnit,
+			this.TILES_TEXTURE,
 			tilesetData,
 			this.tileCapability.maxTextureSize,
 			this.tileCapability.maxTextureSize,
@@ -255,78 +255,55 @@ export class WglMap extends WebGL2 {
 			'3d',
 			layers,
 		);
-		this.gl.uniform1i(this.uniformLocations.uTilesTexture, textureUnit);
+		this.gl.uniform1i(this.uniformLocations.uTilesTexture, this.TILES_TEXTURE);
+		this.gl.uniform1ui(this.uniformLocations.uTilesPerRow, this.tileCapability.tilesPerRow);
 
 		perf();
 	}
 
-	createMapTexCoordBuffer(): void {
-		this.buffers.texCoord = this.createBuffer(new Float32Array([
-			1, 1, // ◤ 🡭
-			0, 1, // ◤ 🡬
-			0, 0, // ◤ 🡯
-			1, 1, // ◢ 🡭
-			0, 0, // ◢ 🡯
-			1, 0, // ◢ 🡮
-		]), this.attributeLocations.aTexCoord, 2);
-	}
-
-	createMapMeshBuffer(): void {
-		const mapMeshData = new Float32Array([
-			 1,  1,  0, // ◤ 🡭
-			-1,  1,  0, // ◤ 🡬
-			-1, -1,  0, // ◤ 🡯
-			 1,  1,  0, // ◢ 🡭
-			-1, -1,  0, // ◢ 🡯
-			 1, -1,  0, // ◢ 🡮
-	   	]);
-		for (let i = 0; i < MAP_LAYERS; i++) {
-			this.buffers[`mapMesh${i}`] = this.createBuffer(mapMeshData, this.attributeLocations.aMapPosition, 3);
-		}
-	}
-
 	render() {
-		this.buffers.mapMesh0.use();
-		this.gl.uniform1f(this.uniformLocations.uMapLayer, 0);
+		this.clear();
+		this.buffers.quad.use();
+
+		// Update time uniform (seconds since page load)
+		this.gl.uniform1f(this.uniformLocations.uTime, performance.now() / 1000.0);
+
+		// Render layer 0
+		this.gl.uniform1i(this.uniformLocations.uMapLayer, 0);
 		this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
 
-		this.buffers.mapMesh1.use();
-		this.gl.uniform1f(this.uniformLocations.uMapLayer, 1);
+		// Render layer 1
+		this.gl.uniform1i(this.uniformLocations.uMapLayer, 1);
 		this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
 	}
 
-	private _animationFrame_6fps: number = 0;
-	private _animationFrame_8fps: number = 0;
-	private _animationFrame_10fps: number = 0;
 	private _animationTimer: TimerID | null = null;
-	/** Common number for all animation frames count. */
-	private _animationFrameCycle: number = 7 * 6 * 5;
 
 	enableAnimation() {
 		if (this._animationTimer !== null) return;
+		this._animationTimer = setInterval(() => this._animationFrame(), FPS(30));
+	}
 
-		let time = 0;
-		let timeCycle = 100 * 125 * 150;
+	private _animationFrame() {
+		const now = performance.now();
 
-		this._animationTimer = setInterval(() => {
-			if (time % 100 === 0) {
-				this._animationFrame_10fps = this._animationFrame_10fps + 1;
-				if (this._animationFrame_10fps === this._animationFrameCycle) this._animationFrame_10fps = 0;
-				this.gl.uniform1ui(this.uniformLocations.uAnimationFrame_10fps, this._animationFrame_10fps);
+		// Color cycling
+		let paletteChanged = false;
+		for (let i = 0; i < this._colorCycleRanges.length; i++) {
+			const range = this._colorCycleRanges[i];
+			const intervalMs = 1000 / range.fps;
+			if (now - this._lastCycleTime[i] >= intervalMs) {
+				this._cycleColors(range.start, range.end, range.direction);
+				this._lastCycleTime[i] = now;
+				paletteChanged = true;
 			}
-			if (time % 125 === 0) {
-				this._animationFrame_8fps = this._animationFrame_8fps + 1;
-				if (this._animationFrame_8fps === this._animationFrameCycle) this._animationFrame_8fps = 0;
-				this.gl.uniform1ui(this.uniformLocations.uAnimationFrame_8fps, this._animationFrame_8fps);
-			}
-			if (time % 150 === 0) {
-				this._animationFrame_6fps = this._animationFrame_6fps + 1;
-				if (this._animationFrame_6fps === this._animationFrameCycle) this._animationFrame_6fps = 0;
-				this.gl.uniform1ui(this.uniformLocations.uAnimationFrame_6fps, this._animationFrame_6fps);
-			}
-			if ((time += 25) === timeCycle) time = 0;
-			this.render();
-		}, FPS(30));
+		}
+
+		if (paletteChanged) {
+			this._updatePaletteTexture();
+		}
+
+		this.render();
 	}
 
 	disableAnimation() {
@@ -335,38 +312,33 @@ export class WglMap extends WebGL2 {
 		this._animationTimer = null;
 	}
 
+	// Texture unit assignments
 	PALETTE_TEXTURE = 0;
 	MAP_TEXTURE = 1;
 	TILES_TEXTURE = 2;
 
-	factor: number = 1;
-	camera: Vec3 = [0, 0, 0];
-
-	mapZoom: number = 1;
+	// Map dimensions
 	mapWidth: number = 0;
 	mapHeight: number = 0;
 	mapModelWidth: number = 0;
 	mapModelHeight: number = 0;
-
 	mapTexture: WebGLTexture | null = null;
 
 	uniformLocations: Record<string, WebGLUniformLocation> = {
-		uModel: null!,
-		uView: null!,
-		uProjection: null!,
+		uScreenSize: null!,
+		uPan: null!,
 		uZoom: null!,
-		uCursor: null!,
+		uMapSize: null!,
 		uMapLayer: null!,
-		uAnimationFrame_6fps: null!,
-		uAnimationFrame_8fps: null!,
-		uAnimationFrame_10fps: null!,
+		uCursor: null!,
+		uTime: null!,
+		uTilesPerRow: null!,
 		uPaletteTexture: null!,
 		uMapTexture: null!,
 		uTilesTexture: null!,
 	};
 
 	attributeLocations: Record<string, GLint> = {
-		aMapPosition: 0,
-		aTexCoord: 1,
+		aPosition: 0,
 	};
 }

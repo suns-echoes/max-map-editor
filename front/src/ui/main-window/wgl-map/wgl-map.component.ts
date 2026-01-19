@@ -4,54 +4,18 @@ import { AppState } from '^state/app-state.ts';
 import { Effect } from '^reactive/effect.ts';
 import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
 import { resolveTextResource } from '^tauri-apps/api/path.ts';
-import { WglRenderer } from './wgl/wgl-renderer.ts';
+import { WglMap } from './wgl/wgl-map.ts';
 
 import style from './wgl-map.module.css';
 
 // Default map to load on startup
 const DEFAULT_MAP_PATH = 'resources/maps/GREEN_1.json';
 
-// Color cycling animation configuration
-// Each range defines palette indices that cycle for animated effects (water, lava, etc.)
-const COLOR_CYCLE_RANGES = [
-	{ start: 9, end: 12, direction: 0, fps: 9 },
-	{ start: 13, end: 16, direction: 1, fps: 6 },
-	{ start: 17, end: 20, direction: 1, fps: 9 },
-	{ start: 21, end: 24, direction: 1, fps: 6 },
-	{ start: 25, end: 30, direction: 1, fps: 2 },
-	{ start: 31, end: 31, direction: 1, fps: 6 },
-	{ start: 96, end: 102, direction: 1, fps: 8 },
-	{ start: 103, end: 109, direction: 1, fps: 8 },
-	{ start: 110, end: 116, direction: 1, fps: 10 },
-	{ start: 117, end: 122, direction: 1, fps: 6 },
-	{ start: 123, end: 127, direction: 1, fps: 6 },
-] as const;
-
-// Rendering constants
-const TILE_SIZE = 64;
-const BACKGROUND_COLOR = { r: 0.1, g: 0.0, b: 0.1, a: 1.0 }; // dark magenta
-
-// Zoom constants
-const MIN_ZOOM = 0.05;  // Will be dynamically adjusted to fit whole map
-const MAX_ZOOM = 2.0;   // 2:1 zoom
-const ZOOM_FACTOR_IN = 1.1;
-const ZOOM_FACTOR_OUT = 0.9;
-
-// Pan margin as fraction of viewport (0.5 = 50%)
-const PAN_MARGIN_FRACTION = 0.5;
-
-// Cursor animation
-const CURSOR_BLINK_PERIOD = 1500; // ms for full blink cycle
-const CURSOR_OPACITY_MIN = 0.3;
-const CURSOR_OPACITY_MAX = 0.7;
-const CURSOR_OPACITY_THRESHOLD = 0.01; // minimum change to trigger redraw
-
 
 export function WGLMap() {
 	printDebugInfo('UI::WGLMap');
 
 	const canvas = Canvas('map-canvas');
-	// Debug panel only shown in development mode
 	const debugInfo = import.meta.env.DEV ? Pre().class(style.debugInfo) : null;
 
 	const component = (
@@ -62,175 +26,9 @@ export function WGLMap() {
 		])
 	);
 
-	// Initialize WebGL renderer after component is mounted
-	let renderer: WglRenderer | null = null;
-	let tilesUploaded = false;
-	let currentMap: MapProject | null = null;
+	let wglMap: WglMap | null = null;
 
-	// Panning state
-	let panX = 0;
-	let panY = 0;
-
-	// Zoom state (1.0 = 100%, 2.0 = 200%, 0.5 = 50%)
-	let zoom = 1.0;
-
-	// Cursor state (tile coordinates)
-	let cursorCol = -1;
-	let cursorRow = -1;
-	let cursorOpacity = (CURSOR_OPACITY_MIN + CURSOR_OPACITY_MAX) / 2;
-
-	/**
-	 * Parse a tile ID with optional transformation flags.
-	 * Format: "TILEID" or "TILEID:FLAGS"
-	 * Flags: ! = flip horizontal, E = rot 90, S = rot 180, W = rot 270
-	 * Returns [baseTileId, transformValue]
-	 */
-	function parseTileId(tileIdWithFlags: string): [string, number] {
-		const colonIdx = tileIdWithFlags.indexOf(':');
-		if (colonIdx === -1) {
-			return [tileIdWithFlags, 0];
-		}
-
-		const baseTileId = tileIdWithFlags.substring(0, colonIdx);
-		const flags = tileIdWithFlags.substring(colonIdx + 1);
-
-		let transform = 0;
-
-		// Parse rotation (E=90, S=180, W=270)
-		if (flags.includes('E')) {
-			transform = 1; // 90 degrees
-		} else if (flags.includes('S')) {
-			transform = 2; // 180 degrees
-		} else if (flags.includes('W')) {
-			transform = 3; // 270 degrees
-		}
-
-		// Parse flip (! = horizontal flip)
-		if (flags.includes('!')) {
-			transform |= 4; // Add flip flag
-		}
-
-		return [baseTileId, transform];
-	}
-
-	/**
-	 * Draw a single tile with transformation parsing
-	 */
-	function drawTile(tileIdWithFlags: string, x: number, y: number, tileSize: number) {
-		const [baseTileId, transform] = parseTileId(tileIdWithFlags);
-		renderer!.drawTileById(baseTileId, x, y, tileSize, transform);
-	}
-
-	/**
-	 * Calculate minimum zoom to fit whole map on screen
-	 */
-	function getMinZoom(): number {
-		if (!renderer || !currentMap) return MIN_ZOOM;
-		const canvas = renderer.getCanvas();
-		const mapPixelWidth = currentMap.width * TILE_SIZE;
-		const mapPixelHeight = currentMap.height * TILE_SIZE;
-		const zoomX = canvas.width / mapPixelWidth;
-		const zoomY = canvas.height / mapPixelHeight;
-		return Math.min(zoomX, zoomY, 1.0); // Don't go above 1.0 for min
-	}
-
-	/**
-	 * Clamp pan values so map has at most 50% viewport size as margin
-	 */
-	function clampPan() {
-		if (!renderer || !currentMap) return;
-
-		const canvas = renderer.getCanvas();
-		const mapPixelWidth = currentMap.width * TILE_SIZE * zoom;
-		const mapPixelHeight = currentMap.height * TILE_SIZE * zoom;
-		const marginX = canvas.width * PAN_MARGIN_FRACTION;
-		const marginY = canvas.height * PAN_MARGIN_FRACTION;
-
-		// Clamp X: map right edge at least at marginX, map left edge at most at marginX
-		const minPanX = marginX - mapPixelWidth;
-		const maxPanX = canvas.width - marginX;
-		panX = Math.max(minPanX, Math.min(maxPanX, panX));
-
-		// Clamp Y: map bottom edge at least at marginY, map top edge at most at marginY
-		const minPanY = marginY - mapPixelHeight;
-		const maxPanY = canvas.height - marginY;
-		panY = Math.max(minPanY, Math.min(maxPanY, panY));
-	}
-
-	function render() {
-		if (!renderer) return;
-		renderer.clear(BACKGROUND_COLOR.r, BACKGROUND_COLOR.g, BACKGROUND_COLOR.b, BACKGROUND_COLOR.a);
-
-		if (tilesUploaded && currentMap) {
-			// Get canvas dimensions for culling
-			const canvas = renderer.getCanvas();
-			const canvasWidth = canvas.width;
-			const canvasHeight = canvas.height;
-
-			// Calculate scaled tile size
-			const scaledTileSize = TILE_SIZE * zoom;
-
-			// Calculate visible tile range (accounting for zoom)
-			const startCol = Math.max(0, Math.floor(-panX / scaledTileSize));
-			const startRow = Math.max(0, Math.floor(-panY / scaledTileSize));
-			const endCol = Math.min(currentMap.width, Math.ceil((canvasWidth - panX) / scaledTileSize));
-			const endRow = Math.min(currentMap.height, Math.ceil((canvasHeight - panY) / scaledTileSize));
-
-			// Render visible tiles
-			for (let row = startRow; row < endRow; row++) {
-				const mapRow = currentMap.map[row];
-				if (!mapRow) continue;
-
-				for (let col = startCol; col < endCol; col++) {
-					const cell = mapRow[col];
-					if (!cell) continue;
-
-					const x = col * scaledTileSize + panX;
-					const y = row * scaledTileSize + panY;
-
-					// Handle both string (single tile) and array (multiple layers)
-					if (Array.isArray(cell)) {
-						// Draw all layers from bottom to top
-						for (const tileId of cell) {
-							drawTile(tileId, x, y, scaledTileSize);
-						}
-					} else {
-						drawTile(cell, x, y, scaledTileSize);
-					}
-				}
-			}
-
-			// Render cursor if within map bounds
-			if (cursorCol >= 0 && cursorRow >= 0 && cursorCol < currentMap.width && cursorRow < currentMap.height) {
-				const cursorX = cursorCol * scaledTileSize + panX;
-				const cursorY = cursorRow * scaledTileSize + panY;
-
-				// Calculate cursor line width: 2px at 1:1, 4px at 2:1, 1px at 1:2, never less than 1px
-				const cursorWidth = Math.max(1, Math.round(zoom * 2));
-
-				// Draw cursor rectangle outline with additive blending
-				renderer.enableAdditiveBlend();
-				renderer.setColor(cursorOpacity, cursorOpacity, cursorOpacity, 1.0); // White with varying intensity
-
-				// Top edge
-				renderer.drawRect(cursorX, cursorY, scaledTileSize, cursorWidth);
-				// Bottom edge
-				renderer.drawRect(cursorX, cursorY + scaledTileSize - cursorWidth, scaledTileSize, cursorWidth);
-				// Left edge
-				renderer.drawRect(cursorX, cursorY, cursorWidth, scaledTileSize);
-				// Right edge
-				renderer.drawRect(cursorX + scaledTileSize - cursorWidth, cursorY, cursorWidth, scaledTileSize);
-
-				renderer.disableBlend();
-			}
-		} else {
-			// Fallback white square
-			renderer.setColor(1.0, 1.0, 1.0, 1.0);
-			renderer.drawRect(100 + panX, 100 + panY, 64 * zoom, 64 * zoom);
-		}
-	}
-
-	// Initialize after a small delay to ensure canvas is in DOM
+	// Initialize after component is mounted
 	setTimeout(() => {
 		const canvasElement = canvas.element as HTMLCanvasElement;
 		const container = canvasElement.parentElement;
@@ -238,31 +36,20 @@ export function WGLMap() {
 			console.error('WGLMap: Canvas has no parent element');
 			return;
 		}
-		renderer = new WglRenderer(canvasElement);
 
-		// Use ResizeObserver to always match parent dimensions
+		// Create the optimized WebGL map renderer
+		wglMap = new WglMap(canvasElement);
+		AppState.wglMap.value = wglMap;
+
+		// ResizeObserver for canvas resizing
 		const resizeObserver = new ResizeObserver(() => {
-			if (renderer) {
-				const canvas = renderer.getCanvas();
-				const oldWidth = canvas.width;
-				const oldHeight = canvas.height;
-
-				renderer.resize();
-
-				const newWidth = canvas.width;
-				const newHeight = canvas.height;
-
-				// Adjust pan to keep the same map center visible
-				panX += (newWidth - oldWidth) / 2;
-				panY += (newHeight - oldHeight) / 2;
-				clampPan();
-
-				render();
+			if (wglMap) {
+				wglMap.onCanvasResize();
 			}
 		});
 		resizeObserver.observe(container);
 
-		// Setup panning with right mouse button
+		// Panning with right mouse button
 		let isPanning = false;
 		let lastX = 0;
 		let lastY = 0;
@@ -270,42 +57,28 @@ export function WGLMap() {
 		canvasElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
 		canvasElement.addEventListener('mousedown', (e) => {
-			if (e.button === 2) { // Right mouse button
+			if (e.button === 2) {
 				isPanning = true;
 				lastX = e.clientX;
 				lastY = e.clientY;
 				canvasElement.style.cursor = 'grabbing';
-			} else if (e.button === 1) { // Middle mouse button - reset zoom to 1:1
+			} else if (e.button === 1) {
+				// Middle click: reset zoom to 1:1
 				e.preventDefault();
-
-				// Get mouse position relative to canvas
-				const rect = canvasElement.getBoundingClientRect();
-				const mouseX = e.clientX - rect.left;
-				const mouseY = e.clientY - rect.top;
-
-				// Adjust pan to zoom towards mouse position
-				const scale = 1.0 / zoom;
-				panX = mouseX - (mouseX - panX) * scale;
-				panY = mouseY - (mouseY - panY) * scale;
-				zoom = 1.0;
-				clampPan();
-				render();
+				if (wglMap) {
+					// Use moveCamera with a zoom reset (handled internally)
+					wglMap.moveCamera(0, 0, 0);
+				}
 			}
 		});
 
-		// Use window events for mousemove/mouseup so panning works outside canvas
-		// Store references for cleanup
 		const handleMouseMove = (e: MouseEvent) => {
-			if (isPanning) {
+			if (isPanning && wglMap) {
 				const dx = e.clientX - lastX;
 				const dy = e.clientY - lastY;
 				lastX = e.clientX;
 				lastY = e.clientY;
-
-				panX += dx;
-				panY += dy;
-				clampPan();
-				render();
+				wglMap.moveCamera(dx, dy, 0);
 			}
 		};
 
@@ -322,154 +95,52 @@ export function WGLMap() {
 		// Mouse wheel for zooming
 		canvasElement.addEventListener('wheel', (e) => {
 			e.preventDefault();
+			if (!wglMap) return;
 
-			// Get mouse position relative to canvas
 			const rect = canvasElement.getBoundingClientRect();
-			const mouseX = e.clientX - rect.left;
-			const mouseY = e.clientY - rect.top;
+			const cursorX = e.clientX - rect.left;
+			const cursorY = e.clientY - rect.top;
 
-			// Calculate zoom factor
-			const zoomFactor = e.deltaY > 0 ? ZOOM_FACTOR_OUT : ZOOM_FACTOR_IN;
-			const newZoom = Math.max(getMinZoom(), Math.min(MAX_ZOOM, zoom * zoomFactor));
-
-			if (newZoom !== zoom) {
-				// Adjust pan to zoom towards mouse position
-				const scale = newZoom / zoom;
-				panX = mouseX - (mouseX - panX) * scale;
-				panY = mouseY - (mouseY - panY) * scale;
-				zoom = newZoom;
-				clampPan();
-				render();
-			}
+			// Positive deltaY = scroll down = zoom out
+			const dz = e.deltaY > 0 ? -1 : 1;
+			wglMap.moveCamera(0, 0, dz, cursorX, cursorY);
 		}, { passive: false });
 
-		// Track mouse position for cursor
+		// Track mouse for cursor highlight
 		canvasElement.addEventListener('mousemove', (e) => {
-			if (isPanning) return; // Don't update cursor while panning
+			if (isPanning || !wglMap) return;
 
 			const rect = canvasElement.getBoundingClientRect();
-			const mouseX = e.clientX - rect.left;
-			const mouseY = e.clientY - rect.top;
-
-			// Convert to tile coordinates
-			const scaledTileSize = TILE_SIZE * zoom;
-			const newCursorCol = Math.floor((mouseX - panX) / scaledTileSize);
-			const newCursorRow = Math.floor((mouseY - panY) / scaledTileSize);
-
-			if (newCursorCol !== cursorCol || newCursorRow !== cursorRow) {
-				cursorCol = newCursorCol;
-				cursorRow = newCursorRow;
-				render();
-			}
+			const screenX = e.clientX - rect.left;
+			const screenY = e.clientY - rect.top;
+			wglMap.moveCursor(screenX, screenY);
 		});
 
-		// Hide cursor when mouse leaves canvas
 		canvasElement.addEventListener('mouseleave', () => {
-			cursorCol = -1;
-			cursorRow = -1;
-			render();
+			if (wglMap) {
+				wglMap.moveCursor(-1000, -1000); // Move cursor off-screen
+			}
 		});
 
-		// Track last cycle time for each color range
-		const lastCycleTime = COLOR_CYCLE_RANGES.map(() => 0);
+		// Enable animation (water effects, etc.)
+		wglMap.enableAnimation();
 
-		// Animation loop for color cycling and cursor blinking
-		let animationFrameId: number;
-		function animateColorCycling(timestamp: number) {
-			if (!renderer) {
-				animationFrameId = requestAnimationFrame(animateColorCycling);
-				return;
-			}
-
-			let needsUpdate = false;
-
-			// Update color cycling
-			for (let i = 0; i < COLOR_CYCLE_RANGES.length; i++) {
-				const cycle = COLOR_CYCLE_RANGES[i];
-				const intervalMs = 1000 / cycle.fps;
-
-				if (timestamp - lastCycleTime[i] >= intervalMs) {
-					renderer.cycleColors(cycle.start, cycle.end, cycle.direction);
-					lastCycleTime[i] = timestamp;
-					needsUpdate = true;
-				}
-			}
-
-			// Update cursor opacity (smooth fade between min and max)
-			const opacityMid = (CURSOR_OPACITY_MIN + CURSOR_OPACITY_MAX) / 2;
-			const opacityRange = (CURSOR_OPACITY_MAX - CURSOR_OPACITY_MIN) / 2;
-			const newCursorOpacity = opacityMid + opacityRange * Math.sin(timestamp / CURSOR_BLINK_PERIOD * Math.PI * 2);
-			if (Math.abs(newCursorOpacity - cursorOpacity) > CURSOR_OPACITY_THRESHOLD) {
-				cursorOpacity = newCursorOpacity;
-				needsUpdate = true;
-			}
-
-			if (needsUpdate) {
-				renderer.updatePaletteTexture();
-				render();
-			}
-
-			animationFrameId = requestAnimationFrame(animateColorCycling);
-		}
-
-		// Start the animation loop
-		animationFrameId = requestAnimationFrame(animateColorCycling);
-
-		// Register cleanup for all resources
+		// Cleanup
 		component.cleanup(() => {
-			// Cancel animation frame
-			cancelAnimationFrame(animationFrameId);
-
-			// Remove window event listeners
+			resizeObserver.disconnect();
 			window.removeEventListener('mousemove', handleMouseMove);
 			window.removeEventListener('mouseup', handleMouseUp);
 
-			// Disconnect resize observer
-			resizeObserver.disconnect();
-
-			// Dispose WebGL resources
-			if (renderer) {
-				renderer.dispose();
-				renderer = null;
+			if (wglMap) {
+				wglMap.disableAnimation();
+				wglMap.cleanup();
+				wglMap = null;
+				AppState.wglMap.value = null;
 			}
 		});
-
-		render();
 	}, 0);
 
-	// Upload palette and tiles when they become available
-	const mapDataEffect = new Effect(() => {
-		const palette = AppState.palette.value;
-		const tiles = AppState.tiles.value;
-		const mapProject = AppState.mapProject.value;
-
-		if (renderer && palette && tiles && mapProject) {
-			// Upload palette
-			renderer.uploadPalette(palette);
-
-			// Upload all tiles
-			renderer.uploadAllTiles(tiles);
-			tilesUploaded = true;
-			currentMap = mapProject;
-
-			// Center the map in the viewport
-			const canvas = renderer.getCanvas();
-			const mapPixelWidth = mapProject.width * TILE_SIZE;
-			const mapPixelHeight = mapProject.height * TILE_SIZE;
-			panX = (canvas.width - mapPixelWidth) / 2;
-			panY = (canvas.height - mapPixelHeight) / 2;
-			clampPan();
-
-			render();
-		}
-	}).on([AppState.palette, AppState.tiles, AppState.mapProject]);
-
-	// Register cleanup for Effects
-	component.cleanup(() => {
-		mapDataEffect.dispose();
-	});
-
-	// Load map project
+	// Load map project on startup
 	(async () => {
 		try {
 			await loadMapProject(await resolveTextResource(DEFAULT_MAP_PATH));
@@ -478,7 +149,7 @@ export function WGLMap() {
 		}
 	})();
 
-	// Update debug info when state changes (dev mode only)
+	// Debug info panel (dev mode only)
 	if (import.meta.env.DEV && debugInfo) {
 		const debugEffect = new Effect(() => {
 			const mapProject = AppState.mapProject.value;
@@ -490,33 +161,17 @@ export function WGLMap() {
 				info += `Map: ${mapProject.name}\n`;
 				info += `Size: ${mapProject.width} x ${mapProject.height}\n`;
 				info += `Description: ${mapProject.description?.substring(0, 100)}...\n\n`;
-
-				info += `Tilesets used:\n`;
-				for (const asset of mapProject.use) {
-					info += `  - ${asset.name} (tileset: ${asset.tileset}, palette: ${asset.palette})\n`;
-				}
-				info += '\n';
 			} else {
 				info += 'Map project: NOT LOADED\n\n';
 			}
 
 			if (tiles) {
-				info += `Tiles loaded: ${tiles.size}\n\n`;
-
+				info += `Tiles loaded: ${tiles.size}\n`;
 				let totalBytes = 0;
-				const tileIds: string[] = [];
-
-				for (const [id, tile] of tiles) {
-					tileIds.push(id);
+				for (const [, tile] of tiles) {
 					totalBytes += tile.data.byteLength;
 				}
-
-				info += `Total tile data: ${(totalBytes / 1024).toFixed(2)} KB\n\n`;
-				info += `Tile IDs (first 50):\n`;
-				info += tileIds.slice(0, 50).join(', ');
-				if (tileIds.length > 50) {
-					info += `\n... and ${tileIds.length - 50} more`;
-				}
+				info += `Total tile data: ${(totalBytes / 1024).toFixed(2)} KB\n`;
 			} else {
 				info += 'Tiles: NOT LOADED\n';
 			}

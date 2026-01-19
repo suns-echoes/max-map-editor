@@ -1,146 +1,118 @@
 #version 300 es
 precision highp float;
-precision highp usampler2D;
 precision highp usampler2DArray;
 
-// Uniforms
-uniform float uZoom;
-uniform vec2 uCursor;
-uniform float uMapLayer;
+// Camera uniforms
+uniform vec2 uPan;          // Camera pan in world pixels (map pixels)
+uniform float uZoom;        // Zoom factor (pixels per screen pixel)
+uniform vec2 uMapSize;      // Map dimensions in cells
+uniform int uMapLayer;      // Which map layer to render (0 or 1)
+uniform uint uTilesPerRow;  // Pre-computed: atlasWidth / TILE_LENGTH
 
-// Animation frames for water/effects
-uniform uint uAnimationFrame_6fps;
-uniform uint uAnimationFrame_8fps;
-uniform uint uAnimationFrame_10fps;
+// Cursor for highlighting
+uniform vec2 uCursor;
+uniform float uTime;  // Time in seconds for animations
 
 // Textures
 uniform sampler2D uPaletteTexture;           // RGBA 256x1 palette
-uniform highp usampler2DArray uMapTexture;   // RGBA16UI map data (x, y, layer, transform)
+uniform highp usampler2DArray uMapTexture;   // RGBA16UI map data
 uniform highp usampler2DArray uTilesTexture; // R8UI tile atlas
 
-// Input from vertex shader
-in vec2 vTexCoord;
+// From vertex shader: screen position in pixels, centered at origin
+in vec2 vScreenPos;
 
-// Output color
 out vec4 outColor;
 
-// Tile size in pixels
-const uint TILE_SIZE = 64u;
-const uint TILE_LENGTH = 4096u; // TILE_SIZE * TILE_SIZE
+// Constants
+const float TILE_SIZE = 64.0;
+const uint TILE_SIZE_U = 64u;
 
 /**
- * Apply tile transformation to texture coordinates.
- * Transformations: N=0, W=1, S=2, E=3, !N=4, !E=5, !S=6, !W=7
- * Bit 2 = horizontal flip, Bits 0-1 = rotation (0=0°, 1=90°CW, 2=180°, 3=270°CW)
+ * Apply tile transformation to UV coordinates.
+ * Bits: [2]=flip, [1:0]=rotation (0=N, 1=W, 2=S, 3=E)
+ * N=0°, W=270°CW, S=180°, E=90°CW
+ * Order: rotate first, then flip (horizontal)
  */
-vec2 applyTransform(vec2 tc, uint transform) {
-	// Center coordinates
-	tc -= 0.5;
+vec2 applyTransform(vec2 uv, uint t) {
+	uv -= 0.5;
+	// Rotate first
+	uint r = t & 3u;
+	if (r == 1u) uv = vec2(uv.y, -uv.x);       // W = 270° CW (90° CCW)
+	else if (r == 2u) uv = -uv;                // S = 180°
+	else if (r == 3u) uv = vec2(-uv.y, uv.x);  // E = 90° CW
+	// Then flip horizontally
+	if ((t & 4u) != 0u) uv.x = -uv.x;
+	return uv + 0.5;
+}
 
-	// Apply horizontal flip FIRST (bit 2)
-	if ((transform & 4u) != 0u) {
-		tc.x = -tc.x;
-	}
-
-	// Then apply rotation (bits 0-1)
-	uint rotation = transform & 3u;
-	if (rotation == 1u) {
-		// Rotate 90° CW (E)
-		tc = vec2(-tc.y, tc.x);
-	} else if (rotation == 2u) {
-		// Rotate 180° (S)
-		tc = vec2(-tc.x, -tc.y);
-	} else if (rotation == 3u) {
-		// Rotate 270° CW (W)
-		tc = vec2(tc.y, -tc.x);
-	}
-
-	// Restore coordinates
-	return tc + 0.5;
+/**
+ * Check if a pixel is on the cursor frame edge.
+ * frameUV is the frame width in UV space (0-1).
+ */
+bool isOnCursorFrame(vec2 tileUV, float frameUV) {
+	return tileUV.x < frameUV || tileUV.x > (1.0 - frameUV) ||
+	       tileUV.y < frameUV || tileUV.y > (1.0 - frameUV);
 }
 
 void main() {
-	// Get map dimensions from texture size
-	ivec3 mapSize = textureSize(uMapTexture, 0);
-	int mapWidth = mapSize.x;
-	int mapHeight = mapSize.y;
+	// Convert screen position to world position (map pixels)
+	// Y is flipped: screen Y up = world Y down (map row 0 at top)
+	vec2 worldPos = vec2(
+		vScreenPos.x / uZoom + uPan.x + uMapSize.x * TILE_SIZE * 0.5,
+		-vScreenPos.y / uZoom + uPan.y + uMapSize.y * TILE_SIZE * 0.5
+	);
 
-	// Calculate which map cell this fragment is in
-	// Flip Y because map data has row 0 at top, but OpenGL has Y=0 at bottom
-	vec2 mapPos = vec2(vTexCoord.x, 1.0 - vTexCoord.y) * vec2(float(mapWidth), float(mapHeight));
-	ivec2 cellCoord = ivec2(floor(mapPos));
+	// Convert world pixels to cell coordinates
+	vec2 cellPosF = worldPos / TILE_SIZE;
+	ivec2 cell = ivec2(floor(cellPosF));
 
 	// Bounds check
-	if (cellCoord.x < 0 || cellCoord.x >= mapWidth ||
-	    cellCoord.y < 0 || cellCoord.y >= mapHeight) {
+	if (cell.x < 0 || cell.x >= int(uMapSize.x) ||
+	    cell.y < 0 || cell.y >= int(uMapSize.y)) {
 		discard;
 	}
 
-	// Sample map texture to get tile info (x, y, layer, transform)
-	// Map stores: R=tileX (row in tile grid), G=tileY (col in tile grid), B=tileLayer, A=transform
-	uvec4 mapData = texelFetch(uMapTexture, ivec3(cellCoord, int(uMapLayer)), 0);
-	uint tileX = mapData.r;  // Row index in the tile arrangement
-	uint tileY = mapData.g;  // Column index in the tile arrangement
-	uint tileLayer = mapData.b;
-	uint transform = mapData.a;
+	// Fetch map data: R=tileX, G=tileY, B=tileLayer, A=transform
+	uvec4 mapData = texelFetch(uMapTexture, ivec3(cell, uMapLayer), 0);
 
-	// Empty cell check (transform = 255)
-	if (transform == 255u) {
+	// Empty cell (transform=255)
+	if (mapData.a == 255u) {
 		discard;
 	}
 
-	// Calculate position within the tile (0-1)
-	vec2 tileUV = fract(mapPos);
+	// Position within tile (0-1)
+	vec2 tileUV = fract(cellPosF);
+	tileUV = applyTransform(tileUV, mapData.a);
 
-	// Apply transformation
-	tileUV = applyTransform(tileUV, transform);
+	// Pixel within tile (0-63)
+	uint px = min(uint(tileUV.x * TILE_SIZE), TILE_SIZE_U - 1u);
+	uint py = min(uint(tileUV.y * TILE_SIZE), TILE_SIZE_U - 1u);
 
-	// Get tile atlas dimensions (maxTextureSize x maxTextureSize per layer)
-	ivec3 atlasSize = textureSize(uTilesTexture, 0);
-	uint atlasWidth = uint(atlasSize.x);
+	// Tile index in atlas
+	uint tileIndex = mapData.g * uTilesPerRow + mapData.r;
 
-	// tilesPerRow = how many tiles fit per texture row
-	// With TILE_LENGTH = 4096 and atlasWidth = 4096, tilesPerRow = 1
-	// Each texture row contains one tile's worth of data (64*64 = 4096 pixels)
-	uint tilesPerRow = atlasWidth / TILE_LENGTH;
+	// Sample tile atlas: X = py*64+px, Y = tileIndex, Z = tileLayer
+	uint paletteIdx = texelFetch(uTilesTexture, ivec3(py * TILE_SIZE_U + px, tileIndex, mapData.b), 0).r;
 
-	// Calculate pixel position within the tile (0-63)
-	uint pixelX = uint(floor(tileUV.x * float(TILE_SIZE)));
-	uint pixelY = uint(floor(tileUV.y * float(TILE_SIZE)));
-
-	// Clamp to valid range (prevent artifacts at tile edges)
-	pixelX = min(pixelX, TILE_SIZE - 1u);
-	pixelY = min(pixelY, TILE_SIZE - 1u);
-
-	// Calculate the tile index in the linear arrangement
-	// tileX is the row in tile grid (0 to tilesPerRow-1)
-	// tileY is the column in tile grid
-	uint tileIndex = tileY * tilesPerRow + tileX;
-
-	// In the atlas texture:
-	// - Each texture row contains one tile (when tilesPerRow == 1)
-	// - Within a row, pixels are arranged as: tile pixel (tx,ty) at x = ty * 64 + tx
-	// So texture coordinate is:
-	// - Y = tileIndex (which texture row)
-	// - X = pixelY * TILE_SIZE + pixelX (position within the tile's row of data)
-	uint atlasPixelX = pixelY * TILE_SIZE + pixelX;
-	uint atlasPixelY = tileIndex;
-
-	// Sample the tile atlas to get palette index
-	uint paletteIndex = texelFetch(uTilesTexture, ivec3(atlasPixelX, atlasPixelY, tileLayer), 0).r;
-
-	// Index 0 is transparent
-	if (paletteIndex == 0u) {
+	// Transparent
+	if (paletteIdx == 0u) {
 		discard;
 	}
 
-	// Look up color from palette
-	vec4 color = texelFetch(uPaletteTexture, ivec2(paletteIndex, 0), 0);
+	// Get color from palette
+	outColor = texelFetch(uPaletteTexture, ivec2(paletteIdx, 0), 0);
 
-	// Highlight cursor cell
-	if (cellCoord.x == int(uCursor.x) && cellCoord.y == int(uCursor.y)) {
-		color.rgb = mix(color.rgb, vec3(1.0, 1.0, 0.0), 0.3);
+	// Cursor frame highlight with fade in/out (additive blending)
+	// Frame is always 2 screen pixels thick, converted to UV space
+	if (cell.x == int(uCursor.x) && cell.y == int(uCursor.y)) {
+		float screenPixels = 2.0;
+		float frameUV = screenPixels / uZoom / TILE_SIZE;
+		vec2 cellUV = fract(cellPosF);  // Use original UV before transform
+		if (isOnCursorFrame(cellUV, frameUV)) {
+			// Slow blink: 1.5s period, fade between 0.3 and 0.8 intensity
+			float blink = 0.55 + 0.25 * sin(uTime * 4.18879);  // 2*PI / 1.5 ≈ 4.189
+			// Additive blend: add yellow glow
+			outColor.rgb += vec3(1.0, 1.0, 0.3) * blink;
+		}
 	}
-
-	outColor = color;
 }

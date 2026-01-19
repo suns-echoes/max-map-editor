@@ -1,10 +1,10 @@
 #version 300 es
 precision highp float;
 
-uniform mat4 uProjection;
+layout (location = 0) in vec2 aPosition;
+layout (location = 1) in vec2 aTexCoord;
 
-layout (location=0) in vec2 aPosition;
-layout (location=1) in vec2 aTexCoord;
+uniform mat4 uProjection;
 
 out vec2 vTexCoord;
 
