@@ -4,11 +4,13 @@ import { Effect } from '^reactive/effect.ts';
 import { Perf } from '^lib/perf/perf.ts';
 import { TILE_LENGTH } from '^consts/tile-consts.ts';
 import { hmrDisposeAll, hmrAccept } from '^lib/hmr/hmr.ts';
+import { ColorPaletteView } from '^lib/color-palette-view/color-palette-view.ts';
 
 
 export const AppState = {
 	mapProject: new Value<MapProject | null>(null),
 	palette: new Value<Uint8Array | null>(null),
+	paletteView: new Value<ColorPaletteView | null>(null),
 	map: new Value<Uint16Array | null>(null),
 	tiles: new Value<Tiles | null>(null),
 
@@ -21,6 +23,24 @@ export const AppState = {
 		this.tiles.set(null);
 	}
 };
+
+// ============================================================================
+// Synchronize derived state
+// ============================================================================
+
+/**
+ * Update paletteView whenever palette changes.
+ */
+const paletteViewEffect = new Effect(function updatePaletteView() {
+	const palette = AppState.palette.value;
+	if (!palette) {
+		AppState.paletteView.set(null);
+		return;
+	}
+
+	const paletteView = new ColorPaletteView(palette);
+	AppState.paletteView.set(paletteView);
+}, { strong: true }).on([AppState.palette]);
 
 
 // ============================================================================
@@ -68,7 +88,7 @@ const initWglMapEffect = new Effect(function initWglMap() {
 
 
 // HMR support: dispose effects when module is hot-replaced
-hmrDisposeAll(import.meta, [initWglPaletteEffect, initWglTilesetsEffect, initWglMapEffect]);
+hmrDisposeAll(import.meta, [paletteViewEffect, initWglPaletteEffect, initWglTilesetsEffect, initWglMapEffect]);
 hmrAccept(import.meta);
 
 

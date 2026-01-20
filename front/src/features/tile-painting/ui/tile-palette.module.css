@@ -41,8 +41,8 @@
 }
 
 .tileGrid {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, 24px);
+	display: flex;
+	flex-wrap: wrap;
 	gap: 2px;
 	padding: 4px;
 	overflow-y: auto;
@@ -54,8 +54,8 @@
 
 .tileItem {
 	position: relative;
-	width: 24px;
-	height: 24px;
+	width: 64px;
+	height: 64px;
 	cursor: pointer;
 	border: 1px solid transparent;
 	transition: border-color 0.1s, transform 0.1s;

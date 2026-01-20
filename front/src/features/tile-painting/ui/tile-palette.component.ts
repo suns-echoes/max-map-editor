@@ -1,8 +1,11 @@
-import { AppState } from '^state/app-state.ts';
-import { EditorState } from '^state/editor-state.ts';
 import { Effect } from '^reactive/effect.ts';
 import { Section, Div, Canvas, Button } from '^reactive/reactive-node.elements.ts';
+
 import { xlog } from '^lib/xlog/xlog.ts';
+import { ColorPaletteView } from '^lib/color-palette-view/color-palette-view.ts';
+
+import { AppState } from '^state/app-state.ts';
+import { EditorState } from '^state/editor-state.ts';
 
 import style from './tile-palette.module.css';
 
@@ -17,19 +20,14 @@ type TileFilter = 'all' | 'inUse' | 'water' | 'shore' | 'land' | 'obstruction';
 function renderTileToCanvas(
 	canvas: HTMLCanvasElement,
 	tileData: Uint8Array,
-	palette: Uint8Array
+	paletteView: ColorPaletteView,
 ): void {
 	const ctx = canvas.getContext('2d');
 	if (!ctx) return;
 
 	const imageData = ctx.createImageData(64, 64);
 	for (let i = 0; i < tileData.length; i++) {
-		const paletteIndex = tileData[i];
-		const paletteOffset = paletteIndex * 3;
-		imageData.data[i * 4] = palette[paletteOffset];
-		imageData.data[i * 4 + 1] = palette[paletteOffset + 1];
-		imageData.data[i * 4 + 2] = palette[paletteOffset + 2];
-		imageData.data[i * 4 + 3] = 255;
+		imageData.data.set(paletteView.getRGBA(tileData[i]), i * 4);
 	}
 	ctx.putImageData(imageData, 0, 0);
 }
@@ -82,11 +80,11 @@ export function TilePalette() {
 	 */
 	function renderTileGrid() {
 		const tiles = AppState.tiles.value;
-		const palette = AppState.palette.value;
+		const paletteView = AppState.paletteView.value;
 		const mapProject = AppState.mapProject.value;
 		const selectedTileId = EditorState.selectedTile.value;
 
-		if (!tiles || !palette) {
+		if (!tiles || !paletteView) {
 			tileGridContainer.nodes([
 				Div().class(style.noTiles).text('No tiles loaded')
 			]);
@@ -117,7 +115,6 @@ export function TilePalette() {
 		// Only show tiles that are used in the map
 		for (const tileId of usedTileIds) {
 			const tile = tiles.get(tileId);
-			console.log(tileId, tile);
 			if (!tile?.data) continue;
 
 			// Apply filter
@@ -128,14 +125,14 @@ export function TilePalette() {
 			const canvas = Canvas();
 			canvas.element.width = 64;
 			canvas.element.height = 64;
-			renderTileToCanvas(canvas.element, tile.data, palette);
+			renderTileToCanvas(canvas.element, tile.data, paletteView);
 
 			const isSelected = tileId === selectedTileId;
 			const tileItem = Div().class(style.tileItem).nodes([
 				canvas,
 				Div()
 					.class(style.tileTypeLabel)
-					.text(tile.)
+					.text(tile.props?.type)
 			]);
 
 			if (isSelected) {
@@ -152,6 +149,7 @@ export function TilePalette() {
 			tileNodes.push(tileItem);
 		}
 
+		// TODO: Is this memory safe? Should we reuse those canvas elements instead of recreating them?
 		tileGridContainer.nodes(tileNodes);
 	}
 
@@ -160,11 +158,11 @@ export function TilePalette() {
 	 */
 	function renderRecentTiles() {
 		const tiles = AppState.tiles.value;
-		const palette = AppState.palette.value;
+		const paletteView = AppState.paletteView.value;
 		const recentIds = EditorState.recentTiles.value;
 		const selectedTileId = EditorState.selectedTile.value;
 
-		if (!tiles || !palette || recentIds.length === 0) {
+		if (!tiles || !paletteView || recentIds.length === 0) {
 			recentTilesContainer.nodes([]);
 			return;
 		}
@@ -177,7 +175,7 @@ export function TilePalette() {
 			const canvas = Canvas();
 			canvas.element.width = 64;
 			canvas.element.height = 64;
-			renderTileToCanvas(canvas.element, tile.data, palette);
+			renderTileToCanvas(canvas.element, tile.data, paletteView);
 
 			const isSelected = tileId === selectedTileId;
 			const node = Div().class(style.tileItem).nodes([canvas]);
