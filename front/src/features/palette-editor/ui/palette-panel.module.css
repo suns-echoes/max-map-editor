@@ -1,0 +1,143 @@
+/**
+ * Palette Panel Styles
+ */
+
+.palettePanel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 8px;
+	height: 100%;
+	overflow: hidden;
+	background: rgba(0, 0, 0, 0.3);
+}
+
+.header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 4px 8px;
+	color: #ffcc00;
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	text-shadow: 1px 1px 2px #000;
+}
+
+.previewRow {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	padding: 8px;
+	background: rgba(0, 0, 0, 0.2);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.colorPreview {
+	width: 48px;
+	height: 48px;
+	border: 2px solid #666;
+	background: repeating-conic-gradient(#808080 0% 25%, #404040 0% 50%) 50% / 8px 8px;
+}
+
+.colorInfo {
+	flex: 1;
+	font-size: 11px;
+	color: #ccc;
+	line-height: 1.4;
+}
+
+.colorPicker {
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	border: none;
+	cursor: pointer;
+}
+
+.actionButtons {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+
+.actionButton {
+	padding: 4px 8px;
+	font-size: 10px;
+	text-transform: uppercase;
+	background: rgba(60, 60, 60, 0.8);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	color: #ccc;
+	cursor: pointer;
+	transition: background-color 0.15s, color 0.15s;
+}
+
+.actionButton:hover {
+	background: rgba(80, 80, 80, 0.8);
+	color: #fff;
+}
+
+.paletteGrid {
+	display: grid;
+	grid-template-columns: repeat(16, 1fr);
+	gap: 1px;
+	padding: 4px;
+	overflow-y: auto;
+	flex: 1;
+	background: rgba(0, 0, 0, 0.4);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.colorCell {
+	aspect-ratio: 1;
+	min-width: 12px;
+	min-height: 12px;
+	cursor: pointer;
+	border: 1px solid transparent;
+	transition: transform 0.1s, border-color 0.1s;
+}
+
+.colorCell:hover {
+	transform: scale(1.2);
+	z-index: 1;
+	border-color: rgba(255, 255, 255, 0.5);
+}
+
+.colorCell.selected {
+	border-color: #ffcc00;
+	box-shadow: 0 0 4px rgba(255, 204, 0, 0.8);
+	transform: scale(1.15);
+	z-index: 2;
+}
+
+.colorCell.secondary {
+	border-color: #00ccff;
+	box-shadow: 0 0 4px rgba(0, 204, 255, 0.8);
+}
+
+.colorCell.inRange {
+	border-color: rgba(255, 204, 0, 0.5);
+}
+
+.colorCell.unused {
+	opacity: 0.3;
+}
+
+.colorCell.unused::after {
+	content: '×';
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	color: #f00;
+	font-size: 10px;
+	font-weight: bold;
+}
+
+.noPalette {
+	grid-column: 1 / -1;
+	text-align: center;
+	padding: 20px;
+	color: rgba(255, 255, 255, 0.5);
+	font-style: italic;
+}

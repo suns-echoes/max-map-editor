@@ -11,6 +11,7 @@ import { Minimap } from './minimap/minimap.component.ts';
 import { StatusBar } from './status-bar/status-bar.component.ts';
 import { MainToolbar } from './main-toolbar/main-toolbar.component.ts';
 import { MapSelector } from './map-selector/map-selector.component.ts';
+import { TilePalette } from '^src/features/tile-painting/ui/tile-palette.component.ts';
 
 
 export function MainWindow() {
@@ -25,7 +26,7 @@ export function MainWindow() {
 				AppMainMenu(),
 				Minimap(),
 				MainToolbar(),
-				Section().text('Sidebar'),
+				TilePalette(),
 				WGLMap(),
 				Section().nodes([
 					MapSelector(),

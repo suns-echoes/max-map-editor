@@ -4,7 +4,7 @@ import { loadMapProject } from '^actions/load-map-project/load-map-project.ts';
 import { xlog } from '^lib/xlog/xlog.ts';
 import { animationFrame } from '^lib/flow-control/animation-frame.ts';
 import { Effect } from '^reactive/effect.ts';
-import { ReactiveNode } from '^reactive/reactive-node.class.ts';
+import { ReactiveNode } from '^reactive/reactive-node.ts';
 import { Br, Div } from '^reactive/reactive-node.elements.ts';
 import { SimpleButton } from '^src/ui/components/buttons/simple-button.component.ts';
 

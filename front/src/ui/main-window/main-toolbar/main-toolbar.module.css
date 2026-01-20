@@ -14,3 +14,10 @@
 		margin-left: 2px;
 	}
 }
+
+.active {
+	background: linear-gradient(180deg, #ffcc00 0%, #cc9900 100%);
+	color: #000;
+	border-color: #ffcc00;
+	box-shadow: 0 0 6px rgba(255, 204, 0, 0.5);
+}

@@ -1,0 +1,157 @@
+/**
+ * Pixel Editor Toolbar Styles
+ */
+
+.pixelEditorToolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding: 8px;
+	background: rgba(0, 0, 0, 0.3);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.sectionLabel {
+	font-size: 10px;
+	color: rgba(255, 255, 255, 0.6);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.toolButtons {
+	display: flex;
+	gap: 2px;
+}
+
+.toolButton {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	font-size: 16px;
+	background: rgba(60, 60, 60, 0.8);
+	border: 2px solid transparent;
+	cursor: pointer;
+	transition: background-color 0.15s, border-color 0.15s;
+}
+
+.toolButton:hover {
+	background: rgba(80, 80, 80, 0.8);
+}
+
+.toolButton.active {
+	background: rgba(100, 80, 40, 0.8);
+	border-color: #ffcc00;
+}
+
+.brushSizeContainer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.brushSizeLabel {
+	font-size: 11px;
+	color: #ccc;
+	min-width: 50px;
+}
+
+.brushSizeInput {
+	width: 80px;
+}
+
+.replaceContainer {
+	display: none;
+	align-items: center;
+	gap: 8px;
+}
+
+.scopeButtons {
+	display: flex;
+	gap: 2px;
+}
+
+.scopeButton {
+	padding: 4px 8px;
+	font-size: 10px;
+	background: rgba(60, 60, 60, 0.8);
+	border: 1px solid transparent;
+	color: #ccc;
+	cursor: pointer;
+	transition: background-color 0.15s;
+}
+
+.scopeButton:hover {
+	background: rgba(80, 80, 80, 0.8);
+}
+
+.scopeButton.active {
+	background: rgba(80, 60, 40, 0.8);
+	border-color: #ffcc00;
+	color: #ffcc00;
+}
+
+.replaceButton {
+	padding: 6px 12px;
+	font-size: 11px;
+	font-weight: bold;
+	background: linear-gradient(180deg, #cc6600 0%, #994400 100%);
+	border: 1px solid #ff8800;
+	color: #fff;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.replaceButton:hover {
+	background: linear-gradient(180deg, #dd7700 0%, #aa5500 100%);
+}
+
+.zoomContainer {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.zoomButton {
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	font-size: 14px;
+	font-weight: bold;
+	background: rgba(60, 60, 60, 0.8);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	color: #ccc;
+	cursor: pointer;
+}
+
+.zoomButton:hover {
+	background: rgba(80, 80, 80, 0.8);
+	color: #fff;
+}
+
+.zoomLabel {
+	font-size: 11px;
+	color: #ccc;
+	min-width: 24px;
+	text-align: center;
+}
+
+.gridToggle {
+	padding: 4px 8px;
+	font-size: 10px;
+	background: rgba(60, 60, 60, 0.8);
+	border: 1px solid transparent;
+	color: #ccc;
+	cursor: pointer;
+}
+
+.gridToggle.active {
+	background: rgba(60, 80, 60, 0.8);
+	border-color: #66cc66;
+	color: #66cc66;
+}
