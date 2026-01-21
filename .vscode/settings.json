@@ -12,4 +12,8 @@
 	"javascript.preferences.quoteStyle": "single",
 	"typescript.preferences.importModuleSpecifierEnding": "js",
 	"typescript.preferences.quoteStyle": "single",
+
+	"markdown.styles": [
+		"./.vscode/markdown.css"
+	]
 }
