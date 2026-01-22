@@ -101,6 +101,74 @@
 
 .content {
 	flex: 1;
-	display: flex;
+	display: grid;
+	grid-template-columns: var(--dock-left-width, 240px) 6px 1fr 6px var(--dock-right-width, 240px);
+	grid-template-rows: 1fr 6px var(--dock-bottom-height, 180px);
+	grid-template-areas:
+		"left resizer-left center resizer-right right"
+		"bottom-resizer bottom-resizer bottom-resizer bottom-resizer bottom-resizer"
+		"bottom bottom bottom bottom bottom";
 	overflow: hidden;
+}
+
+.dockLeft {
+	grid-area: left;
+	border-right: 2px solid #0008;
+	background: #1b140fbb;
+	color: #f0e9e0;
+	padding: 8px;
+}
+
+.dockRight {
+	grid-area: right;
+	border-left: 2px solid #0008;
+	background: #1b140fbb;
+	color: #f0e9e0;
+	padding: 8px;
+}
+
+.dockRight {
+	grid-area: right;
+	border-left: 2px solid #0008;
+	background: #1b140fbb;
+	color: #f0e9e0;
+	padding: 8px;
+}
+
+.dockBottom {
+	grid-area: bottom;
+	border-top: 2px solid #0008;
+	background: #1b140fbb;
+	color: #f0e9e0;
+	padding: 8px;
+}
+
+.center {
+	grid-area: center;
+	display: flex;
+	min-width: 0;
+	min-height: 0;
+}
+
+.resizerLeft,
+.resizerRight {
+	grid-row: 1;
+	width: 6px;
+	background: #0006;
+	cursor: col-resize;
+}
+
+.resizerLeft {
+	grid-area: resizer-left;
+}
+
+.resizerRight {
+	grid-area: resizer-right;
+}
+
+.resizerHorizontal {
+	grid-area: bottom-resizer;
+	height: 6px;
+	background: #0006;
+	cursor: row-resize;
 }
