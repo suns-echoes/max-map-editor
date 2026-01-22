@@ -349,15 +349,15 @@ export function Workspace() {
 		const titlebar = windowEl.querySelector('[data-role="dock-titlebar"]') as HTMLElement | null;
 		const resizeHandle = windowEl.querySelector(`.${windowStyle.resizeHandle}`) as HTMLElement | null;
 		if (!titlebar) return;
-		titlebar.addEventListener('mousedown', (event) => {
+			titlebar.addEventListener('mousedown', (event) => {
 			if (event.button !== 0) return;
 			event.preventDefault();
 			event.stopPropagation();
 
 			const contentRect = contentEl.getBoundingClientRect();
 			const windowRect = windowEl.getBoundingClientRect();
-			const offsetX = event.clientX - windowRect.left;
-			const offsetY = event.clientY - windowRect.top;
+				let offsetX = event.clientX - windowRect.left;
+				let offsetY = event.clientY - windowRect.top;
 			const parent = windowEl.parentElement as HTMLElement | null;
 			if (parent === leftDock.element) {
 				dragSourceDock = { container: leftDock.element, axis: 'vertical' };
@@ -373,6 +373,9 @@ export function Workspace() {
 				const x = windowRect.left - contentRect.left;
 				const y = windowRect.top - contentRect.top;
 				setFloating(windowEl, x, y);
+					if (dragSourceDock?.container === bottomDock.element) {
+						offsetX = windowRect.width / 2;
+					}
 				if (dragSourceDock) {
 					rebuildDock(dragSourceDock.container, dragSourceDock.axis);
 					applyDockSizing(dragSourceDock.container, dragSourceDock.axis);
@@ -380,7 +383,10 @@ export function Workspace() {
 			}
 
 			function handleMove(moveEvent: MouseEvent) {
-				const x = moveEvent.clientX - contentRect.left - offsetX;
+				const currentRect = windowEl.getBoundingClientRect();
+				const x = dragSourceDock?.container === bottomDock.element
+					? moveEvent.clientX - contentRect.left - currentRect.width / 2
+					: moveEvent.clientX - contentRect.left - offsetX;
 				const y = moveEvent.clientY - contentRect.top - offsetY;
 				windowEl.style.left = `${x}px`;
 				windowEl.style.top = `${y}px`;
