@@ -1,4 +1,7 @@
 .mainMenu {
+	position: relative;
+	z-index: 200;
+	white-space: nowrap;
 	background: #765a;
 	background-size: 50px 50px, 100% 100%;
 
@@ -15,11 +18,11 @@
 		display: inline-block;
 		position: relative;
 
-		section {
+		> section {
 			display: none;
 		}
 
-		&.open section {
+		&.open > section {
 			display: block;
 		}
 	}

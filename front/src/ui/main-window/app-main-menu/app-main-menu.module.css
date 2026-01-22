@@ -10,11 +10,11 @@
 		display: inline-block;
 		position: relative;
 
-		section {
+		> section {
 			display: none;
 		}
 
-		&.open section {
+		&.open > section {
 			display: block;
 		}
 	}

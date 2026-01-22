@@ -4,6 +4,7 @@ export interface SubmenuItem {
 	label: string;
 	action?: () => Promise<void>;
 	disabled?: boolean;
+	submenu?: Submenu;
 }
 
 export interface SubmenuSeparator {

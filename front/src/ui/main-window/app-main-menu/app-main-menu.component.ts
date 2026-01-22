@@ -1,44 +1,6 @@
 import { xlog } from '^lib/xlog/xlog.ts';
 
-import { CloseAppAction } from '^actions/app/close-app.action.ts';
-import { NewMapFromImageAction } from '^actions/new-map/new-map-from-image.action.ts';
-import { importWrlFromFile, downloadWrlFile } from '^src/features/wrl-io/index.ts';
-import { PaletteEditorState } from '^src/features/palette-editor/index.ts';
-
 import { MainMenu } from '^src/ui/components/menus/main-menu/main-menu.component.ts';
-
-
-async function ImportWrlAction() {
-	const input: HTMLInputElement = document.createElement('input');
-	input.type = 'file';
-	input.accept = '.wrl';
-
-	return new Promise<void>((resolve) => {
-		input.onchange = async () => {
-			const file = input.files?.[0];
-			if (file) {
-				const result = await importWrlFromFile(file);
-				if (result.success) {
-					xlog.info(`Imported: ${result.mapName} (${result.width}x${result.height})`);
-				} else {
-					xlog.error(`Import failed: ${result.error}`);
-				}
-			}
-			resolve();
-		};
-		input.oncancel = () => resolve();
-		input.click();
-	});
-}
-
-async function ExportWrlAction() {
-	const result = downloadWrlFile();
-	if (result.success) {
-		xlog.info(`Exported: ${result.fileName}`);
-	} else {
-		xlog.error(`Export failed: ${result.error}`);
-	}
-}
 
 
 export function AppMainMenu() {
@@ -49,100 +11,243 @@ export function AppMainMenu() {
 			label: 'File',
 			submenu: [
 				{
-					label: 'New Project',
-					disabled: true,
+					label: 'Create new map ▶',
+					submenu: [
+						{ label: 'Using tiles 🡵' },
+						{ label: 'From image 🡵' },
+						{ label: 'From WRL 🡵' },
+					],
 				},
 				{
-					label: 'New Map from Image',
-					action: NewMapFromImageAction,
+					label: 'Load project ▶',
+					submenu: [
+						{ label: 'Browse… 🡵' },
+						{ label: 'Recent… ▶', submenu: [
+							{ label: 'CRATER_1' },
+							{ label: 'GREEN_1' },
+							{ label: '...' },
+						] },
+					],
 				},
 				{
-					label: '-',
+					label: 'Quick load ▶',
+					submenu: [
+						{ label: 'CRATER_1' },
+						{ label: 'GREEN_1' },
+						{ label: '...' },
+					],
 				},
 				{
-					label: 'Import WRL...',
-					action: ImportWrlAction,
+					label: 'Load previous ▶',
+					submenu: [
+						{ label: 'Map 1' },
+						{ label: 'Map 2' },
+						{ label: '...' },
+					],
 				},
 				{
-					label: 'Export WRL',
-					action: ExportWrlAction,
+					label: 'Save project ▶',
+					submenu: [
+						{ label: 'Save 🡵' },
+						{ label: 'Save As… 🡵' },
+					],
 				},
 				{
-					label: '-',
+					label: 'Save project copy ▶',
+					submenu: [
+						{ label: 'Save Copy… 🡵' },
+					],
+				},
+				{ label: 'Close project' },
+				{ label: '-' },
+				{
+					label: 'Export to WRL ▶',
+					submenu: [
+						{ label: 'Export current 🡵' },
+						{ label: 'Export selection 🡵' },
+					],
 				},
 				{
-					label: 'Save File',
-					disabled: true,
+					label: 'Import WRL ▶',
+					submenu: [
+						{ label: 'Import into project 🡵' },
+						{ label: 'Open as new project 🡵' },
+					],
 				},
+				{ label: '-' },
 				{
-					label: 'Save As...',
-					disabled: true,
-				},
-				{
-					label: 'Close File',
-					disabled: true,
-				},
-				{
-					label: '-',
-				},
-				{
-					label: 'Exit',
-					action: CloseAppAction,
+					label: 'Export as image ▶',
+					submenu: [
+						{ label: 'Export image 🡵' },
+						{ label: 'Export image with overlays 🡵' },
+					],
 				},
 			],
 		},
 		{
 			label: 'Edit',
 			submenu: [
+				{ label: 'Undo' },
+				{ label: 'Redo' },
+				{ label: 'Undo History' },
+				{ label: '-' },
+				{ label: 'Cut' },
+				{ label: 'Copy' },
+				{ label: 'Paste' },
+				{ label: 'Clear' },
+				{ label: '-' },
+				{ label: 'Preferences' },
+			],
+		},
+		{
+			label: 'Mode',
+			submenu: [
 				{
-					label: 'Undo',
-					disabled: true,
+					label: 'Render Mode ▶',
+					submenu: [
+						{ label: '🔘 Default' },
+						{ label: '🔘 Terrain' },
+						{ label: '🔘 Pass' },
+					],
 				},
 				{
-					label: 'Redo',
-					disabled: true,
+					label: 'Tile Layer ▶',
+					submenu: [
+						{ label: '🔘 Ground' },
+						{ label: '🔘 Water' },
+						{ label: '🔘 Objects' },
+					],
 				},
+				{ label: '-' },
+				{ label: '🔘 Pass Editor' },
+				{ label: '🔘 Tile Pixel Editor' },
+				{ label: '-' },
 				{
-					label: 'Cut',
-					disabled: true,
-				},
-				{
-					label: 'Copy',
-					disabled: true,
-				},
-				{
-					label: 'Paste',
-					disabled: true,
+					label: 'Immersive mode ▶',
+					submenu: [
+						{ label: '🔘 Off' },
+						{ label: '🔘 Minimal UI' },
+						{ label: '🔘 Fullscreen' },
+					],
 				},
 			],
 		},
 		{
-			label: 'Utilities',
-			submenu: [],
+			label: 'Snapshot',
+			submenu: [
+				{ label: 'Take Snapshot' },
+				{ label: '-' },
+				{
+					label: 'Revert to Snapshot ▶',
+					submenu: [
+						{ label: 'User snapshot A' },
+						{ label: 'User snapshot B' },
+						{ label: '...' },
+					],
+				},
+				{ label: 'Show all Snapshot' },
+				{ label: 'User snapshot A' },
+				{ label: 'User snapshot B' },
+				{ label: '-' },
+				{ label: 'Clear Snapshots' },
+			],
 		},
 		{
 			label: 'View',
 			submenu: [
+				{ label: '☑ Show grid' },
 				{
-					label: 'Show Grid',
-					disabled: true,
+					label: 'Zoom ▶',
+					submenu: [
+						{ label: '🔘 25%' },
+						{ label: '🔘 50%' },
+						{ label: '🔘 100%' },
+						{ label: '🔘 200%' },
+					],
 				},
+				{ label: '-' },
+				{ label: '☑ Tile Explorer' },
+				{ label: '☑ Color Palette' },
+				{ label: '☑ Pass Types Palette' },
+				{ label: '☑ Minimap' },
+				{ label: '☑ Templates Explorer' },
+				{ label: '☑ Tile Packs Manager' },
+				{ label: '☑ Tile Editing Toolbox' },
+			],
+		},
+		{
+			label: 'Select',
+			submenu: [
+				{ label: 'Select ALL' },
+				{ label: 'INVERT selection' },
+				{ label: 'CLEAR selection' },
+				{ label: '-' },
+				{ label: 'ADD to selection' },
+				{ label: 'SUBTRACT from selection' },
+				{ label: '-' },
+				{ label: 'Select SIMILAR' },
+			],
+		},
+		{
+			label: 'Templates',
+			submenu: [
+				{ label: 'Create template from selection' },
+				{ label: '-' },
+				{ label: 'Clone selected template' },
+				{ label: '-' },
+				{ label: 'Create new template' },
+				{ label: 'Open template explorer ▶', submenu: [
+					{ label: 'Open 🡵' },
+					{ label: 'Open recent ▶', submenu: [
+						{ label: 'Template A' },
+						{ label: 'Template B' },
+						{ label: '...' },
+					] },
+				] },
+				{ label: 'Delete selected template' },
+				{ label: 'Import template ▶', submenu: [
+					{ label: 'Import from file 🡵' },
+				] },
+				{ label: 'Export selection as template ▶', submenu: [
+					{ label: 'Export to file 🡵' },
+				] },
+			],
+		},
+		{
+			label: 'Tools',
+			submenu: [
+				{ label: 'Auto fix shore' },
+				{ label: '-' },
 				{
-					label: 'Show Cell Types',
-					disabled: true,
-				},
-				{
-					label: '-',
-				},
-				{
-					label: 'Palette Editor',
-					action: async () => PaletteEditorState.togglePanel(),
+					label: 'Auto generate pass table ▶',
+					submenu: [
+						{ label: 'Generate for current map' },
+						{ label: 'Generate for all layers' },
+					],
 				},
 			],
 		},
 		{
-			label: 'About',
-			submenu: [],
+			label: 'Windows',
+			submenu: [
+				{ label: 'Tile Tools' },
+				{ label: 'Template Tools' },
+				{ label: 'Palette Tools' },
+				{ label: 'Hand Tools' },
+				{ label: 'Pixel Tools' },
+				{ label: 'Advanced Tools' },
+				{ label: 'Selection Tools' },
+				{ label: 'Auto Tools' },
+			],
+		},
+		{
+			label: 'Help',
+			submenu: [
+				{ label: 'Documentation' },
+				{ label: 'Check for updates' },
+				{ label: '-' },
+				{ label: 'About' },
+			],
 		},
 	]);
 }

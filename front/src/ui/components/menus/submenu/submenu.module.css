@@ -1,15 +1,41 @@
 .submenu {
 	position: absolute;
-	top: 30px;
+	top: 100%;
 	left: 0;
 	width: max-content;
 	z-index: 1000;
+	display: flex;
 	flex-direction: column;
 
 	background-image: url("/images/modal-bg.png");
 	background-repeat: repeat;
 
 	box-shadow: 8px 8px 16px #000;
+}
+
+.panel {
+	width: max-content;
+	height: auto;
+	display: flex;
+	flex-direction: column;
+}
+
+.nested {
+	top: 0;
+	left: 100%;
+	margin-left: 6px;
+}
+
+.submenuItem {
+	position: relative;
+}
+
+.submenuItem > section {
+	display: none;
+}
+
+.open > section {
+	display: block;
 }
 
 .separator {
