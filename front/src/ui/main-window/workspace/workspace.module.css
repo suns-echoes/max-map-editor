@@ -102,8 +102,8 @@
 .content {
 	flex: 1;
 	display: grid;
-	grid-template-columns: var(--dock-left-width, 240px) 6px 1fr 6px var(--dock-right-width, 240px);
-	grid-template-rows: 1fr 6px var(--dock-bottom-height, 180px);
+	grid-template-columns: var(--dock-left-width, 240px) var(--dock-left-resizer, 6px) 1fr var(--dock-right-resizer, 6px) var(--dock-right-width, 240px);
+	grid-template-rows: 1fr var(--dock-bottom-resizer, 6px) var(--dock-bottom-height, 180px);
 	grid-template-areas:
 		"left resizer-left center resizer-right right"
 		"bottom-resizer bottom-resizer bottom-resizer bottom-resizer bottom-resizer"

@@ -133,10 +133,17 @@ export function Workspace() {
 		floatingLayer,
 	]);
 
+	let leftDockWidth = 240;
+	let rightDockWidth = 240;
+	let bottomDockHeight = 180;
+
 	const contentEl = content.element as HTMLElement;
-	contentEl.style.setProperty('--dock-left-width', '240px');
-	contentEl.style.setProperty('--dock-right-width', '240px');
-	contentEl.style.setProperty('--dock-bottom-height', '180px');
+	contentEl.style.setProperty('--dock-left-width', `${leftDockWidth}px`);
+	contentEl.style.setProperty('--dock-right-width', `${rightDockWidth}px`);
+	contentEl.style.setProperty('--dock-left-resizer', '6px');
+	contentEl.style.setProperty('--dock-right-resizer', '6px');
+	contentEl.style.setProperty('--dock-bottom-height', `${bottomDockHeight}px`);
+	contentEl.style.setProperty('--dock-bottom-resizer', '6px');
 
 	function startDrag(onMove: (event: MouseEvent) => void) {
 		function handleMove(event: MouseEvent) {
@@ -162,11 +169,49 @@ export function Workspace() {
 	const minPanelHeight = 50;
 	const minPanelWidth = 150;
 	const splitterSize = 6;
+	const dockPeekDistance = 64;
 	let dragSourceDock: { container: HTMLElement; axis: 'vertical' | 'horizontal' } | null = null;
+	let forceShowLeftDock = false;
+	let forceShowRightDock = false;
+	let forceShowBottomDock = false;
 	function parseOptionalNumber(value?: string): number | null {
 		if (!value) return null;
 		const parsed = Number(value);
 		return Number.isFinite(parsed) ? parsed : null;
+	}
+
+	function updateDockVisibility() {
+		const hasLeft = getDockWindows(leftDock.element).length > 0;
+		const hasRight = getDockWindows(rightDock.element).length > 0;
+		const hasBottom = getDockWindows(bottomDock.element).length > 0;
+		const showLeft = hasLeft || forceShowLeftDock;
+		const showRight = hasRight || forceShowRightDock;
+		const showBottom = hasBottom || forceShowBottomDock;
+
+		leftDock.element.style.display = showLeft ? 'flex' : 'none';
+		rightDock.element.style.display = showRight ? 'flex' : 'none';
+		leftResizer.element.style.display = hasLeft ? 'block' : 'none';
+		rightResizer.element.style.display = hasRight ? 'block' : 'none';
+		bottomResizer.element.style.display = hasBottom ? 'block' : 'none';
+
+		contentEl.style.setProperty('--dock-left-width', showLeft ? `${leftDockWidth}px` : '0px');
+		contentEl.style.setProperty('--dock-right-width', showRight ? `${rightDockWidth}px` : '0px');
+		contentEl.style.setProperty('--dock-left-resizer', hasLeft ? '6px' : '0px');
+		contentEl.style.setProperty('--dock-right-resizer', hasRight ? '6px' : '0px');
+		contentEl.style.setProperty('--dock-bottom-height', showBottom ? `${bottomDockHeight}px` : '0px');
+		contentEl.style.setProperty('--dock-bottom-resizer', hasBottom ? '6px' : '0px');
+	}
+
+	function updateDockPeek(clientX: number, clientY: number) {
+		const rect = contentEl.getBoundingClientRect();
+		const nextForceLeft = clientX - rect.left <= dockPeekDistance;
+		const nextForceRight = rect.right - clientX <= dockPeekDistance;
+		const nextForceBottom = rect.bottom - clientY <= dockPeekDistance;
+		if (nextForceLeft === forceShowLeftDock && nextForceRight === forceShowRightDock && nextForceBottom === forceShowBottomDock) return;
+		forceShowLeftDock = nextForceLeft;
+		forceShowRightDock = nextForceRight;
+		forceShowBottomDock = nextForceBottom;
+		updateDockVisibility();
 	}
 
 	function applyFloatingConstraints(windowEl: HTMLElement, useDefaults: boolean) {
@@ -214,6 +259,7 @@ export function Workspace() {
 		windowEl.style.top = `${y}px`;
 		floatingLayer.element.appendChild(windowEl);
 		applyFloatingConstraints(windowEl, true);
+		updateDockVisibility();
 	}
 
 	function setDocked(windowEl: HTMLElement) {
@@ -230,6 +276,7 @@ export function Workspace() {
 		windowEl.style.left = '';
 		windowEl.style.top = '';
 		windowEl.style.flex = '';
+		updateDockVisibility();
 	}
 
 	function getDockWindows(container: HTMLElement) {
@@ -337,6 +384,7 @@ export function Workspace() {
 				const y = moveEvent.clientY - contentRect.top - offsetY;
 				windowEl.style.left = `${x}px`;
 				windowEl.style.top = `${y}px`;
+				updateDockPeek(moveEvent.clientX, moveEvent.clientY);
 			}
 
 			function handleUp(upEvent: MouseEvent) {
@@ -366,6 +414,11 @@ export function Workspace() {
 					}
 					dragSourceDock = null;
 				}
+
+				forceShowLeftDock = false;
+				forceShowRightDock = false;
+				forceShowBottomDock = false;
+				updateDockVisibility();
 			}
 
 			window.addEventListener('mousemove', handleMove);
@@ -465,18 +518,21 @@ export function Workspace() {
 		const rect = contentEl.getBoundingClientRect();
 		const next = Math.min(maxDockWidth, Math.max(minDockWidth, event.clientX - rect.left));
 		contentEl.style.setProperty('--dock-left-width', `${next}px`);
+		leftDockWidth = next;
 	}));
 
 	rightResizer.element.addEventListener('mousedown', startDrag((event) => {
 		const rect = contentEl.getBoundingClientRect();
 		const next = Math.min(maxDockWidth, Math.max(minDockWidth, rect.right - event.clientX));
 		contentEl.style.setProperty('--dock-right-width', `${next}px`);
+		rightDockWidth = next;
 	}));
 
 	bottomResizer.element.addEventListener('mousedown', startDrag((event) => {
 		const rect = contentEl.getBoundingClientRect();
 		const next = Math.min(maxDockHeight, Math.max(minDockHeight, rect.bottom - event.clientY));
 		contentEl.style.setProperty('--dock-bottom-height', `${next}px`);
+		bottomDockHeight = next;
 	}));
 
 	function resizeSplit(container: HTMLElement, prevIndex: number, event: MouseEvent, axis: 'vertical' | 'horizontal') {
@@ -534,6 +590,7 @@ export function Workspace() {
 	rebuildDock(leftDock.element, 'vertical');
 	rebuildDock(rightDock.element, 'vertical');
 	rebuildDock(bottomDock.element, 'horizontal');
+	updateDockVisibility();
 
 	[leftWindow, rightTopWindow, rightBottomWindow, bottomWindow].forEach((windowNode) => {
 		enableDrag(windowNode.element);
