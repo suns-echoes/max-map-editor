@@ -1,10 +1,11 @@
 import { Value } from '^reactive/value.ts';
-import { Button, Div, Section, Span } from '^reactive/reactive-node.elements.ts';
+import { Button, Div, Section, Span, TextInput } from '^reactive/reactive-node.elements.ts';
 import { xlog } from '^lib/xlog/xlog.ts';
 import { WGLMap } from '../wgl-map/wgl-map.component.ts';
 import { DockableWindow } from '../dockable-window/dockable-window.component.ts';
 
 import style from './workspace.module.css';
+import windowStyle from '../dockable-window/dockable-window.module.css';
 
 
 const DEFAULT_TABS = ['GREEN_1.json', 'DESERT_1.json', 'CRATER_1.json'];
@@ -63,10 +64,48 @@ export function Workspace() {
 	const rightResizer = Div('dock-right-resizer').class(style.resizerRight);
 	const bottomResizer = Div('dock-bottom-resizer').class(style.resizerHorizontal);
 
-	const leftWindow = DockableWindow({ id: 'minimap', title: 'Minimap', content: 'Docked minimap (placeholder)' });
-	const rightTopWindow = DockableWindow({ id: 'tile-explorer', title: 'Tile Explorer', content: 'Tiles list (placeholder)' });
-	const rightBottomWindow = DockableWindow({ id: 'color-palette', title: 'Color Palette', content: 'Palette (placeholder)' });
-	const bottomWindow = DockableWindow({ id: 'toolbox', title: 'Toolbox', content: 'Tools (placeholder)' });
+	const leftWindow = DockableWindow({
+		id: 'minimap',
+		title: 'Minimap',
+		content: 'Controls',
+		minWidth: 180,
+		minHeight: 140,
+		defaultWidth: 260,
+		defaultHeight: 200,
+		resizable: true,
+	});
+	const rightTopWindow = DockableWindow({
+		id: 'tile-explorer',
+		title: 'Tile Explorer',
+		content: 'Controls',
+		minWidth: 200,
+		minHeight: 160,
+		maxWidth: 520,
+		maxHeight: 420,
+		defaultWidth: 320,
+		defaultHeight: 240,
+		resizable: true,
+	});
+	const rightBottomWindow = DockableWindow({
+		id: 'color-palette',
+		title: 'Color Palette',
+		content: 'Controls',
+		minWidth: 180,
+		minHeight: 120,
+		defaultWidth: 260,
+		defaultHeight: 200,
+		resizable: true,
+	});
+	const bottomWindow = DockableWindow({
+		id: 'toolbox',
+		title: 'Toolbox',
+		content: 'Controls',
+		minWidth: 260,
+		minHeight: 120,
+		defaultWidth: 360,
+		defaultHeight: 200,
+		resizable: false,
+	});
 	const floatingLayer = Div('floating-layer').class(style.floatingLayer);
 
 	const rightDock = Div('dock-right').class(style.dockRight).nodes([
@@ -123,17 +162,71 @@ export function Workspace() {
 	const minPanelHeight = 50;
 	const minPanelWidth = 150;
 	const splitterSize = 6;
-	let draggingWindow: HTMLElement | null = null;
 	let dragSourceDock: { container: HTMLElement; axis: 'vertical' | 'horizontal' } | null = null;
+	function parseOptionalNumber(value?: string): number | null {
+		if (!value) return null;
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+
+	function applyFloatingConstraints(windowEl: HTMLElement, useDefaults: boolean) {
+		const baseMinWidth = 150;
+		const baseMinHeight = 50;
+		const minWidth = Math.max(baseMinWidth, parseOptionalNumber(windowEl.dataset.minWidth) ?? baseMinWidth);
+		const minHeight = Math.max(baseMinHeight, parseOptionalNumber(windowEl.dataset.minHeight) ?? baseMinHeight);
+		const maxWidth = parseOptionalNumber(windowEl.dataset.maxWidth) ?? Infinity;
+		const maxHeight = parseOptionalNumber(windowEl.dataset.maxHeight) ?? Infinity;
+		const defaultWidth = parseOptionalNumber(windowEl.dataset.defaultWidth);
+		const defaultHeight = parseOptionalNumber(windowEl.dataset.defaultHeight);
+
+		windowEl.style.setProperty('--dock-min-width', `${minWidth}px`);
+		windowEl.style.setProperty('--dock-min-height', `${minHeight}px`);
+		if (Number.isFinite(maxWidth)) {
+			windowEl.style.setProperty('--dock-max-width', `${maxWidth}px`);
+		} else {
+			windowEl.style.removeProperty('--dock-max-width');
+		}
+		if (Number.isFinite(maxHeight)) {
+			windowEl.style.setProperty('--dock-max-height', `${maxHeight}px`);
+		} else {
+			windowEl.style.removeProperty('--dock-max-height');
+		}
+
+		const currentRect = windowEl.getBoundingClientRect();
+		let nextWidth = useDefaults && defaultWidth ? defaultWidth : currentRect.width;
+		let nextHeight = useDefaults && defaultHeight ? defaultHeight : currentRect.height;
+		nextWidth = Math.min(maxWidth, Math.max(minWidth, nextWidth));
+		nextHeight = Math.min(maxHeight, Math.max(minHeight, nextHeight));
+		windowEl.style.width = `${nextWidth}px`;
+		windowEl.style.height = `${nextHeight}px`;
+	}
+
 	function setFloating(windowEl: HTMLElement, x: number, y: number) {
 		windowEl.classList.add(style.floatingWindow);
+		windowEl.classList.add('floatingWindow');
+		const defaultWidth = parseOptionalNumber(windowEl.dataset.defaultWidth) ?? 260;
+		const defaultHeight = parseOptionalNumber(windowEl.dataset.defaultHeight) ?? 220;
+		windowEl.style.setProperty('--dock-default-width', `${defaultWidth}px`);
+		windowEl.style.setProperty('--dock-default-height', `${defaultHeight}px`);
+		windowEl.style.width = `${defaultWidth}px`;
+		windowEl.style.height = `${defaultHeight}px`;
 		windowEl.style.left = `${x}px`;
 		windowEl.style.top = `${y}px`;
 		floatingLayer.element.appendChild(windowEl);
+		applyFloatingConstraints(windowEl, true);
 	}
 
 	function setDocked(windowEl: HTMLElement) {
 		windowEl.classList.remove(style.floatingWindow);
+		windowEl.classList.remove('floatingWindow');
+		windowEl.style.removeProperty('--dock-min-width');
+		windowEl.style.removeProperty('--dock-max-width');
+		windowEl.style.removeProperty('--dock-min-height');
+		windowEl.style.removeProperty('--dock-max-height');
+		windowEl.style.removeProperty('--dock-default-width');
+		windowEl.style.removeProperty('--dock-default-height');
+		windowEl.style.width = '';
+		windowEl.style.height = '';
 		windowEl.style.left = '';
 		windowEl.style.top = '';
 		windowEl.style.flex = '';
@@ -199,32 +292,25 @@ export function Workspace() {
 		}
 	}
 
-	function registerDock(container: HTMLElement, axis: 'vertical' | 'horizontal') {
+	function registerDock(container: HTMLElement) {
 		container.addEventListener('dragover', (event) => {
 			event.preventDefault();
-		});
-		container.addEventListener('drop', (event) => {
-			event.preventDefault();
-			if (!draggingWindow) return;
-			setDocked(draggingWindow);
-			insertByAxis(container, draggingWindow, event.clientX, event.clientY, axis);
-			rebuildDock(container, axis);
-			applyDockSizing(container, axis);
-			if (dragSourceDock && dragSourceDock.container !== container) {
-				rebuildDock(dragSourceDock.container, dragSourceDock.axis);
-				applyDockSizing(dragSourceDock.container, dragSourceDock.axis);
-			}
-			dragSourceDock = null;
 		});
 	}
 
 	function enableDrag(windowEl: HTMLElement) {
 		const titlebar = windowEl.querySelector('[data-role="dock-titlebar"]') as HTMLElement | null;
+		const resizeHandle = windowEl.querySelector(`.${windowStyle.resizeHandle}`) as HTMLElement | null;
 		if (!titlebar) return;
-		titlebar.draggable = true;
-		titlebar.addEventListener('dragstart', (event) => {
-			draggingWindow = windowEl;
-			windowEl.classList.add(style.dragging);
+		titlebar.addEventListener('mousedown', (event) => {
+			if (event.button !== 0) return;
+			event.preventDefault();
+			event.stopPropagation();
+
+			const contentRect = contentEl.getBoundingClientRect();
+			const windowRect = windowEl.getBoundingClientRect();
+			const offsetX = event.clientX - windowRect.left;
+			const offsetY = event.clientY - windowRect.top;
 			const parent = windowEl.parentElement as HTMLElement | null;
 			if (parent === leftDock.element) {
 				dragSourceDock = { container: leftDock.element, axis: 'vertical' };
@@ -235,17 +321,144 @@ export function Workspace() {
 			} else {
 				dragSourceDock = null;
 			}
-			event.dataTransfer?.setData('text/plain', windowEl.dataset.windowId ?? 'dock-window');
-			event.dataTransfer?.setDragImage(windowEl, 20, 20);
-		});
-		titlebar.addEventListener('dragend', () => {
-			windowEl.classList.remove(style.dragging);
-			draggingWindow = null;
-			if (dragSourceDock) {
-				rebuildDock(dragSourceDock.container, dragSourceDock.axis);
-				dragSourceDock = null;
+
+			if (!windowEl.classList.contains(style.floatingWindow)) {
+				const x = windowRect.left - contentRect.left;
+				const y = windowRect.top - contentRect.top;
+				setFloating(windowEl, x, y);
+				if (dragSourceDock) {
+					rebuildDock(dragSourceDock.container, dragSourceDock.axis);
+					applyDockSizing(dragSourceDock.container, dragSourceDock.axis);
+				}
 			}
+
+			function handleMove(moveEvent: MouseEvent) {
+				const x = moveEvent.clientX - contentRect.left - offsetX;
+				const y = moveEvent.clientY - contentRect.top - offsetY;
+				windowEl.style.left = `${x}px`;
+				windowEl.style.top = `${y}px`;
+			}
+
+			function handleUp(upEvent: MouseEvent) {
+				window.removeEventListener('mousemove', handleMove);
+				window.removeEventListener('mouseup', handleUp);
+
+				const docks = [
+					{ container: leftDock.element, axis: 'vertical' as const },
+					{ container: rightDock.element, axis: 'vertical' as const },
+					{ container: bottomDock.element, axis: 'horizontal' as const },
+				];
+
+				const targetDock = docks.find((dock) => {
+					const rect = dock.container.getBoundingClientRect();
+					return upEvent.clientX >= rect.left && upEvent.clientX <= rect.right
+						&& upEvent.clientY >= rect.top && upEvent.clientY <= rect.bottom;
+				});
+
+				if (targetDock) {
+					setDocked(windowEl);
+					insertByAxis(targetDock.container, windowEl, upEvent.clientX, upEvent.clientY, targetDock.axis);
+					rebuildDock(targetDock.container, targetDock.axis);
+					applyDockSizing(targetDock.container, targetDock.axis);
+					if (dragSourceDock && dragSourceDock.container !== targetDock.container) {
+						rebuildDock(dragSourceDock.container, dragSourceDock.axis);
+						applyDockSizing(dragSourceDock.container, dragSourceDock.axis);
+					}
+					dragSourceDock = null;
+				}
+			}
+
+			window.addEventListener('mousemove', handleMove);
+			window.addEventListener('mouseup', handleUp);
 		});
+
+		resizeHandle?.addEventListener('mousedown', (event) => {
+			if (!windowEl.classList.contains(style.floatingWindow)) return;
+			if (windowEl.dataset.resizable !== 'true') return;
+			event.preventDefault();
+			event.stopPropagation();
+
+			const startRect = windowEl.getBoundingClientRect();
+			const startX = event.clientX;
+			const startY = event.clientY;
+			const minW = Math.max(150, parseOptionalNumber(windowEl.dataset.minWidth) ?? 150);
+			const minH = Math.max(50, parseOptionalNumber(windowEl.dataset.minHeight) ?? 50);
+			const maxW = parseOptionalNumber(windowEl.dataset.maxWidth) ?? Infinity;
+			const maxH = parseOptionalNumber(windowEl.dataset.maxHeight) ?? Infinity;
+
+			function handleResize(moveEvent: MouseEvent) {
+				const nextW = Math.min(maxW, Math.max(minW, startRect.width + (moveEvent.clientX - startX)));
+				const nextH = Math.min(maxH, Math.max(minH, startRect.height + (moveEvent.clientY - startY)));
+				windowEl.style.width = `${nextW}px`;
+				windowEl.style.height = `${nextH}px`;
+			}
+
+			function stopResize() {
+				window.removeEventListener('mousemove', handleResize);
+				window.removeEventListener('mouseup', stopResize);
+			}
+
+			window.addEventListener('mousemove', handleResize);
+			window.addEventListener('mouseup', stopResize);
+		});
+		return;
+	}
+
+	function attachControls(windowEl: HTMLElement) {
+		const body = windowEl.querySelector(`.${windowStyle.body}`) as HTMLElement | null;
+		if (!body) return;
+		body.textContent = '';
+
+		const controls = Div().class(windowStyle.controls).nodes([
+			Div().class(windowStyle.controlLabel).text('Window Controls'),
+		]);
+
+		function addNumberControl(label: string, key: keyof HTMLElement['dataset']) {
+			const input = TextInput().class(windowStyle.controlInput);
+			input.element.placeholder = 'auto';
+			input.value(windowEl.dataset[key] ?? '');
+			input.on('input', (event) => {
+				const value = (event.target as HTMLInputElement).value.trim();
+				if (value) {
+					windowEl.dataset[key] = value;
+				} else {
+					windowEl.dataset[key] = '';
+				}
+				if (windowEl.classList.contains(style.floatingWindow)) {
+					applyFloatingConstraints(windowEl, key === 'defaultWidth' || key === 'defaultHeight');
+				}
+			});
+
+			controls.nodes([
+				Div().class(windowStyle.controlRow).nodes([
+					Span(label).class(windowStyle.controlLabel),
+					input,
+				]),
+			]);
+		}
+
+		addNumberControl('Width (default)', 'defaultWidth');
+		addNumberControl('Height (default)', 'defaultHeight');
+		addNumberControl('Min width', 'minWidth');
+		addNumberControl('Max width', 'maxWidth');
+		addNumberControl('Min height', 'minHeight');
+		addNumberControl('Max height', 'maxHeight');
+
+		const resizableToggle = Button(`Resizable: ${windowEl.dataset.resizable === 'false' ? 'no' : 'yes'}`).class(windowStyle.controlToggle);
+		resizableToggle.on('click', () => {
+			const next = windowEl.dataset.resizable === 'false' ? 'true' : 'false';
+			windowEl.dataset.resizable = next;
+			resizableToggle.text(`Resizable: ${next === 'true' ? 'yes' : 'no'}`);
+		});
+
+		controls.nodes([
+			Div().class(windowStyle.controlRow).nodes([
+				Span('Resizable').class(windowStyle.controlLabel),
+				resizableToggle,
+			]),
+		]);
+
+		body.appendChild(controls.element);
 	}
 
 	leftResizer.element.addEventListener('mousedown', startDrag((event) => {
@@ -314,34 +527,17 @@ export function Workspace() {
 		}
 	}
 
-	registerDock(leftDock.element, 'vertical');
-	registerDock(rightDock.element, 'vertical');
-	registerDock(bottomDock.element, 'horizontal');
+	registerDock(leftDock.element);
+	registerDock(rightDock.element);
+	registerDock(bottomDock.element);
 
 	rebuildDock(leftDock.element, 'vertical');
 	rebuildDock(rightDock.element, 'vertical');
 	rebuildDock(bottomDock.element, 'horizontal');
 
-	floatingLayer.element.addEventListener('dragover', (event) => {
-		event.preventDefault();
-	});
-
-	floatingLayer.element.addEventListener('drop', (event) => {
-		event.preventDefault();
-		if (!draggingWindow) return;
-		const rect = contentEl.getBoundingClientRect();
-		const x = event.clientX - rect.left - 20;
-		const y = event.clientY - rect.top - 20;
-		setFloating(draggingWindow, x, y);
-		if (dragSourceDock) {
-			rebuildDock(dragSourceDock.container, dragSourceDock.axis);
-			applyDockSizing(dragSourceDock.container, dragSourceDock.axis);
-		}
-		dragSourceDock = null;
-	});
-
 	[leftWindow, rightTopWindow, rightBottomWindow, bottomWindow].forEach((windowNode) => {
 		enableDrag(windowNode.element);
+		attachControls(windowNode.element);
 	});
 
 	return Section('workspace').class(style.workspace).nodes([

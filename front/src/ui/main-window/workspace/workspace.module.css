@@ -117,7 +117,6 @@
 	border-right: 2px solid #0008;
 	background: #1b140fbb;
 	color: #f0e9e0;
-	padding: 8px;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
@@ -129,7 +128,6 @@
 	border-left: 2px solid #0008;
 	background: #1b140fbb;
 	color: #f0e9e0;
-	padding: 8px;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
@@ -141,7 +139,6 @@
 	border-left: 2px solid #0008;
 	background: #1b140fbb;
 	color: #f0e9e0;
-	padding: 8px;
 }
 
 .dockBottom {
@@ -149,7 +146,6 @@
 	border-top: 2px solid #0008;
 	background: #1b140fbb;
 	color: #f0e9e0;
-	padding: 8px;
 	display: flex;
 	gap: 8px;
 	min-height: 0;
@@ -174,6 +170,21 @@
 	width: 260px;
 	height: 220px;
 	pointer-events: auto;
+	min-width: var(--dock-min-width, 150px);
+	max-width: var(--dock-max-width, 520px);
+	min-height: var(--dock-min-height, 50px);
+	max-height: var(--dock-max-height, 420px);
+	width: var(--dock-default-width, 260px);
+	height: var(--dock-default-height, 220px);
+	border-width: 2px;
+	border-radius: 6px;
+	border-style: solid;
+	border-top-color: #fda6;
+	border-right-color: #000a;
+	border-bottom-color: #0008;
+	border-left-color: #fdaa;
+	background: #2a221acc;
+	box-shadow: 4px 4px 10px #000a;
 }
 
 .dragging {
