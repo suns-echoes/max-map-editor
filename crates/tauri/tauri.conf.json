@@ -16,9 +16,9 @@
 			{
 				"title": "M.A.X. Map Editor",
 				"width": 1280,
-				"height": 1024,
+				"height": 800,
 				"minWidth": 1280,
-				"minHeight": 1024
+				"minHeight": 800
 			}
 		],
 		"security": {

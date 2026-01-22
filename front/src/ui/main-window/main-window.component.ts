@@ -1,5 +1,4 @@
 import { Section } from '^reactive/reactive-node.elements.ts';
-import { WGLMap } from './wgl-map/wgl-map.component.ts';
 import { xlog } from '^lib/xlog/xlog.ts';
 import { saveMainWindowParams } from '^actions/main-window/save-main-window-params.ts';
 import { AppEvents } from '^events/app-events.ts';
@@ -7,11 +6,7 @@ import { AsyncEffect } from '^reactive/effect.ts';
 import { BuildInfo } from './build-info/build.info.component.ts';
 import { MainLayout } from './main-layout/main-layout.component.ts';
 import { AppMainMenu } from './app-main-menu/app-main-menu.component.ts';
-import { Minimap } from './minimap/minimap.component.ts';
-import { StatusBar } from './status-bar/status-bar.component.ts';
-import { MainToolbar } from './main-toolbar/main-toolbar.component.ts';
-import { MapSelector } from './map-selector/map-selector.component.ts';
-import { TilePalette } from '^src/features/tile-painting/ui/tile-palette.component.ts';
+import { Workspace } from './workspace/workspace.component.ts';
 
 
 export function MainWindow() {
@@ -24,14 +19,7 @@ export function MainWindow() {
 			BuildInfo(),
 			MainLayout().nodes([
 				AppMainMenu(),
-				Minimap(),
-				MainToolbar(),
-				TilePalette(),
-				WGLMap(),
-				Section().nodes([
-					MapSelector(),
-				]),
-				StatusBar(),
+				Workspace(),
 			]),
 		])
 	);
