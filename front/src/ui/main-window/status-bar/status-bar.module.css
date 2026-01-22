@@ -1,5 +1,8 @@
 .statusBar {
+	position: relative;
 	display: flex;
+	width: 100%;
+	height: 100%;
 	justify-content: center;
 	align-items: center;
 	gap: 8px;
@@ -22,4 +25,20 @@
 			#e2b879c0 100%
 		);
 	}
+}
+
+.defaultContent,
+.helpContent {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.helpContent {
+	justify-content: center;
+	width: 100%;
+}
+
+.hidden {
+	display: none;
 }

@@ -9,6 +9,7 @@ export function AppMainMenu() {
 	return MainMenu([
 		{
 			label: 'File',
+			help: 'File operations',
 			submenu: [
 				{
 					label: 'Create new map ▶',

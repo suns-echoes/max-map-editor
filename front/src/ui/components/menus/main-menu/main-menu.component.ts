@@ -5,7 +5,7 @@ import { Submenu } from '../submenu/submenu.component.ts';
 
 import type { MainMenu } from './main-menu.types.ts';
 import style from './main-menu.module.css';
-import { ReactiveNode } from '^reactive/reactive-node.class.ts';
+import { ReactiveNode } from '^reactive/reactive-node.ts';
 
 
 export function MainMenu(menu: MainMenu) {
@@ -69,6 +69,10 @@ export function MainMenu(menu: MainMenu) {
 						menuButton = MenuButton().text(item.label),
 					]) as any,
 				);
+
+				if (item.help) {
+					menuItem.element.dataset.help = item.help;
+				}
 
 				if (item.disabled) {
 					menuButton.disable();

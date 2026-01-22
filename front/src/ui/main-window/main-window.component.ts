@@ -7,6 +7,7 @@ import { BuildInfo } from './build-info/build.info.component.ts';
 import { MainLayout } from './main-layout/main-layout.component.ts';
 import { AppMainMenu } from './app-main-menu/app-main-menu.component.ts';
 import { Workspace } from './workspace/workspace.component.ts';
+import { StatusBar } from './status-bar/status-bar.component.ts';
 
 
 export function MainWindow() {
@@ -20,6 +21,7 @@ export function MainWindow() {
 			MainLayout().nodes([
 				AppMainMenu(),
 				Workspace(),
+				StatusBar(),
 			]),
 		])
 	);
