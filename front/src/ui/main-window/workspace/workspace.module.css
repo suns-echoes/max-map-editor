@@ -117,6 +117,10 @@
 	background: #1b140fbb;
 	color: #f0e9e0;
 	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
 }
 
 .dockRight {
@@ -125,6 +129,10 @@
 	background: #1b140fbb;
 	color: #f0e9e0;
 	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
 }
 
 .dockRight {
@@ -141,6 +149,9 @@
 	background: #1b140fbb;
 	color: #f0e9e0;
 	padding: 8px;
+	display: flex;
+	gap: 8px;
+	min-height: 0;
 }
 
 .center {
@@ -148,6 +159,20 @@
 	display: flex;
 	min-width: 0;
 	min-height: 0;
+}
+
+.dockSplitterHorizontal {
+	height: 6px;
+	background: #0006;
+	cursor: row-resize;
+	border-radius: 4px;
+}
+
+.dockSplitterVertical {
+	width: 6px;
+	background: #0006;
+	cursor: col-resize;
+	border-radius: 4px;
 }
 
 .resizerLeft,

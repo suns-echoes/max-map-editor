@@ -2,6 +2,7 @@ import { Value } from '^reactive/value.ts';
 import { Button, Div, Section, Span } from '^reactive/reactive-node.elements.ts';
 import { xlog } from '^lib/xlog/xlog.ts';
 import { WGLMap } from '../wgl-map/wgl-map.component.ts';
+import { DockableWindow } from '../dockable-window/dockable-window.component.ts';
 
 import style from './workspace.module.css';
 
@@ -62,16 +63,30 @@ export function Workspace() {
 	const rightResizer = Div('dock-right-resizer').class(style.resizerRight);
 	const bottomResizer = Div('dock-bottom-resizer').class(style.resizerHorizontal);
 
+	const rightTopWindow = DockableWindow({ title: 'Tile Explorer', content: 'Tiles list (placeholder)' });
+	const rightBottomWindow = DockableWindow({ title: 'Color Palette', content: 'Palette (placeholder)' });
+	const rightSplitter = Div('dock-right-splitter').class(style.dockSplitterHorizontal);
+
+	const rightDock = Div('dock-right').class(style.dockRight).nodes([
+		rightTopWindow,
+		rightSplitter,
+		rightBottomWindow,
+	]);
+
 	const content = Div('workspace-content').class(style.content).nodes([
-		Div('dock-left').class(style.dockLeft).text('Left Dock'),
+		Div('dock-left').class(style.dockLeft).nodes([
+			DockableWindow({ title: 'Minimap', content: 'Docked minimap (placeholder)' }),
+		]),
 		leftResizer,
 		Div('workspace-center').class(style.center).nodes([
 			WGLMap(),
 		]),
 		rightResizer,
-		Div('dock-right').class(style.dockRight).text('Right Dock'),
+		rightDock,
 		bottomResizer,
-		Div('dock-bottom').class(style.dockBottom).text('Bottom Dock'),
+		Div('dock-bottom').class(style.dockBottom).nodes([
+			DockableWindow({ title: 'Toolbox', content: 'Tools (placeholder)' }),
+		]),
 	]);
 
 	const contentEl = content.element as HTMLElement;
@@ -79,16 +94,9 @@ export function Workspace() {
 	contentEl.style.setProperty('--dock-right-width', '240px');
 	contentEl.style.setProperty('--dock-bottom-height', '180px');
 
-	function startDrag(onMove: (dx: number, dy: number) => void) {
-		let lastX = 0;
-		let lastY = 0;
-
+	function startDrag(onMove: (event: MouseEvent) => void) {
 		function handleMove(event: MouseEvent) {
-			const dx = event.clientX - lastX;
-			const dy = event.clientY - lastY;
-			lastX = event.clientX;
-			lastY = event.clientY;
-			onMove(dx, dy);
+			onMove(event);
 		}
 
 		function handleUp() {
@@ -98,8 +106,6 @@ export function Workspace() {
 
 		return function handleDown(event: MouseEvent) {
 			event.preventDefault();
-			lastX = event.clientX;
-			lastY = event.clientY;
 			window.addEventListener('mousemove', handleMove);
 			window.addEventListener('mouseup', handleUp);
 		};
@@ -109,23 +115,44 @@ export function Workspace() {
 	const maxDockWidth = 480;
 	const minDockHeight = 120;
 	const maxDockHeight = 360;
+	const minPanelSize = 80;
 
-	leftResizer.element.addEventListener('mousedown', startDrag((dx) => {
-		const current = parseInt(contentEl.style.getPropertyValue('--dock-left-width') || '240', 10);
-		const next = Math.min(maxDockWidth, Math.max(minDockWidth, current + dx));
+	leftResizer.element.addEventListener('mousedown', startDrag((event) => {
+		const rect = contentEl.getBoundingClientRect();
+		const next = Math.min(maxDockWidth, Math.max(minDockWidth, event.clientX - rect.left));
 		contentEl.style.setProperty('--dock-left-width', `${next}px`);
 	}));
 
-	rightResizer.element.addEventListener('mousedown', startDrag((dx) => {
-		const current = parseInt(contentEl.style.getPropertyValue('--dock-right-width') || '240', 10);
-		const next = Math.min(maxDockWidth, Math.max(minDockWidth, current - dx));
+	rightResizer.element.addEventListener('mousedown', startDrag((event) => {
+		const rect = contentEl.getBoundingClientRect();
+		const next = Math.min(maxDockWidth, Math.max(minDockWidth, rect.right - event.clientX));
 		contentEl.style.setProperty('--dock-right-width', `${next}px`);
 	}));
 
-	bottomResizer.element.addEventListener('mousedown', startDrag((_dx, dy) => {
-		const current = parseInt(contentEl.style.getPropertyValue('--dock-bottom-height') || '180', 10);
-		const next = Math.min(maxDockHeight, Math.max(minDockHeight, current - dy));
+	bottomResizer.element.addEventListener('mousedown', startDrag((event) => {
+		const rect = contentEl.getBoundingClientRect();
+		const next = Math.min(maxDockHeight, Math.max(minDockHeight, rect.bottom - event.clientY));
 		contentEl.style.setProperty('--dock-bottom-height', `${next}px`);
+	}));
+
+	function resizeVerticalSplit(container: HTMLElement, topEl: HTMLElement, bottomEl: HTMLElement, event: MouseEvent) {
+		const containerRect = container.getBoundingClientRect();
+		const splitterHeight = rightSplitter.element.getBoundingClientRect().height;
+		const padding = 16;
+		const available = containerRect.height - splitterHeight - padding;
+
+		let nextTop = event.clientY - containerRect.top;
+		nextTop = Math.min(available - minPanelSize, Math.max(minPanelSize, nextTop));
+		const nextBottom = Math.max(minPanelSize, available - nextTop);
+
+		topEl.style.flex = `0 0 ${nextTop}px`;
+		bottomEl.style.flex = `0 0 ${nextBottom}px`;
+	}
+
+	rightTopWindow.element.style.flex = '1 1 0';
+	rightBottomWindow.element.style.flex = '1 1 0';
+	rightSplitter.element.addEventListener('mousedown', startDrag((event) => {
+		resizeVerticalSplit(rightDock.element, rightTopWindow.element, rightBottomWindow.element, event);
 	}));
 
 	return Section('workspace').class(style.workspace).nodes([
