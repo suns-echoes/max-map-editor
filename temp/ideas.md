@@ -9,3 +9,13 @@ when there is a place which cannot find match, see if anything matches:
   b) if yes than try renegotiations from this point
 
 if multiple such points are found, than try using all those starting points in parallel
+
+
+
+
+
+## queries
+
+since the app-architecture is just an example file, lets use it as a guideline.
+
+Lets now prepare folder and file structure in front that will be base line for features mentioned in: designs/features/*

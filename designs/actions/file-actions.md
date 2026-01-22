@@ -13,7 +13,7 @@
 
 **AS A** Dealer in Worlds
 **I WANT TO** create new map from my image file
-**SO THAT** my map will not be limited to predefined tiles
+**SO THAT** my map can be converted into tiles and palette automatically
 
 ### ⬛ Create map from WRL file
 

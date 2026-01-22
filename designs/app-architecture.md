@@ -45,13 +45,14 @@ front/src/
 │   │   └── ui/
 │   │       ├── main-menu/
 │   │       │   └── tile-toolbox-toggle-menu-item.component.ts
-│   │       └── tile-toolbox/
-│   │           ├── tile-toolbox.component.ts
-│   │           ├── tile-picker-button.component.ts
-│   │           ├── pencil-button.component.ts
-│   │           ├── pencil-options.component.ts
-│   │           └── brush-button.component.ts
-│   │           └── brush-options.component.ts
+│   │       ├── toolbox/
+│   │       │   ├── tile-toolbox.component.ts
+│   │       │   ├── tile-picker-button.component.ts
+│   │       │   ├── pencil-button.component.ts
+│   │       │   ├── pencil-options.component.ts
+│   │       │   ├── brush-button.component.ts
+│   │       │   └── brush-options.component.ts
+│   │       └── tile-painting.shell.ts
 │   │
 │   ├── auto-shore/
 │   │   ├── actions/
@@ -69,21 +70,24 @@ front/src/
 │   │       └── main-menu/
 │   │           └── image-import-menu-item.component.ts
 │   │
-│   ├── pass-table/
-│   │   ├── pass-table.state.ts
+│   ├── pass-editor/
+│   │   ├── actions/
+│   │   ├── state/
 │   │   └── ui/
 │   │
 │   ├── palette-editor/
-│   │   ├── palette-editor.state.ts
-│   │   ├── palette-editor.actions.ts
+│   │   ├── actions/
+│   │   ├── state/
 │   │   └── ui/
 │   │
-│   ├── pixel-editor/               # Pixel-level tile editing
-│   │   ├── pixel-editor.state.ts
+│   ├── pixel-editor/
+│   │   ├── actions/
+│   │   ├── state/
 │   │   └── ui/
 │   │
-│   ├── tile-management/            # Clone, dedupe, cleanup
-│   │   ├── tile-management.actions.ts
+│   ├── tile-management/
+│   │   ├── actions/
+│   │   ├── state/
 │   │   └── ui/
 │   │
 │   └── wrl-io/
@@ -91,8 +95,8 @@ front/src/
 │           ├── wrl-import.action.ts
 │           └── wrl-export.action.ts
 │
-├── actions/                        # (existing - keep for app-level actions)
-└── ui/                             # (existing - keep for layout/components)
+├── actions/    # (existing - keep for app-level actions)
+└── ui/         # (existing - keep for layout/components)
 ```
 
 ---
@@ -166,7 +170,7 @@ export type EditorStateType = {
 
 export function createEditorState(): EditorStateType {
 	const state = {
-		mode: new Value<EditorMode>('ground'),
+		mode: new Value<EditorMode>('tile'),
 		tool: new Value<EditorTool>('brush'),
 		selectedTile: new Value<string | null>(null),
 		brushSize: new Value(1),
@@ -215,11 +219,11 @@ export function createHistoryState(): HistoryStateType {
 ### Feature State Example
 
 ```typescript
-// features/tile-painting/tile-painting.state.ts
+// features/tile-painting/state/tile-picker.state.ts
 import { Value, Expr } from '^reactive';
 import { WorkspaceState } from '^state/workspace-state.ts';
 
-export const TilePaintingState = {
+export const TilePickerState = {
 	// Pattern mode for flood fill
 	pattern: new Value<string[] | null>(null),
 
@@ -241,9 +245,8 @@ export const TilePaintingState = {
 ### Feature Actions Example
 
 ```typescript
-// features/tile-painting/tile-painting.actions.ts
+// features/tile-painting/actions/draw-tile.action.ts
 import { WorkspaceState } from '^state/workspace-state.ts';
-import { TilePaintingState } from './tile-painting.state.ts';
 import { pushHistory } from '^state/history-state.ts';
 
 export function paintTile(x: number, y: number) {
@@ -254,6 +257,7 @@ export function paintTile(x: number, y: number) {
 	if (!tileId || !mapGrid) return;
 
 	// Record for undo
+	// `mapGrid` indexing, `width`, and `tileIdToIndex` are provided by MapState helpers
 	pushHistory('paint', { x, y, oldTile: mapGrid[...], newTile: tileId });
 
 	// Mutate
@@ -275,12 +279,12 @@ import { Effect } from '^reactive';
 import { WorkspaceState } from '^state/workspace-state.ts';
 import { autoFixShore } from './auto-shore.algorithm.ts';
 
-// Optionally auto-apply shore after any water tile is painted
+// Optionally auto-apply shore after tile painting
 export const autoShoreEffect = new Effect(function autoShoreOnWater(self) {
 	const session = WorkspaceState.activeSession.value;
 	if (!session) return;
 	const mode = session.editor.mode.value;
-	if (mode !== 'water') return;
+	if (mode !== 'tile') return;
 
 	// Only run when map changes
 	const mapGrid = session.map.map.value;
@@ -299,13 +303,13 @@ export const autoShoreEffect = new Effect(function autoShoreOnWater(self) {
 ## UI Component Pattern
 
 ```typescript
-// features/tile-painting/ui/tile-palette.component.ts
+// features/tile-painting/ui/toolbox/tile-toolbox.component.ts
 import { Section, Div } from '^reactive/reactive-node.elements.ts';
 import { Effect } from '^reactive';
 import { WorkspaceState } from '^state/workspace-state.ts';
 
-export function TilePalette() {
-	const container = Section('tile-palette').class(style.tilePalette);
+export function TileToolbox() {
+	const container = Section('tile-toolbox').class(style.tileToolbox);
 
 	// Reactive tile list rendering
 	new Effect((self) => {
@@ -345,7 +349,7 @@ export function TilePalette() {
 - [ ] **Tile Painting** — tile picker, tile palette, tile pencil, tile pattern flood fill
 - [ ] **Auto Shore** — automatic shore tile placement
 - [ ] **Image Import** — import image and convert it into a map
-- [ ] **Pass Table Editor** — edit pass table mode
+- [ ] **Pass Editor** — edit pass overlay and tile passage types
 - [ ] **Palette Editor** — edit palette colors
 - [ ] **Pixel Editor** — pixel-level tile editing
 - [ ] **Tile Management** — tile cloning, tile dedupe, remove unused tiles from project
@@ -364,7 +368,7 @@ export function TilePalette() {
 6. **Auto Shore** — algorithm + optional auto-apply
 7. **WRL Import/Export** — file I/O
 8. **Image Import** — conversion pipeline
-9. **Pass Table Editor** — separate mode
+9. **Pass Editor** — separate mode
 10. **Palette Editor** — color manipulation
 11. **Pixel Editor** — tile-level editing
 12. **Tile Management** — clone, dedupe, cleanup
