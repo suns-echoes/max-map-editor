@@ -103,13 +103,25 @@
 	flex: 1;
 	display: grid;
 	grid-template-columns: var(--dock-left-width, 240px) var(--dock-left-resizer, 6px) 1fr var(--dock-right-resizer, 6px) var(--dock-right-width, 240px);
-	grid-template-rows: 1fr var(--dock-bottom-resizer, 6px) var(--dock-bottom-height, 180px);
+	grid-template-rows: var(--dock-top-height, 160px) var(--dock-top-resizer, 6px) 1fr var(--dock-bottom-resizer, 6px) var(--dock-bottom-height, 180px);
 	grid-template-areas:
+		"top top top top top"
+		"top-resizer top-resizer top-resizer top-resizer top-resizer"
 		"left resizer-left center resizer-right right"
 		"bottom-resizer bottom-resizer bottom-resizer bottom-resizer bottom-resizer"
 		"bottom bottom bottom bottom bottom";
 	overflow: hidden;
 	position: relative;
+}
+
+.dockTop {
+	grid-area: top;
+	border-bottom: 2px solid #0008;
+	background: #1b140fbb;
+	color: #f0e9e0;
+	display: flex;
+	gap: 8px;
+	min-height: 0;
 }
 
 .dockLeft {
@@ -223,6 +235,13 @@
 
 .resizerHorizontal {
 	grid-area: bottom-resizer;
+	height: 6px;
+	background: #0006;
+	cursor: row-resize;
+}
+
+.resizerTop {
+	grid-area: top-resizer;
 	height: 6px;
 	background: #0006;
 	cursor: row-resize;
