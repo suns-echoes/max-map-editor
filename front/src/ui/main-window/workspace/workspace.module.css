@@ -109,6 +109,7 @@
 		"bottom-resizer bottom-resizer bottom-resizer bottom-resizer bottom-resizer"
 		"bottom bottom bottom bottom bottom";
 	overflow: hidden;
+	position: relative;
 }
 
 .dockLeft {
@@ -159,6 +160,24 @@
 	display: flex;
 	min-width: 0;
 	min-height: 0;
+}
+
+.floatingLayer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 40;
+}
+
+.floatingWindow {
+	position: absolute;
+	width: 260px;
+	height: 220px;
+	pointer-events: auto;
+}
+
+.dragging {
+	opacity: 0.7;
 }
 
 .dockSplitterHorizontal {
