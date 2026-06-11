@@ -10,6 +10,7 @@
 
 use crate::autofix::{self, AutoFix};
 use crate::confirm::{self, ConfirmClose};
+use crate::convertpalette::{self, ConvertPalette};
 use crate::errormodal::{self, ErrorModal};
 use crate::generator::{self, Generator};
 use crate::newfromimage::{self, NewFromImage};
@@ -53,6 +54,12 @@ pub enum ModalAction {
 	StartGenerate,
 	/// Abort the running generation, rolling the document back.
 	AbortGenerate,
+	/// Begin the rasterize palette conversion — a stepped, abortable job the
+	/// shell drives per frame; on completion the document content swaps (one
+	/// undo unit) and the modal closes.
+	StartPaletteConvert,
+	/// Abort the running palette conversion (back to the options).
+	AbortPaletteConvert,
 }
 
 pub trait Modal {
@@ -361,6 +368,51 @@ fn from_confirm(press: confirm::Press) -> ModalAction {
 		confirm::Press::Cancel => ModalAction::Close,
 		confirm::Press::Discard => ModalAction::Run("close-project!".into()),
 		confirm::Press::Save => ModalAction::Run("save-and-close".into()),
+	}
+}
+
+impl Modal for ConvertPalette {
+	fn on_key(&mut self, key: ModalKey) -> ModalAction {
+		match key {
+			// Enter converts (when idle); Esc aborts a run, else closes.
+			ModalKey::Enter if !self.running => from_convertpalette(self.confirm()),
+			ModalKey::Enter => ModalAction::Consumed,
+			ModalKey::Escape if self.running => ModalAction::AbortPaletteConvert,
+			ModalKey::Escape => ModalAction::Close,
+			ModalKey::Backspace => {
+				self.on_key(None, true, false);
+				ModalAction::Consumed
+			}
+			ModalKey::Tab => {
+				self.on_key(None, false, true);
+				ModalAction::Consumed
+			}
+			ModalKey::Char(c) => {
+				self.on_key(Some(c), false, false);
+				ModalAction::Consumed
+			}
+		}
+	}
+
+	fn on_press(&mut self, x: f32, y: f32, w: f32, h: f32) -> ModalAction {
+		from_convertpalette(self.on_press(x, y, w, h))
+	}
+
+	fn on_release(&mut self, x: f32, y: f32, w: f32, h: f32) -> ModalAction {
+		from_convertpalette(self.on_release(x, y, w, h))
+	}
+
+	modal_drag!();
+}
+
+fn from_convertpalette(press: convertpalette::Press) -> ModalAction {
+	match press {
+		convertpalette::Press::Consumed => ModalAction::Consumed,
+		convertpalette::Press::Close => ModalAction::Close,
+		convertpalette::Press::Convert(line) => ModalAction::Run(line),
+		convertpalette::Press::StartRasterize => ModalAction::StartPaletteConvert,
+		convertpalette::Press::Abort => ModalAction::AbortPaletteConvert,
+		convertpalette::Press::Invalid(e) => ModalAction::Error(format!("convert-palette: {e}")),
 	}
 }
 

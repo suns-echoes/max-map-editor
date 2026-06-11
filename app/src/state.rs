@@ -252,6 +252,10 @@ pub struct EditorState {
 	pub ingame: bool,
 	/// CRT post-process effect over the whole app.
 	pub crt: bool,
+	/// Debug: render with the document's **internal** (map/WRL) palette —
+	/// what the file says, not what the game would substitute. The cycler is
+	/// re-seeded on toggle, so everything palette-driven follows.
+	pub debug_map_palette: bool,
 	/// Cell grid overlay on?
 	pub show_grid: bool,
 	/// Pass-value overlay on? — auto-on in Pass Table Editor mode.
@@ -282,6 +286,8 @@ pub struct EditorState {
 	pub autofix: Option<crate::autofix::AutoFix>,
 	/// The Generate Random Terrain modal, when open.
 	pub generator: Option<crate::generator::Generator>,
+	/// The Convert to Compatible Palette modal, when open.
+	pub convertpalette: Option<crate::convertpalette::ConvertPalette>,
 	/// The close-project Save/Discard/Cancel confirm modal.
 	pub confirm: Option<crate::confirm::ConfirmClose>,
 	/// The error modal — raised by the shell when a command fails so the
@@ -357,6 +363,8 @@ pub struct EditorState {
 	pub palette_sel_end: Option<u8>,
 	/// Color Palette grid scroll (px, clamped at draw time).
 	pub palette_scroll: f32,
+	/// WRL Internal Palette grid scroll (px, clamped at draw time).
+	pub wrlpalette_scroll: f32,
 	/// Toolbox scroll (px, clamped at draw time) — the toolbox flows tall and
 	/// scrolls when it doesn't fit.
 	pub toolbox_scroll: f32,
@@ -406,6 +414,7 @@ impl EditorState {
 			animate: false,
 			ingame: false,
 			crt: false,
+			debug_map_palette: false,
 			show_grid: false,
 			show_pass_overlay: false,
 			console: Console::new(),
@@ -431,6 +440,7 @@ impl EditorState {
 			resize: None,
 			autofix: None,
 			generator: None,
+			convertpalette: None,
 			confirm: None,
 			error: None,
 			newfromimage: None,
@@ -449,6 +459,7 @@ impl EditorState {
 			active_color: None,
 			palette_sel_end: None,
 			palette_scroll: 0.0,
+			wrlpalette_scroll: 0.0,
 			toolbox_scroll: 0.0,
 			palette_show_saved: false,
 			palette_files: Vec::new(),
@@ -515,9 +526,11 @@ impl EditorState {
 	}
 
 	/// Re-seed the cycling palette after a project palette edit (or its
-	/// undo/redo) so the working palette + GPU upload follow.
+	/// undo/redo) so the working palette + GPU upload follow. The Debug ▸
+	/// map-palette toggle swaps the source to the document's internal palette.
 	fn refresh_palette(&mut self) {
-		self.cycler = PaletteCycler::from_rgb(&self.project.palette);
+		let rgb = if self.debug_map_palette { self.project.internal_palette() } else { self.project.palette.clone() };
+		self.cycler = PaletteCycler::from_rgb(&rgb);
 		self.cycler.set_ingame(self.ingame);
 	}
 
@@ -646,6 +659,9 @@ impl EditorState {
 		if let Some(m) = self.generator.as_mut() {
 			return Some(m);
 		}
+		if let Some(m) = self.convertpalette.as_mut() {
+			return Some(m);
+		}
 		if let Some(m) = self.confirm.as_mut() {
 			return Some(m);
 		}
@@ -661,6 +677,7 @@ impl EditorState {
 		self.resize = None;
 		self.autofix = None;
 		self.generator = None;
+		self.convertpalette = None;
 		self.confirm = None;
 		self.error = None;
 		self.newfromimage = None;
@@ -862,6 +879,85 @@ impl EditorState {
 			}
 		}
 		self.newfromimage = Some(m);
+		outcome
+	}
+
+	/// Whether the rasterize palette conversion is live (the shell keeps
+	/// redrawing + stepping it while so).
+	pub fn palette_converting(&self) -> bool {
+		self.convertpalette.as_ref().is_some_and(|m| m.running)
+	}
+
+	/// Begin the rasterize palette conversion. Validates the options up
+	/// front; the session itself is built on the first `palette_convert_tick`
+	/// so a click on Convert paints the running state instantly.
+	pub fn palette_convert_start(&mut self) -> Outcome {
+		let Some(m) = self.convertpalette.as_mut() else { return Outcome::Ok };
+		if m.running {
+			return Outcome::Ok;
+		}
+		if let Err(e) = m.dedupe_opts() {
+			return Outcome::Failed(format!("convert-palette: {e}"));
+		}
+		m.session = None;
+		m.running = true;
+		m.progress = 0.0;
+		m.elapsed = 0.0;
+		m.stage = "Rendering map".to_string();
+		Outcome::Redraw
+	}
+
+	/// Step the live palette conversion a bounded slice; `elapsed` is wall-
+	/// clock since Convert (display + ETA). On completion the document
+	/// content swaps in (one undo unit) and the modal closes; `abort` stops
+	/// the run and returns to the options.
+	pub fn palette_convert_tick(&mut self, elapsed: f32, abort: bool) -> Outcome {
+		let Some(mut m) = self.convertpalette.take() else { return Outcome::Ok };
+		let mut outcome = Outcome::Redraw;
+		if m.running {
+			m.elapsed = elapsed;
+			if abort {
+				m.running = false;
+				m.session = None;
+				m.stage = "Aborted".to_string();
+			} else {
+				if m.session.is_none() {
+					let (relaxed, threshold) = m.dedupe_opts().expect("validated at start");
+					let dedupe = if relaxed { map_core::Dedupe::Relaxed } else { map_core::Dedupe::Strict };
+					m.session = Some(map_core::PaletteReimport::new(&self.project, m.water, dedupe, threshold));
+				}
+				if let Some(session) = m.session.as_mut() {
+					// ~300k pixel-units/frame keeps a frame responsive; the
+					// shell loops this while `palette_converting()`.
+					session.step(&self.project, 300_000);
+					m.progress = session.progress();
+					m.stage = session.stage().to_string();
+					if session.is_done() {
+						m.running = false;
+						match m.session.take().unwrap().finish() {
+							Ok(wrl) => {
+								let tile_count = self.project.apply_reimport(&wrl);
+								self.refresh_palette();
+								let line = format!(
+									"palette converted by re-import: {tile_count} tiles rebuilt, water {} \
+									 (lossy, undoable)",
+									if m.water { "kept animated" } else { "flattened" },
+								);
+								eprintln!("{line}");
+								self.console.push_line(line);
+								// Modal done — drop it; the atlas must rebuild.
+								return Outcome::DocReplaced;
+							}
+							Err(e) => {
+								m.stage = format!("Failed: {e}");
+								outcome = Outcome::Failed(format!("convert-palette: {e}"));
+							}
+						}
+					}
+				}
+			}
+		}
+		self.convertpalette = Some(m);
 		outcome
 	}
 
@@ -1122,12 +1218,15 @@ impl EditorState {
 			| ResizeModal
 			| AutoFixModal
 			| GenerateModal
-			| Export { .. }) => self.exec_io(c),
+			| Export { .. }
+			| ConvertPalette { .. }
+			| ConvertPaletteModal) => self.exec_io(c),
 			c @ (Grid { .. }
 			| PassOverlay { .. }
 			| Animate { .. }
 			| InGame { .. }
 			| Crt { .. }
+			| MapPalette { .. }
 			| Tick { .. }
 			| Console { .. }
 			| Screenshot { .. }) => self.exec_overlay(c),
@@ -2103,19 +2202,21 @@ impl EditorState {
 	fn exec_io(&mut self, command: Command) -> Outcome {
 		match command {
 			Command::Undo => {
-				let undone = self.project.undo();
-				if undone {
+				let structure = self.project.structure_revision();
+				if self.project.undo() {
 					self.refresh_palette(); // the patch may have carried colors
-					Outcome::Redraw
+					// A document-swap patch (palette conversion) replaced the
+					// tile tables — the GPU atlas must rebuild.
+					if self.project.structure_revision() != structure { Outcome::DocReplaced } else { Outcome::Redraw }
 				} else {
 					Outcome::Ok
 				}
 			}
 			Command::Redo => {
-				let redone = self.project.redo();
-				if redone {
+				let structure = self.project.structure_revision();
+				if self.project.redo() {
 					self.refresh_palette();
-					Outcome::Redraw
+					if self.project.structure_revision() != structure { Outcome::DocReplaced } else { Outcome::Redraw }
 				} else {
 					Outcome::Ok
 				}
@@ -2430,6 +2531,63 @@ impl EditorState {
 					Err(e) => Outcome::Failed(format!("export {}: {e}", target.display())),
 				}
 			}
+			Command::ConvertPaletteModal => {
+				if !self.project.is_wrl_import() {
+					return Outcome::Failed(
+						"convert-palette: only an opened WRL has an internal palette to convert".into(),
+					);
+				}
+				self.convertpalette = Some(crate::convertpalette::ConvertPalette::new());
+				self.menu.close();
+				Outcome::Redraw
+			}
+			Command::ConvertPalette { rasterize, water, relaxed, threshold } => {
+				// Tile pixels get rewritten — only a WRL import owns its tiles
+				// (a .json project's packs are shared on disk).
+				if !self.project.is_wrl_import() {
+					return Outcome::Failed(
+						"convert-palette: only an opened WRL has an internal palette to convert".into(),
+					);
+				}
+				if rasterize {
+					let dedupe = if relaxed { map_core::Dedupe::Relaxed } else { map_core::Dedupe::Strict };
+					match self.project.convert_palette_by_reimport(water, dedupe, threshold) {
+						Ok(tile_count) => {
+							self.refresh_palette();
+							let line = format!(
+								"palette converted by re-import: {tile_count} tiles rebuilt, water {} \
+								 (lossy, undoable)",
+								if water { "kept animated" } else { "flattened" },
+							);
+							eprintln!("{line}");
+							self.console.push_line(line);
+							// The tile table changed — the GPU atlas must rebuild.
+							Outcome::DocReplaced
+						}
+						Err(e) => Outcome::Failed(format!("convert-palette: {e}")),
+					}
+				} else {
+					let opts = map_core::ConvertOptions { preserve_water: water };
+					match self.project.convert_to_compatible_palette(opts) {
+						None => {
+							self.console.push_line("palette already MAX-compatible — nothing to convert");
+							Outcome::Redraw
+						}
+						Some(r) => {
+							self.refresh_palette();
+							let line = format!(
+								"palette converted: {} color(s) kept exactly, {} approximated, \
+								 {} moved off animated slots (lossy, undoable)",
+								r.exact, r.approximated, r.de_animated,
+							);
+							eprintln!("{line}");
+							self.console.push_line(line);
+							// Tile pixels changed — the GPU atlas must rebuild.
+							Outcome::DocReplaced
+						}
+					}
+				}
+			}
 			_ => unreachable!("non-io command routed to exec_io"),
 		}
 	}
@@ -2466,6 +2624,15 @@ impl EditorState {
 			}
 			Command::Crt { on } => {
 				self.crt = on.unwrap_or(!self.crt);
+				Outcome::Redraw
+			}
+			Command::MapPalette { on } => {
+				self.debug_map_palette = on.unwrap_or(!self.debug_map_palette);
+				self.refresh_palette();
+				self.console.push_line(format!(
+					"map palette render: {}",
+					if self.debug_map_palette { "on (internal palette)" } else { "off (game palette)" },
+				));
 				Outcome::Redraw
 			}
 			Command::Tick { seconds } => {
@@ -2559,6 +2726,128 @@ mod tests {
 		// `off` closes.
 		e.execute(Command::ContextMenu { at: None });
 		assert!(e.context_menu.is_none());
+	}
+
+	#[test]
+	fn map_palette_toggle_reseeds_the_cycler_from_the_internal_palette() {
+		let mut e = editor();
+		// A GREEN project: working slot 1 is the game red, the pack's own
+		// (internal) byte there differs — that's exactly what the toggle shows.
+		let game = [e.project.palette[3], e.project.palette[4], e.project.palette[5]];
+		let internal = e.project.internal_palette();
+		let raw = [internal[3], internal[4], internal[5]];
+		assert_ne!(game, raw, "GREEN's palette.json slot 1 differs from the game palette");
+
+		assert!(matches!(e.execute(Command::MapPalette { on: None }), Outcome::Redraw));
+		assert!(e.debug_map_palette);
+		assert_eq!(&e.cycler.rgba()[4..7], &raw, "cycler reseeded from the internal palette");
+		e.execute(Command::MapPalette { on: Some(false) });
+		assert!(!e.debug_map_palette);
+		assert_eq!(&e.cycler.rgba()[4..7], &game, "back to the game-resolved palette");
+		// A `window wrlpalette` toggle reaches the (hidden-by-default) panel.
+		assert!(!e.workspace.is_visible("wrlpalette"));
+		assert!(matches!(e.execute(Command::Window { id: "wrlpalette".into(), on: Some(true) }), Outcome::Redraw));
+		assert!(e.workspace.is_visible("wrlpalette"));
+	}
+
+	#[test]
+	fn convert_palette_guards_projects_and_converts_wrl_imports() {
+		let convert = || Command::ConvertPalette { rasterize: false, water: true, relaxed: false, threshold: 0.05 };
+		// A .json project doesn't own its tiles — loud refusal; the modal
+		// opener refuses identically.
+		let mut e = editor();
+		assert!(matches!(e.execute(convert()), Outcome::Failed(_)));
+		assert!(matches!(e.execute(Command::ConvertPaletteModal), Outcome::Failed(_)));
+
+		// A WRL import with an off-spec static slot converts (DocReplaced —
+		// the tile atlas must rebuild) and the cycler follows the new palette.
+		let mut tiles = vec![0u8; max_assets::wrl::TILE_DATA_SIZE];
+		tiles.fill(40);
+		let mut palette = map_core::GAME_PALETTE.to_vec();
+		palette[40 * 3..40 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]);
+		let wrl = max_assets::wrl::WrlFile {
+			header: vec![0; 5],
+			width: 1,
+			height: 1,
+			minimap: vec![0],
+			bigmap: vec![0],
+			tile_count: 1,
+			tiles,
+			palette,
+			pass_table: vec![0],
+		};
+		e.add_doc(Project::from_wrl(&wrl, "CONV"), None);
+		assert!(matches!(e.execute(Command::ConvertPaletteModal), Outcome::Redraw));
+		assert!(e.convertpalette.is_some(), "the options modal opens for WRL imports");
+		e.close_modal();
+		assert!(matches!(e.execute(convert()), Outcome::DocReplaced));
+		let to = e.project.packs[0].tiles[0] as usize;
+		assert_eq!(&e.cycler.rgba()[to * 4..to * 4 + 3], &[0xff, 0x00, 0xee]);
+		// Already compatible now — the second run is a no-op.
+		assert!(matches!(e.execute(convert()), Outcome::Redraw));
+		// Undo restores the document structurally (atlas rebuild) and the
+		// cycler follows the restored (game-resolved) palette; redo too.
+		assert!(matches!(e.execute(Command::Undo), Outcome::DocReplaced));
+		assert!(e.project.packs[0].tiles.iter().all(|&b| b == 40));
+		assert_eq!(&e.cycler.rgba()[40 * 4..40 * 4 + 3], &map_core::GAME_PALETTE[40 * 3..40 * 3 + 3]);
+		assert!(matches!(e.execute(Command::Redo), Outcome::DocReplaced));
+		assert_eq!(&e.cycler.rgba()[to * 4..to * 4 + 3], &[0xff, 0x00, 0xee]);
+		// The rasterize method works through the same command (tiny map —
+		// the synchronous re-import is instant here).
+		let rast = Command::ConvertPalette { rasterize: true, water: true, relaxed: false, threshold: 0.05 };
+		assert!(matches!(e.execute(rast), Outcome::DocReplaced));
+		assert!(matches!(e.execute(Command::Undo), Outcome::DocReplaced));
+	}
+
+	#[test]
+	fn rasterize_conversion_runs_stepped_with_progress_and_abort() {
+		// The interactive path: modal → start → per-frame ticks → completion
+		// swaps the document (DocReplaced) and closes the modal.
+		let mut e = editor();
+		let mut tiles = vec![0u8; max_assets::wrl::TILE_DATA_SIZE];
+		tiles.fill(40);
+		let mut palette = map_core::GAME_PALETTE.to_vec();
+		palette[40 * 3..40 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]);
+		let wrl = max_assets::wrl::WrlFile {
+			header: vec![0; 5],
+			width: 1,
+			height: 1,
+			minimap: vec![0],
+			bigmap: vec![0],
+			tile_count: 1,
+			tiles,
+			palette,
+			pass_table: vec![0],
+		};
+		e.add_doc(Project::from_wrl(&wrl, "STEP"), None);
+		e.execute(Command::ConvertPaletteModal);
+		e.convertpalette.as_mut().unwrap().method = crate::convertpalette::Method::Rasterize;
+
+		// An abort mid-run returns to the options with the session dropped.
+		assert!(matches!(e.palette_convert_start(), Outcome::Redraw));
+		assert!(e.palette_converting());
+		assert!(matches!(e.palette_convert_tick(0.1, true), Outcome::Redraw));
+		let m = e.convertpalette.as_ref().unwrap();
+		assert!(!m.running && m.session.is_none() && m.stage == "Aborted");
+		assert!(e.project.packs[0].tiles.iter().all(|&b| b == 40), "abort leaves the document untouched");
+
+		// A full run: bounded ticks make visible progress, completion swaps
+		// the document as one undo unit and drops the modal.
+		assert!(matches!(e.palette_convert_start(), Outcome::Redraw));
+		let mut ticks = 0;
+		let outcome = loop {
+			ticks += 1;
+			assert!(ticks < 10_000, "conversion never finished");
+			match e.palette_convert_tick(ticks as f32 * 0.01, false) {
+				Outcome::Redraw => continue,
+				other => break other,
+			}
+		};
+		assert!(matches!(outcome, Outcome::DocReplaced));
+		assert!(e.convertpalette.is_none(), "the modal closes on completion");
+		assert!(!e.project.packs[0].tiles.contains(&40), "pink re-quantized off the static slot");
+		assert!(matches!(e.execute(Command::Undo), Outcome::DocReplaced), "one undo restores the document");
+		assert!(e.project.packs[0].tiles.iter().all(|&b| b == 40));
 	}
 
 	#[test]

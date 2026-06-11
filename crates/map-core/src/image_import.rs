@@ -119,6 +119,10 @@ pub struct ConvertSession {
 
 	buf: Vec<f32>, // tw*th*3 dither working buffer
 	indices: Vec<u8>,
+	/// Per-target-pixel forced palette index (0 = free). Pinned pixels skip
+	/// the histogram and the quantizer — the map-rasterize path uses this to
+	/// keep water pixels on their (animated) cycle slots. Empty = no pins.
+	pins: Vec<u8>,
 
 	tiles: Vec<u8>,
 	bigmap: Vec<u16>,
@@ -176,6 +180,7 @@ impl ConvertSession {
 			emit_rgb,
 			buf: Vec::new(),
 			indices: vec![0; tw * th],
+			pins: Vec::new(),
 			tiles: Vec::new(),
 			bigmap: Vec::with_capacity(tiles_x * tiles_y),
 			exact: HashMap::new(),
@@ -185,6 +190,26 @@ impl ConvertSession {
 			phase: Phase::Resample,
 			error: None,
 		})
+	}
+
+	/// Pin target pixels to fixed palette indices: `pins[i] != 0` forces
+	/// `indices[i]` to that slot, keeps the pixel out of the color histogram
+	/// (pinned colors must not spend dynamic slots), and writes the pinned
+	/// slots' colors (`palette`) into the output palette — the map-rasterize
+	/// path keeps water pixels animated this way. Call before any `step`.
+	pub fn pin(&mut self, pins: Vec<u8>, palette: &[(u8, [u8; 3])]) -> Result<(), String> {
+		if self.phase != Phase::Resample || self.cursor != 0 {
+			return Err("pin: conversion already started".into());
+		}
+		if pins.len() != self.tw * self.th {
+			return Err(format!("pin: {} pins, want {} ({}×{})", pins.len(), self.tw * self.th, self.tw, self.th));
+		}
+		for &(slot, rgb) in palette {
+			let at = slot as usize * 3;
+			self.palette[at..at + 3].copy_from_slice(&rgb);
+		}
+		self.pins = pins;
+		Ok(())
 	}
 
 	pub fn is_done(&self) -> bool {
@@ -270,11 +295,16 @@ impl ConvertSession {
 			let ty = self.cursor + ry;
 			for tx in 0..self.tw {
 				let [r, g, b, _] = self.sample(tx, ty);
-				let at = (ty * self.tw + tx) * 3;
+				let px = ty * self.tw + tx;
+				let at = px * 3;
 				self.target[at] = r;
 				self.target[at + 1] = g;
 				self.target[at + 2] = b;
-				*self.hist.entry([r, g, b]).or_insert(0) += 1;
+				// Pinned pixels keep their slot — their color must not pull
+				// the clustering (it would waste a dynamic slot on it).
+				if self.pins.get(px).copied().unwrap_or(0) == 0 {
+					*self.hist.entry([r, g, b]).or_insert(0) += 1;
+				}
 			}
 		}
 		self.cursor += rows;
@@ -405,9 +435,19 @@ impl ConvertSession {
 			for x in 0..w {
 				let p = (y * w + x) * 3;
 				let old = [self.buf[p], self.buf[p + 1], self.buf[p + 2]];
-				let ei = nearest(&old, &self.emit_rgb);
-				self.indices[y * w + x] = self.emit[ei];
-				let chosen = self.emit_rgb[ei];
+				// A pinned pixel takes its forced slot; its (cycle) color is
+				// the palette's, so the diffused error stays honest (~0 when
+				// the raster was painted with the same palette).
+				let pin = self.pins.get(y * w + x).copied().unwrap_or(0);
+				let chosen = if pin != 0 {
+					self.indices[y * w + x] = pin;
+					let at = pin as usize * 3;
+					[self.palette[at] as f32, self.palette[at + 1] as f32, self.palette[at + 2] as f32]
+				} else {
+					let ei = nearest(&old, &self.emit_rgb);
+					self.indices[y * w + x] = self.emit[ei];
+					self.emit_rgb[ei]
+				};
 				let err = [old[0] - chosen[0], old[1] - chosen[1], old[2] - chosen[2]];
 				if x + 1 < w {
 					add3(&mut self.buf, (y * w + x + 1) * 3, err, 7.0 / 16.0);

@@ -96,10 +96,28 @@ fn grid_height(body: Rect) -> f32 {
 	2.0 * PAD + SECTIONS.len() as f32 * LABEL_H + total_rows as f32 * (b + GAP)
 }
 
+/// Panel chrome: the full Color Palette (toolbar with grid/saved tabs +
+/// Save/Load) or the bare WRL Internal Palette (no toolbar, read-only) —
+/// same grid, header, and editor-strip layout otherwise.
+#[derive(Clone, Copy, PartialEq)]
+enum Chrome {
+	Full,
+	Bare,
+}
+
 /// The grid's visible window (between the pinned header and editor strip)
 /// — also the scissor rect for the scrolled quads.
 pub fn grid_area(body: Rect) -> Rect {
-	let c = inner_body(body);
+	grid_area_at(body, Chrome::Full)
+}
+
+/// [`grid_area`] for the bare (WRL Internal Palette) panel.
+pub fn grid_area_bare(body: Rect) -> Rect {
+	grid_area_at(body, Chrome::Bare)
+}
+
+fn grid_area_at(body: Rect, chrome: Chrome) -> Rect {
+	let c = inner_body(body, chrome);
 	Rect::new(c.x, c.y + HEADER_H, c.w, (c.h - HEADER_H - EDITOR_H).max(0.0))
 }
 
@@ -111,9 +129,14 @@ fn tab_bar(body: Rect) -> Rect {
 	body.strip_top(TAB_H)
 }
 
-/// The content area below the toolbar — where the grid or the saved list lives.
-fn inner_body(body: Rect) -> Rect {
-	Rect::new(body.x, body.y + TAB_H, body.w, (body.h - TAB_H).max(0.0))
+/// The content area below the toolbar (the bare panel has none) — where the
+/// grid or the saved list lives.
+fn inner_body(body: Rect, chrome: Chrome) -> Rect {
+	let tab_h = match chrome {
+		Chrome::Full => TAB_H,
+		Chrome::Bare => 0.0,
+	};
+	Rect::new(body.x, body.y + tab_h, body.w, (body.h - tab_h).max(0.0))
 }
 
 /// Toolbar hit rects: `(grid tab, saved tab, Save, Load)`.
@@ -177,37 +200,56 @@ fn draw_saved_list(q: &mut UiQuads, saved: &[String], inner: Rect, w: f32, h: f3
 
 /// Header buttons: `[cycle]` `[static]` — wired to the global palette
 /// animation (`animate on|off`).
-fn header_buttons(body: Rect) -> (Rect, Rect) {
-	let c = inner_body(body);
+fn header_buttons(body: Rect, chrome: Chrome) -> (Rect, Rect) {
+	let c = inner_body(body, chrome);
 	let h = HEADER_H - 4.0;
 	(Rect::new(c.x + 2.0, c.y + 2.0, 56.0, h), Rect::new(c.x + 60.0, c.y + 2.0, 56.0, h))
 }
 
 /// Scroll range so the last row can reach the grid-area bottom.
 pub fn max_scroll(body: Rect) -> f32 {
-	crate::ui::scroll_max(grid_height(body), grid_area(body).h)
+	max_scroll_at(body, Chrome::Full)
+}
+
+/// [`max_scroll`] for the bare (WRL Internal Palette) panel.
+pub fn max_scroll_bare(body: Rect) -> f32 {
+	max_scroll_at(body, Chrome::Bare)
+}
+
+fn max_scroll_at(body: Rect, chrome: Chrome) -> f32 {
+	crate::ui::scroll_max(grid_height(body), grid_area_at(body, chrome).h)
 }
 
 /// The editor strip rect (pinned at the body bottom, never scrolled).
-fn editor_rect(body: Rect) -> Rect {
-	let c = inner_body(body);
+fn editor_rect(body: Rect, chrome: Chrome) -> Rect {
+	let c = inner_body(body, chrome);
 	Rect::new(c.x, c.y + c.h - EDITOR_H, c.w, EDITOR_H)
 }
 
 /// One slider/bar row of three tracks; a row prefix occupies the left
 /// margin. Rows: 0 = RGB sliders, 1 = HSL sliders, 2 = block HSL bars.
 fn bar_rects(body: Rect, row: usize) -> [Rect; 3] {
-	let e = editor_rect(body);
+	bar_rects_at(body, row, Chrome::Full)
+}
+
+fn bar_rects_at(body: Rect, row: usize, chrome: Chrome) -> [Rect; 3] {
+	let e = editor_rect(body, chrome);
 	let y = e.y + [22.0, 41.0, 60.0][row];
 	let cell = (e.w - 2.0 * PAD - 36.0) / 3.0;
 	[0, 1, 2].map(|i| Rect::new(e.x + PAD + 36.0 + i as f32 * cell + 11.0, y, (cell - 15.0).max(8.0), BAR_H))
 }
 
 /// Screen rect of a slot's swatch within the body, at a given scroll.
+/// (Geometry probe — the click path goes through `slot_rect_at`; tests use it.)
+#[allow(dead_code)]
 pub fn slot_rect(body: Rect, scroll: f32, index: u16) -> Rect {
-	let c = inner_body(body);
+	slot_rect_at(body, scroll, index, Chrome::Full)
+}
+
+fn slot_rect_at(body: Rect, scroll: f32, index: u16, chrome: Chrome) -> Rect {
+	let c = inner_body(body, chrome);
 	let b = box_px(c);
-	let scroll = scroll.clamp(0.0, max_scroll(body));
+	let scroll = scroll.clamp(0.0, max_scroll_at(body, chrome));
 	let mut y = c.y + HEADER_H + PAD - scroll;
 	for s in &SECTIONS {
 		y += LABEL_H;
@@ -291,10 +333,31 @@ pub fn click(
 		return Some(Action::Load);
 	}
 	if show_saved {
-		let inner = inner_body(body);
+		let inner = inner_body(body, Chrome::Full);
 		return (0..saved_len).find(|&i| saved_row(inner, i).contains(x, y)).map(Action::LoadSaved);
 	}
-	let (cycle, fixed) = header_buttons(body);
+	click_at(body, active, sel_end, can_edit, scroll, x, y, shift, Chrome::Full)
+}
+
+/// [`click`] for the bare (WRL Internal Palette) panel: no toolbar, no saved
+/// list, read-only (selection + cycle buttons only).
+pub fn click_bare(body: Rect, active: Option<u16>, sel_end: Option<u16>, scroll: f32, x: f32, y: f32, shift: bool) -> Option<Action> {
+	click_at(body, active, sel_end, false, scroll, x, y, shift, Chrome::Bare)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn click_at(
+	body: Rect,
+	active: Option<u16>,
+	sel_end: Option<u16>,
+	can_edit: bool,
+	scroll: f32,
+	x: f32,
+	y: f32,
+	shift: bool,
+	chrome: Chrome,
+) -> Option<Action> {
+	let (cycle, fixed) = header_buttons(body, chrome);
 	if cycle.contains(x, y) {
 		return Some(Action::Cycle(true));
 	}
@@ -306,7 +369,7 @@ pub fn click(
 			// A multi-slot range: a single row of relative HSL bars shifts the
 			// whole selection (the absolute RGB/HSL sliders only fit one slot).
 			if !editable_in(lo, hi).is_empty() {
-				for (i, r) in bar_rects(body, 0).iter().enumerate() {
+				for (i, r) in bar_rects_at(body, 0, chrome).iter().enumerate() {
 					if r.contains(x, y) {
 						return Some(Action::BlockBar { channel: i });
 					}
@@ -314,14 +377,14 @@ pub fn click(
 			}
 		} else if editable(lo) {
 			for row in 0..2 {
-				for (i, r) in bar_rects(body, row).iter().enumerate() {
+				for (i, r) in bar_rects_at(body, row, chrome).iter().enumerate() {
 					if r.contains(x, y) {
 						return Some(Action::Slider { channel: row * 3 + i, track: *r });
 					}
 				}
 			}
 			if water_block(lo).is_some() {
-				for (i, r) in bar_rects(body, 2).iter().enumerate() {
+				for (i, r) in bar_rects_at(body, 2, chrome).iter().enumerate() {
 					if r.contains(x, y) {
 						return Some(Action::BlockBar { channel: i });
 					}
@@ -329,10 +392,10 @@ pub fn click(
 			}
 		}
 	}
-	if !grid_area(body).contains(x, y) {
+	if !grid_area_at(body, chrome).contains(x, y) {
 		return None;
 	}
-	let hit = (0..256u16).find(|&i| slot_rect(body, scroll, i).contains(x, y))?;
+	let hit = (0..256u16).find(|&i| slot_rect_at(body, scroll, i, chrome).contains(x, y))?;
 	Some(if shift && active.is_some() { Action::SelectTo(hit) } else { Action::Select(hit) })
 }
 
@@ -388,18 +451,57 @@ pub fn view(
 	let mut chrome = UiQuads::with_steel_map(map);
 	draw_tab_bar(&mut chrome, body, show_saved, w, h, hot);
 	if show_saved {
-		let inner = inner_body(body);
+		let inner = inner_body(body, Chrome::Full);
 		draw_saved_list(&mut chrome, saved, inner, w, h, hot);
 		return PaletteView { grid: UiQuads::default(), chrome, scissor: inner };
 	}
+	view_at(display, base, active, sel_end, scroll, cycling, can_edit, body, w, h, hot, chrome, Chrome::Full)
+}
+
+/// [`view`] for the bare (WRL Internal Palette) panel: the same grid, header,
+/// and editor strip, but no toolbar and no editing — pure inspection.
+#[allow(clippy::too_many_arguments)]
+pub fn view_bare(
+	display: &[u8],
+	base: &[u8],
+	active: Option<u16>,
+	sel_end: Option<u16>,
+	scroll: f32,
+	cycling: bool,
+	body: Rect,
+	w: f32,
+	h: f32,
+	map: SteelMap,
+	hot: Hot,
+) -> PaletteView {
+	let chrome = UiQuads::with_steel_map(map);
+	view_at(display, base, active, sel_end, scroll, cycling, false, body, w, h, hot, chrome, Chrome::Bare)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn view_at(
+	display: &[u8],
+	base: &[u8],
+	active: Option<u16>,
+	sel_end: Option<u16>,
+	scroll: f32,
+	cycling: bool,
+	can_edit: bool,
+	body: Rect,
+	w: f32,
+	h: f32,
+	hot: Hot,
+	mut chrome: UiQuads,
+	which: Chrome,
+) -> PaletteView {
 	let palette = display;
 	let sel = selection(active, sel_end);
 	let mut q = UiQuads::default();
 	let b = box_px(body);
 	let dups = dynamic_duplicates(base);
-	let clip = grid_area(body);
-	let scroll = scroll.clamp(0.0, max_scroll(body));
-	let mut y = inner_body(body).y + HEADER_H + PAD - scroll;
+	let clip = grid_area_at(body, which);
+	let scroll = scroll.clamp(0.0, max_scroll_at(body, which));
+	let mut y = inner_body(body, which).y + HEADER_H + PAD - scroll;
 
 	for s in &SECTIONS {
 		let section_h = LABEL_H + rows(s) as f32 * (b + GAP);
@@ -442,14 +544,14 @@ pub fn view(
 	}
 
 	// Header: cycle / static buttons (the global palette animation).
-	chrome.material(inner_body(body).strip_top(HEADER_H), w, h, theme::TITLE);
-	let (cycle_btn, static_btn) = header_buttons(body);
+	chrome.material(inner_body(body, which).strip_top(HEADER_H), w, h, theme::TITLE);
+	let (cycle_btn, static_btn) = header_buttons(body, which);
 	for (r, label, on) in [(cycle_btn, "cycle", cycling), (static_btn, "static", !cycling)] {
 		chrome.button_active(r, w, h, on, hot);
 		chrome.label_in(label, r, 6.0, crate::ui::FONT_SMALL, w, h, if on { theme::ACCENT } else { theme::INK_DIM });
 	}
-	chrome.material(editor_rect(body), w, h, theme::PANEL);
-	draw_editor(&mut chrome, base, active, sel_end, can_edit, body, w, h);
+	chrome.material(editor_rect(body, which), w, h, theme::PANEL);
+	draw_editor(&mut chrome, base, active, sel_end, can_edit, body, w, h, which);
 	// Visible scrollbar over the grid window.
 	chrome.scrollbar(clip, grid_height(body), scroll, w, h, hot);
 	PaletteView { grid: q, chrome, scissor: clip }
@@ -467,8 +569,9 @@ fn draw_editor(
 	body: Rect,
 	w: f32,
 	h: f32,
+	chrome: Chrome,
 ) {
-	let e = editor_rect(body);
+	let e = editor_rect(body, chrome);
 	q.rect(Rect::new(e.x, e.y - 1.0, e.w, 1.0), w, h, theme::PANEL_BORDER);
 
 	// A multi-slot selection: one row of relative HSL bars re-tints every
@@ -512,9 +615,10 @@ fn draw_editor(
 	q.border(sw, w, h, theme::PANEL_BORDER);
 
 	if !live {
-		if s.editable {
+		if s.editable && chrome == Chrome::Full {
 			// A project slot without a project open: say why there are no
 			// sliders (a flat WRL is read-only here). Fitted to the strip.
+			// The bare panel is read-only by design — no note needed.
 			let note = crate::text::fit_label(
 				"read-only - open a project (.json) to edit",
 				crate::ui::FONT_SMALL,
@@ -528,7 +632,6 @@ fn draw_editor(
 	// Row values: RGB as 0..1 fractions, then HSL.
 	let values = [[rgb[0] as f32 / 255.0, rgb[1] as f32 / 255.0, rgb[2] as f32 / 255.0], [hue / 360.0, sat, light]];
 	let letters = [["R", "G", "B"], ["H", "S", "L"]];
-	let e = editor_rect(body);
 	for row in 0..2 {
 		let bars = bar_rects(body, row);
 		q.label(
@@ -646,7 +749,7 @@ mod tests {
 		// Fixed selection: no sliders at all (the strip area never selects).
 		assert!(click(body, Some(32), None, true, 0.0, rgb.x + 2.0, rgb.y + 2.0, false, false, 0).is_none());
 		// Header buttons route the cycle toggle.
-		let (cycle, fixed) = header_buttons(body);
+		let (cycle, fixed) = header_buttons(body, Chrome::Full);
 		assert!(matches!(
 			click(body, None, None, true, 0.0, cycle.x + 2.0, cycle.y + 2.0, false, false, 0),
 			Some(Action::Cycle(true)),
@@ -694,6 +797,38 @@ mod tests {
 				Some(Action::Select(0)),
 			));
 		}
+	}
+
+	#[test]
+	fn bare_panel_has_no_toolbar_and_never_edits() {
+		let body = Rect::new(0.0, 0.0, 280.0, 460.0);
+		// The grid starts one toolbar row higher than the full panel's.
+		assert_eq!(grid_area_bare(body).y, body.y + HEADER_H);
+		assert_eq!(grid_area(body).y, body.y + TAB_H + HEADER_H);
+		assert_eq!(max_scroll(body) - max_scroll_bare(body), TAB_H.min(max_scroll(body)));
+		// Swatches hit one toolbar row higher too — and round-trip to Select.
+		let r = slot_rect_at(body, 0.0, 0, Chrome::Bare);
+		assert_eq!(r.y, slot_rect(body, 0.0, 0).y - TAB_H);
+		assert!(matches!(click_bare(body, None, None, 0.0, r.x + 1.0, r.y + 1.0, false), Some(Action::Select(0))));
+		assert!(matches!(click_bare(body, Some(5), None, 0.0, r.x + 1.0, r.y + 1.0, true), Some(Action::SelectTo(0))));
+		// The cycle/static header buttons live where the toolbar tabs sit in
+		// the full panel — here they're the header.
+		let (cycle, fixed) = header_buttons(body, Chrome::Bare);
+		assert!(matches!(click_bare(body, None, None, 0.0, cycle.x + 2.0, cycle.y + 2.0, false), Some(Action::Cycle(true))));
+		assert!(matches!(click_bare(body, None, None, 0.0, fixed.x + 2.0, fixed.y + 2.0, false), Some(Action::Cycle(false))));
+		// No sliders/bars ever — even with an editable slot selected, the
+		// rects that would be the R slider / block bars hit nothing.
+		for row in 0..3 {
+			let r = bar_rects_at(body, row, Chrome::Bare)[0];
+			assert_eq!(click_bare(body, Some(100), None, 0.0, r.x + 2.0, r.y + 2.0, false), None, "row {row}");
+		}
+		// And the view builds without the toolbar (chrome quads still exist:
+		// header + editor strip), with the bare scissor.
+		let palette = vec![128u8; 768];
+		let v = view_bare(&palette, &palette, Some(64), None, 0.0, false, body, 1280.0, 800.0, SteelMap::Stretch, Hot::NONE);
+		assert!(!v.grid.verts.is_empty());
+		assert!(!v.chrome.verts.is_empty());
+		assert_eq!(v.scissor, grid_area_bare(body));
 	}
 
 	#[test]

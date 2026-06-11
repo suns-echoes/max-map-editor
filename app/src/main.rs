@@ -12,6 +12,7 @@ mod command;
 mod confirm;
 mod console;
 mod console_font;
+mod convertpalette;
 mod crt;
 mod errormodal;
 mod font;
@@ -389,6 +390,7 @@ fn render_frame(
 		let has_content = id == "tiles"
 			|| id == "minimap"
 			|| id == "palette"
+			|| id == "wrlpalette"
 			|| id == "toolbox"
 			|| id == "units"
 			|| id == "templates";
@@ -439,6 +441,31 @@ fn render_frame(
 				true,
 				editor.palette_show_saved,
 				&names,
+				body,
+				wf,
+				hf,
+				map,
+				shell_hot,
+			);
+			text_pass.draw_ui_clipped(device, encoder, target, &view.grid, view.scissor, (w, h));
+			text_pass.draw_ui(device, encoder, target, &view.chrome);
+		} else if id == "wrlpalette" {
+			// The document's internal palette — the file's bytes, not the
+			// game-resolved working palette. Cycled swatches only when the
+			// cycler is actually seeded from it (the Debug ▸ map-palette mode).
+			let base: Vec<u8> = editor.project.internal_palette();
+			let display: Vec<u8> = if editor.animate && editor.debug_map_palette {
+				editor.cycler.rgba().chunks_exact(4).flat_map(|c| [c[0], c[1], c[2]]).collect()
+			} else {
+				base.clone()
+			};
+			let view = palette_panel::view_bare(
+				&display,
+				&base,
+				editor.active_color.map(u16::from),
+				editor.palette_sel_end.map(u16::from),
+				editor.wrlpalette_scroll,
+				editor.animate,
 				body,
 				wf,
 				hf,
@@ -510,6 +537,7 @@ fn render_frame(
 			"anim:on" => editor.animate && !editor.ingame,
 			"anim:ingame" => editor.ingame,
 			"crt" => editor.crt,
+			"debug:map-palette" => editor.debug_map_palette,
 			_ => key.strip_prefix("win:").is_some_and(|id| editor.workspace.is_visible(id)),
 		}
 	};
@@ -531,6 +559,9 @@ fn render_frame(
 		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
 	}
 	if let Some(modal) = &editor.generator {
+		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+	}
+	if let Some(modal) = &editor.convertpalette {
 		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
 	}
 	if let Some(modal) = &editor.confirm {
@@ -731,6 +762,8 @@ struct App {
 	autofix_clock: Option<std::time::Instant>,
 	/// Wall-clock start of the live New-from-Image conversion.
 	convert_clock: Option<std::time::Instant>,
+	/// Wall clock of the live rasterize palette conversion.
+	pconvert_clock: Option<std::time::Instant>,
 	/// False until the conversion's "Loading image…" state has been painted once
 	/// — so the heavy first-stage decode starts only *after* the user sees it
 	/// began; otherwise the decode blocks the very frame meant to show it.
@@ -776,6 +809,9 @@ enum Armed {
 	/// A palette toolbar/header button within `body` (slot selection and
 	/// slider/bar drags stay press-fired).
 	Palette { body: crate::ui::Rect, action: palette_panel::Action },
+	/// A WRL Internal Palette header button within `body` (selection stays
+	/// press-fired; the bare panel has no toolbar or sliders).
+	WrlPalette { body: crate::ui::Rect, action: palette_panel::Action },
 	/// A Templates Explorer action within `body` (`Pick` indexes the
 	/// visible, pack-compatible list).
 	Templates { body: crate::ui::Rect, action: templates_panel::Action },
@@ -801,6 +837,7 @@ impl App {
 			armed: None,
 			autofix_clock: None,
 			convert_clock: None,
+			pconvert_clock: None,
 			convert_primed: false,
 			modifiers: ModifiersState::empty(),
 			last_frame: std::time::Instant::now(),
@@ -831,6 +868,11 @@ impl App {
 	/// Seconds since the live New-from-Image conversion started.
 	fn convert_elapsed(&self) -> f32 {
 		self.convert_clock.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0)
+	}
+
+	/// Seconds since the live rasterize palette conversion started.
+	fn pconvert_elapsed(&self) -> f32 {
+		self.pconvert_clock.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0)
 	}
 
 	fn run(&mut self, command: Command, event_loop: &ActiveEventLoop) {
@@ -984,6 +1026,17 @@ impl App {
 				let outcome = self.editor.convert_tick(self.convert_elapsed(), true);
 				self.act_on(outcome, event_loop);
 			}
+			// Rasterize palette conversion: same shape — the shell owns the
+			// wall clock and steps the session per frame (see `redraw`).
+			ModalAction::StartPaletteConvert => {
+				let outcome = self.editor.palette_convert_start();
+				self.pconvert_clock = Some(std::time::Instant::now());
+				self.act_on(outcome, event_loop);
+			}
+			ModalAction::AbortPaletteConvert => {
+				let outcome = self.editor.palette_convert_tick(self.pconvert_elapsed(), true);
+				self.act_on(outcome, event_loop);
+			}
 		}
 	}
 
@@ -1099,6 +1152,25 @@ impl App {
 					_ => {}
 				}
 			}
+			Armed::WrlPalette { body, action } => {
+				let hit = palette_panel::click_bare(
+					body,
+					self.editor.active_color.map(u16::from),
+					self.editor.palette_sel_end.map(u16::from),
+					self.editor.wrlpalette_scroll,
+					cx,
+					cy,
+					self.modifiers.shift_key(),
+				);
+				if hit != Some(action) {
+					return;
+				}
+				match action {
+					palette_panel::Action::Cycle(on) => self.run(Command::Animate { on: Some(on) }, event_loop),
+					// Selections never arm; the bare panel has nothing else.
+					_ => {}
+				}
+			}
 			Armed::Templates { body, action } => {
 				let visible = self.editor.visible_templates();
 				if templates_panel::click(visible.len(), body, self.editor.templates_scroll, cx, cy) != Some(action) {
@@ -1127,6 +1199,9 @@ impl App {
 	fn scrollbar_of(&self, id: &str, body: crate::ui::Rect) -> Option<(crate::ui::Rect, f32, f32, f32)> {
 		let (region, max, scroll) = match id {
 			"palette" => (palette_panel::grid_area(body), palette_panel::max_scroll(body), self.editor.palette_scroll),
+			"wrlpalette" => {
+				(palette_panel::grid_area_bare(body), palette_panel::max_scroll_bare(body), self.editor.wrlpalette_scroll)
+			}
 			"tiles" => {
 				let count = picker::items(&self.editor.project, self.editor.picker.filter).len();
 				let max = picker::max_scroll(count, body, self.editor.picker.tile_px);
@@ -1160,6 +1235,7 @@ impl App {
 		let scroll = t * d.max;
 		match d.id {
 			"palette" => self.editor.palette_scroll = scroll,
+			"wrlpalette" => self.editor.wrlpalette_scroll = scroll,
 			"tiles" => self.editor.picker.scroll = scroll,
 			"toolbox" => self.editor.toolbox_scroll = scroll,
 			"units" => self.editor.units_scroll = scroll,
@@ -1293,6 +1369,17 @@ impl App {
 			}
 		}
 
+		// Rasterize palette conversion: same per-frame time budget; completion
+		// swaps the document content (DocReplaced → atlas rebuild).
+		if self.editor.palette_converting() {
+			let frame = std::time::Instant::now();
+			let mut outcome = Outcome::Redraw;
+			while self.editor.palette_converting() && frame.elapsed() < std::time::Duration::from_millis(7) {
+				outcome = self.editor.palette_convert_tick(self.pconvert_elapsed(), false);
+			}
+			self.act_on(outcome, event_loop);
+		}
+
 		let Some(win) = self.win.as_mut() else { return };
 
 		if self.editor.revision() != win.uploaded_revision {
@@ -1343,6 +1430,7 @@ impl App {
 		if self.editor.animate
 			|| self.editor.autofix_running()
 			|| self.editor.converting()
+			|| self.editor.palette_converting()
 			|| self.editor.generate_running()
 		{
 			win.window.request_redraw();
@@ -1780,6 +1868,29 @@ impl ApplicationHandler for App {
 										}
 										None => {}
 									}
+								} else if id == "wrlpalette" {
+									match palette_panel::click_bare(
+										body,
+										self.editor.active_color.map(u16::from),
+										self.editor.palette_sel_end.map(u16::from),
+										self.editor.wrlpalette_scroll,
+										self.cursor.0,
+										self.cursor.1,
+										self.modifiers.shift_key(),
+									) {
+										// Selections are immediate; the cycle/static
+										// buttons arm and fire on release.
+										Some(palette_panel::Action::Select(slot)) => {
+											self.run(Command::Color { index: slot as u8 }, event_loop);
+										}
+										Some(palette_panel::Action::SelectTo(slot)) => {
+											self.run(Command::ColorTo { index: slot as u8 }, event_loop);
+										}
+										Some(action @ palette_panel::Action::Cycle(_)) => {
+											self.armed = Some(Armed::WrlPalette { body, action });
+										}
+										_ => {}
+									}
 								}
 								if let Some(win) = self.win.as_ref() {
 									win.window.request_redraw();
@@ -1991,6 +2102,13 @@ impl ApplicationHandler for App {
 						let max = palette_panel::max_scroll(body);
 						self.editor.palette_scroll =
 							(self.editor.palette_scroll - steps * picker::WHEEL_STEP).clamp(0.0, max);
+						if let Some(win) = self.win.as_ref() {
+							win.window.request_redraw();
+						}
+					} else if id == "wrlpalette" {
+						let max = palette_panel::max_scroll_bare(body);
+						self.editor.wrlpalette_scroll =
+							(self.editor.wrlpalette_scroll - steps * picker::WHEEL_STEP).clamp(0.0, max);
 						if let Some(win) = self.win.as_ref() {
 							win.window.request_redraw();
 						}

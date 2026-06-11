@@ -69,6 +69,7 @@ pub struct FamilyProps {
 /// pattern is one family's connected formation in its bounding box; holes
 /// stay `None` (irregular shapes are not filled). The worldgen
 /// stamps these whole.
+#[derive(Clone)]
 pub struct TilePattern {
 	pub name: String,
 	pub width: u16,
@@ -80,6 +81,7 @@ pub struct TilePattern {
 /// One tile family's adjacency rules from `tiles.match.json`, base
 /// orientation: per direction, the allowed neighbors — tile specs like
 /// `"GSa:!S"`, or the wildcards `"__WATER__"` / `"__LAND__"`.
+#[derive(Clone)]
 pub struct MatchRule {
 	pub dirs: [Vec<String>; 4],
 }
@@ -96,6 +98,7 @@ impl MatchRule {
 	}
 }
 
+#[derive(Clone)]
 pub struct TilePack {
 	pub name: String,
 	/// Pack version from `info.json` (recorded in project `use` entries).

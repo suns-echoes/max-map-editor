@@ -430,6 +430,24 @@ pub enum Command {
 	Crt {
 		on: Option<bool>,
 	},
+	/// Debug: render with the document's internal (map/WRL) palette instead
+	/// of the game-resolved one (`None` = toggle).
+	MapPalette {
+		on: Option<bool>,
+	},
+	/// Remap the document's internal palette onto a MAX-compatible one
+	/// (Tools ▸ Palette) — lossy but undoable, WRL imports only. `rasterize`
+	/// re-imports the composed map like New-from-Image instead of remapping
+	/// slots; `water` keeps the water cycle blocks animated; `relaxed` +
+	/// `threshold` (fraction) tune the rasterize dedupe.
+	ConvertPalette {
+		rasterize: bool,
+		water: bool,
+		relaxed: bool,
+		threshold: f32,
+	},
+	/// Open the Convert to Compatible Palette modal.
+	ConvertPaletteModal,
 	/// Advance the animation clock (deterministic time for scripts).
 	Tick {
 		seconds: f32,
@@ -864,6 +882,45 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 			Some(&"toggle") | None => Command::Crt { on: None },
 			_ => return Err("crt: expected on|off|toggle".into()),
 		},
+		"map-palette" => match args.first() {
+			Some(&"on") => Command::MapPalette { on: Some(true) },
+			Some(&"off") => Command::MapPalette { on: Some(false) },
+			Some(&"toggle") | None => Command::MapPalette { on: None },
+			_ => return Err("map-palette: expected on|off|toggle".into()),
+		},
+		"convert-palette" => {
+			let mut rasterize = false;
+			let mut water = true;
+			let mut relaxed = false;
+			let mut threshold = 0.05f32;
+			for a in &args {
+				match *a {
+					"match" => rasterize = false,
+					"rasterize" => rasterize = true,
+					"water=keep" => water = true,
+					"water=drop" => water = false,
+					"dedupe=strict" => relaxed = false,
+					"dedupe=relaxed" => relaxed = true,
+					_ => {
+						if let Some(v) = a.strip_prefix("threshold=") {
+							let pct: f32 =
+								v.parse().map_err(|_| format!("convert-palette: bad threshold '{v}'"))?;
+							if !(0.0..=100.0).contains(&pct) {
+								return Err(format!("convert-palette: threshold {pct}% (0..=100)"));
+							}
+							threshold = pct / 100.0;
+						} else {
+							return Err(format!(
+								"convert-palette: unexpected '{a}' (match|rasterize, water=keep|drop, \
+								 dedupe=strict|relaxed, threshold=PCT)"
+							));
+						}
+					}
+				}
+			}
+			Command::ConvertPalette { rasterize, water, relaxed, threshold }
+		}
+		"convert-palette-modal" => Command::ConvertPaletteModal,
 		"tick" => Command::Tick { seconds: num(&args, 0, verb)? },
 		"console" => match args.first() {
 			Some(&"on") => Command::Console { on: Some(true) },

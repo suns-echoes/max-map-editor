@@ -49,7 +49,8 @@ The 24 original maps, rebuilt as ready-to-edit starter projects, ship in
 
 - **Tabs** — several documents can be open at once; the tab strip sits under
   the menu bar. Closing a document with unsaved changes asks first.
-- **Panels** — Minimap, Tile Explorer, Color Palette, Toolbox, and Units
+- **Panels** — Minimap, Tile Explorer, Color Palette, WRL Internal Palette,
+  Toolbox, and Units
   live in docks around the map view. Drag a titlebar to float a panel, drag it near
   an edge to dock it there, drag the splitters to resize. The close glyph
   hides a panel; the **Windows** menu brings it back. **Windows → Reset
@@ -149,6 +150,40 @@ The Color Palette panel edits the project's 256-color game palette:
 - **In-Game mode** (View menu) previews the map exactly as the game renders
   it — palette cycling plus 6-bit color; the **CRT** toggle adds a
   scanline/phosphor effect on top, for the full 1996 experience.
+
+### The internal (WRL) palette
+
+The game ignores most of a WRL's palette: every *static* slot is replaced
+with fixed engine colors at runtime — only the dynamic slots (64–159) belong
+to the map. Three tools deal with files whose internal palette strays from
+that contract:
+
+- **Windows → WRL Internal Palette** — a read-only panel showing the opened
+  document's palette exactly as the file stores it (before the engine's
+  substitutions).
+- **Debug → Render using map palette** — renders the map with that internal
+  palette instead of the game-resolved one, so you can see what the file
+  "thinks" it looks like.
+- **Tools → Palette → Convert to Compatible Palette…** — converts an opened
+  WRL onto a game-correct palette. The modal offers two methods:
+  - **best match** — only the colors actually used by pixels are touched:
+    each one reuses an in-game static color when one matches, and the rest
+    are approximated into the *unused* dynamic slots (a weighted clustering
+    pass keeps the heavy colors near-exact). Pixels on the engine's effect
+    cycles (slots 9–31) always move off — the game cycles its own colors
+    there, so they are never used.
+  - **rasterize** — renders the whole map through its internal palette and
+    re-imports the raster exactly like New from Image (quantize, dither,
+    rebuild tiles, dedupe — strict or relaxed with a threshold). It runs
+    live in the modal — progress bar, ETA, and an **Abort** button — without
+    freezing the editor.
+
+  Both methods honor **keep animated water colors** (on by default): the
+  water cycle blocks (96–127) stay byte-identical so the water still
+  animates in-game. Lossy, but a single **Undo** restores the whole
+  document; the file on disk is unchanged until you export. Scriptable as
+  `convert-palette [match|rasterize] [water=keep|drop] [dedupe=strict|relaxed]
+  [threshold=PCT]`.
 
 ## 6. Unit previews
 
@@ -280,7 +315,8 @@ Commonly useful:
 | `undo` / `redo` | history |
 | `zoom-to N` / `pan-to X Y` / `fit` | view |
 | `grid on|off|toggle` | cell grid overlay |
-| `animate`, `ingame`, `crt` | toggles (palette cycling, in-game look, CRT) |
+| `animate`, `ingame`, `crt`, `map-palette` | toggles (palette cycling, in-game look, CRT, internal-palette debug render) |
+| `convert-palette [match\|rasterize] [water=keep\|drop]` | convert an opened WRL to a MAX-compatible palette (§5) |
 | `mode map|pass`, `layer water|ground` | editing mode / active layer |
 | `unit TAG`, `unit-team NAME`, `unit-place TAG X Y`, `unit-clear` | unit previews (§6) |
 | `window ID on|off`, `dock ID left|right|top|bottom|float` | panel layout |

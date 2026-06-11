@@ -141,6 +141,7 @@ pub struct TileRef {
 	pub transform: Transform,
 }
 
+#[derive(Clone)]
 pub struct UseEntry {
 	pub name: String,
 	pub tileset: bool,
@@ -167,6 +168,11 @@ pub struct Project {
 	/// The owner pack's pristine palette — the diff against it is what
 	/// `save_string` writes as the project's `"palette"` override block.
 	pack_palette: Vec<u8>,
+	/// The document's palette exactly as its source carries it — the WRL's
+	/// internal palette bytes (or the pack's `palette.json`), **before** the
+	/// game statics replace the static slots. Debug rendering and the WRL
+	/// Internal Palette panel read it via [`Self::internal_palette`].
+	source_palette: Vec<u8>,
 	/// Index of the pack that fills the water layer (v1: named "WATER").
 	pub water_pack: Option<u8>,
 	/// Unit-preview annotations (editor aid): real game units stamped on the
@@ -176,6 +182,10 @@ pub struct Project {
 
 	dirty: bool,
 	revision: u64,
+	/// Bumped whenever document *structure* changes — pack tile tables /
+	/// palette tables swapped (palette conversion and its undo/redo). The
+	/// shell compares it across a command to know the GPU atlas must rebuild.
+	structure: u64,
 	undo_stack: Vec<Patch>,
 	redo_stack: Vec<Patch>,
 	/// Open stroke: edits accumulate here and undo as one unit.
@@ -201,6 +211,28 @@ struct Patch {
 	colors: Vec<(u8, [u8; 3])>,
 	/// Pass-override edits with their *previous* value (`None` = unset).
 	passes: Vec<(u16, u16, Option<u8>)>,
+	/// A whole-document swap (palette conversion rewrites tile pixel data —
+	/// not expressible as per-cell edits). Applying swaps the stored state
+	/// with the live one, so the patch is its own inverse carrier.
+	doc: Option<Box<DocState>>,
+}
+
+impl Patch {
+	fn is_empty(&self) -> bool {
+		self.cells.is_empty() && self.colors.is_empty() && self.passes.is_empty() && self.doc.is_none()
+	}
+}
+
+/// Everything a document-level operation may replace (same map dimensions).
+struct DocState {
+	uses: Vec<UseEntry>,
+	packs: Vec<TilePack>,
+	cells: Vec<[Option<TileRef>; MAX_LAYERS]>,
+	pass_overrides: Vec<Option<u8>>,
+	palette: Vec<u8>,
+	pack_palette: Vec<u8>,
+	source_palette: Vec<u8>,
+	water_pack: Option<u8>,
 }
 
 impl Project {
@@ -262,6 +294,8 @@ impl Project {
 			.palette
 			.clone()
 			.ok_or_else(|| format!("palette owner '{}' has no palette.json", uses[owner].name))?;
+		// The file's own bytes, kept for debug rendering / inspection.
+		let source_palette = pack_palette.clone();
 		// Static slots belong to the game (contract §1) — the engine
 		// replaces them at runtime, so the editor resolves them to the
 		// in-game values too (pack bytes there are converter leftovers).
@@ -390,10 +424,12 @@ impl Project {
 			pass_overrides,
 			palette,
 			pack_palette,
+			source_palette,
 			water_pack,
 			units,
 			dirty: false,
 			revision: 0,
+			structure: 0,
 			undo_stack: Vec::new(),
 			redo_stack: Vec::new(),
 			stroke: None,
@@ -416,7 +452,9 @@ impl Project {
 		let index_of: HashMap<String, u16> = ids.iter().enumerate().map(|(i, id)| (id.clone(), i as u16)).collect();
 
 		// Static slots belong to the game (contract §1); resolve them to the
-		// in-game values, matching how `from_str` treats a pack palette.
+		// in-game values, matching how `from_str` treats a pack palette. The
+		// WRL's own bytes are kept as the source palette for debug rendering.
+		let source_palette = wrl.palette.clone();
 		let mut palette = wrl.palette.clone();
 		crate::game_palette::apply_game_statics(&mut palette);
 
@@ -459,11 +497,13 @@ impl Project {
 			cells,
 			pass_overrides: vec![None; wrl.width as usize * wrl.height as usize],
 			pack_palette: palette.clone(),
+			source_palette,
 			palette,
 			water_pack: Some(0),
 			units: Vec::new(),
 			dirty: false,
 			revision: 0,
+			structure: 0,
 			undo_stack: Vec::new(),
 			redo_stack: Vec::new(),
 			stroke: None,
@@ -514,6 +554,7 @@ impl Project {
 			.position(|p| p.palette.is_some())
 			.ok_or("no palette-owning pack — add a tileset (e.g. GREEN)")?;
 		let mut palette = packs[owner].palette.clone().unwrap();
+		let source_palette = palette.clone();
 		crate::game_palette::apply_game_statics(&mut palette);
 		let uses = names
 			.iter()
@@ -554,11 +595,13 @@ impl Project {
 			cells,
 			pass_overrides: vec![None; width as usize * height as usize],
 			pack_palette: palette.clone(),
+			source_palette,
 			palette,
 			water_pack: Some(0),
 			units: Vec::new(),
 			dirty: false,
 			revision: 0,
+			structure: 0,
 			undo_stack: Vec::new(),
 			redo_stack: Vec::new(),
 			stroke: None,
@@ -570,6 +613,12 @@ impl Project {
 	}
 	pub fn revision(&self) -> u64 {
 		self.revision
+	}
+	/// Bumped on structural changes — tile/palette table swaps (palette
+	/// conversion and its undo/redo). When it moves across a command, the
+	/// renderer's tile atlas is stale and must rebuild.
+	pub fn structure_revision(&self) -> u64 {
+		self.structure
 	}
 
 	pub fn mark_saved(&mut self) {
@@ -753,6 +802,150 @@ impl Project {
 		Ok(changed)
 	}
 
+	/// The document's internal palette: the source file's bytes (the WRL's
+	/// internal palette / the pack's `palette.json` — game statics **not**
+	/// applied) with this map's live dynamic-slot edits merged in. What the
+	/// game would ignore, but what the file actually says — the debug render
+	/// (`map-palette`) and the WRL Internal Palette panel read this.
+	pub fn internal_palette(&self) -> Vec<u8> {
+		let mut out = self.source_palette.clone();
+		for slot in DYNAMIC_SLOTS {
+			let at = slot as usize * 3;
+			out[at..at + 3].copy_from_slice(&self.palette[at..at + 3]);
+		}
+		out
+	}
+
+	/// Is this document an imported flat WRL (a synthetic in-memory pack)?
+	/// Palette conversion rewrites tile pixels, which only makes sense when
+	/// the tiles belong to the document (a `.json` project's packs are shared
+	/// on disk — mutating them would not persist).
+	pub fn is_wrl_import(&self) -> bool {
+		!self.uses.is_empty() && self.uses.iter().all(|u| u.version == "wrl")
+	}
+
+	/// Snapshot everything a document-level operation may replace — the undo
+	/// half of a [`Patch::doc`] swap.
+	fn doc_state(&self) -> Box<DocState> {
+		Box::new(DocState {
+			uses: self.uses.clone(),
+			packs: self.packs.clone(),
+			cells: self.cells.clone(),
+			pass_overrides: self.pass_overrides.clone(),
+			palette: self.palette.clone(),
+			pack_palette: self.pack_palette.clone(),
+			source_palette: self.source_palette.clone(),
+			water_pack: self.water_pack,
+		})
+	}
+
+	/// Commit a document-level change as one undo unit: `before` is the
+	/// pre-change snapshot (see [`Self::doc_state`]). Structural — the
+	/// renderer must rebuild its atlas (see [`Self::structure_revision`]).
+	fn push_doc_patch(&mut self, before: Box<DocState>) {
+		self.end_stroke(); // a doc swap must not interleave with an open stroke
+		self.undo_stack.push(Patch { doc: Some(before), ..Patch::default() });
+		if self.undo_stack.len() > MAX_UNDO {
+			self.undo_stack.remove(0);
+		}
+		self.redo_stack.clear();
+		self.structure += 1;
+		self.bump();
+	}
+
+	/// Per-slot pixel usage over every pack's tile table.
+	fn slot_usage(&self) -> [u64; 256] {
+		let mut usage = [0u64; 256];
+		for pack in &self.packs {
+			for &b in &pack.tiles {
+				usage[b as usize] += 1;
+			}
+		}
+		usage
+	}
+
+	/// Remap the internal palette onto a MAX-compatible one (the "best match
+	/// colors" method — see [`crate::palette_convert`] for the rules: only
+	/// used colors move, game-animated slots are never used, water cycles are
+	/// preserved per `opts`, in-game statics are reused when possible and the
+	/// rest approximate into the unused dynamic slots). Tile pixels are
+	/// rewritten through the slot mapping, so the rendered map keeps
+	/// (approximately) its internal-palette look while becoming game-correct.
+	///
+	/// Lossy but undoable — the change lands as one document-swap undo unit.
+	/// `None` when the palette is already compatible (nothing changed).
+	pub fn convert_to_compatible_palette(
+		&mut self,
+		opts: crate::palette_convert::ConvertOptions,
+	) -> Option<crate::palette_convert::ConvertReport> {
+		let internal = self.internal_palette();
+		let plan = crate::palette_convert::plan(&internal, &self.slot_usage(), opts)?;
+		let before = self.doc_state();
+		for pack in &mut self.packs {
+			for b in &mut pack.tiles {
+				*b = plan.map[*b as usize];
+			}
+		}
+		// The compatible palette becomes the document's palette on every
+		// level: the working copy, the source ("internal") palette — they now
+		// agree — and the owner pack's (the save/export baseline).
+		self.palette = plan.palette.clone();
+		self.source_palette = plan.palette.clone();
+		self.pack_palette = plan.palette.clone();
+		for (i, u) in self.uses.iter().enumerate() {
+			if u.palette {
+				self.packs[i].palette = Some(plan.palette.clone());
+			}
+		}
+		self.push_doc_patch(before);
+		Some(plan.report)
+	}
+
+	/// Convert the palette by rasterizing the whole map through its internal
+	/// palette and re-importing the raster exactly like New-from-Image does
+	/// (k-means quantization into the dynamic slots + dither + reblock +
+	/// dedupe). With `preserve_water`, pixels on the water cycle blocks
+	/// (96-127) are pinned: they keep their slot and the blocks keep the
+	/// map's colors, so the water still animates in-game. Per-cell pass
+	/// values survive as pass overrides (the rebuilt tiles carry none).
+	///
+	/// Lossy but undoable — one document-swap undo unit. Errors leave the
+	/// document untouched.
+	pub fn convert_palette_by_reimport(
+		&mut self,
+		preserve_water: bool,
+		dedupe: crate::image_import::Dedupe,
+		threshold: f32,
+	) -> Result<u16, String> {
+		let mut session = PaletteReimport::new(self, preserve_water, dedupe, threshold);
+		while !session.is_done() {
+			session.step(self, usize::MAX);
+		}
+		let wrl = session.finish()?;
+		Ok(self.apply_reimport(&wrl))
+	}
+
+	/// Swap a re-imported [`WrlFile`] (see [`PaletteReimport`]) in as the
+	/// document's content — one document-swap undo unit. Pass truth lives in
+	/// per-cell overrides afterwards (the reimported tiles carry none).
+	pub fn apply_reimport(&mut self, wrl: &WrlFile) -> u16 {
+		let (w, h) = (self.width as usize, self.height as usize);
+		let before = self.doc_state();
+		let pass_overrides = (0..h * w).map(|i| self.pass_at((i % w) as u16, (i / w) as u16)).collect();
+		let name = self.uses.first().map_or_else(|| self.name.clone(), |u| u.name.clone());
+		let rebuilt = Self::from_wrl(wrl, &name);
+		self.uses = rebuilt.uses;
+		self.packs = rebuilt.packs;
+		self.cells = rebuilt.cells;
+		self.pass_overrides = pass_overrides;
+		self.palette = rebuilt.palette;
+		self.pack_palette = rebuilt.pack_palette;
+		self.source_palette = rebuilt.source_palette;
+		self.water_pack = rebuilt.water_pack;
+		self.push_doc_patch(before);
+		wrl.tile_count
+	}
+
 	/// Open a stroke: subsequent edits merge into one undo unit (one brush
 	/// drag = one Ctrl+Z). An already-open stroke is committed first.
 	pub fn begin_stroke(&mut self) {
@@ -765,10 +958,10 @@ impl Project {
 	/// (worldgen) never happened.
 	pub fn rollback_stroke(&mut self) -> bool {
 		let Some(stroke) = self.stroke.take() else { return false };
-		if stroke.cells.is_empty() && stroke.colors.is_empty() && stroke.passes.is_empty() {
+		if stroke.is_empty() {
 			return false;
 		}
-		let _ = self.apply(&stroke);
+		let _ = self.apply(stroke);
 		self.bump();
 		true
 	}
@@ -776,7 +969,7 @@ impl Project {
 	/// Commit the open stroke to the undo stack (no-op when empty/closed).
 	pub fn end_stroke(&mut self) {
 		let Some(stroke) = self.stroke.take() else { return };
-		if stroke.cells.is_empty() && stroke.colors.is_empty() && stroke.passes.is_empty() {
+		if stroke.is_empty() {
 			return;
 		}
 		self.undo_stack.push(stroke);
@@ -981,7 +1174,7 @@ impl Project {
 	pub fn undo(&mut self) -> bool {
 		self.end_stroke(); // a mid-drag undo must not orphan the stroke
 		let Some(patch) = self.undo_stack.pop() else { return false };
-		let inverse = self.apply(&patch);
+		let inverse = self.apply(patch);
 		self.redo_stack.push(inverse);
 		self.bump();
 		true
@@ -990,13 +1183,28 @@ impl Project {
 	pub fn redo(&mut self) -> bool {
 		self.end_stroke();
 		let Some(patch) = self.redo_stack.pop() else { return false };
-		let inverse = self.apply(&patch);
+		let inverse = self.apply(patch);
 		self.undo_stack.push(inverse);
 		self.bump();
 		true
 	}
 
-	fn apply(&mut self, patch: &Patch) -> Patch {
+	fn apply(&mut self, patch: Patch) -> Patch {
+		// A document swap is its own inverse: swap the stored state with the
+		// live fields and carry the displaced state back out. Structural —
+		// the renderer's atlas is stale either way.
+		if let Some(mut doc) = patch.doc {
+			std::mem::swap(&mut self.uses, &mut doc.uses);
+			std::mem::swap(&mut self.packs, &mut doc.packs);
+			std::mem::swap(&mut self.cells, &mut doc.cells);
+			std::mem::swap(&mut self.pass_overrides, &mut doc.pass_overrides);
+			std::mem::swap(&mut self.palette, &mut doc.palette);
+			std::mem::swap(&mut self.pack_palette, &mut doc.pack_palette);
+			std::mem::swap(&mut self.source_palette, &mut doc.source_palette);
+			std::mem::swap(&mut self.water_pack, &mut doc.water_pack);
+			self.structure += 1;
+			return Patch { doc: Some(doc), ..Patch::default() };
+		}
 		let mut cells = Vec::with_capacity(patch.cells.len());
 		for &(x, y, layer, entry) in patch.cells.iter().rev() {
 			let i = y as usize * self.width as usize + x as usize;
@@ -1015,7 +1223,7 @@ impl Project {
 			passes.push((x, y, self.pass_overrides[i]));
 			self.pass_overrides[i] = value;
 		}
-		Patch { cells, colors, passes }
+		Patch { cells, colors, passes, doc: None }
 	}
 
 	fn bump(&mut self) {
@@ -1275,6 +1483,164 @@ fn transform_into(dst: &mut [u8; TILE_DATA_SIZE], src: &[u8], transform: Transfo
 	}
 }
 
+/// The resumable rasterize-and-reimport palette conversion: render the map
+/// through its internal palette (the "Rendering map" phase), then run the
+/// raster through the New-from-Image [`ConvertSession`](crate::ConvertSession)
+/// pipeline. The shell drives it per frame — `step` does a bounded slice and
+/// reports `progress`/`stage` — so the modal stays live (progress bar, ETA,
+/// Abort). [`Project::convert_palette_by_reimport`] is the run-to-completion
+/// convenience over this (scripts/headless).
+///
+/// The session borrows nothing: `step` re-takes the project each call, so it
+/// parks in the modal between frames. The project must not change under a
+/// live session (the modal blocks input; a dimension change is caught and
+/// reported as an error rather than composing out of bounds).
+pub struct PaletteReimport {
+	preserve_water: bool,
+	width: u16,
+	height: u16,
+	internal: Vec<u8>,
+	/// Target raster (filled during the render phase, then moved into `inner`).
+	rgba: Vec<u8>,
+	pins: Vec<u8>,
+	/// Next cell row to rasterize.
+	row: usize,
+	dedupe: crate::image_import::Dedupe,
+	threshold: f32,
+	inner: Option<crate::image_import::ConvertSession>,
+	error: Option<String>,
+}
+
+/// The render phase's share of the progress bar (the re-import pipeline's
+/// own phases fill the rest).
+const RASTER_WEIGHT: f32 = 0.15;
+
+impl PaletteReimport {
+	pub fn new(project: &Project, preserve_water: bool, dedupe: crate::image_import::Dedupe, threshold: f32) -> Self {
+		let (tw, th) = (project.width as usize * TILE_SIZE, project.height as usize * TILE_SIZE);
+		Self {
+			preserve_water,
+			width: project.width,
+			height: project.height,
+			internal: project.internal_palette(),
+			rgba: vec![0u8; tw * th * 4],
+			pins: vec![0u8; tw * th],
+			row: 0,
+			dedupe,
+			threshold,
+			inner: None,
+			error: None,
+		}
+	}
+
+	pub fn is_done(&self) -> bool {
+		self.error.is_some() || self.inner.as_ref().is_some_and(|s| s.is_done())
+	}
+
+	pub fn error(&self) -> Option<&str> {
+		self.error.as_deref().or_else(|| self.inner.as_ref().and_then(|s| s.error()))
+	}
+
+	/// 0..1 overall progress (render phase first, then the import pipeline).
+	pub fn progress(&self) -> f32 {
+		match &self.inner {
+			Some(s) => RASTER_WEIGHT + (1.0 - RASTER_WEIGHT) * s.progress(),
+			None => RASTER_WEIGHT * self.row as f32 / self.height.max(1) as f32,
+		}
+	}
+
+	pub fn stage(&self) -> &'static str {
+		match &self.inner {
+			Some(s) => s.stage(),
+			None => "Rendering map",
+		}
+	}
+
+	/// Do bounded work — render cell rows, then hand the raster to the
+	/// re-import pipeline and step it. `budget` is in pixel-equivalent units
+	/// (one cell = 4096).
+	pub fn step(&mut self, project: &Project, budget: usize) {
+		if self.is_done() {
+			return;
+		}
+		if (project.width, project.height) != (self.width, self.height) {
+			self.error = Some("the document changed under the conversion".into());
+			return;
+		}
+		let (w, h) = (self.width as usize, self.height as usize);
+		let tw = w * TILE_SIZE;
+		let mut done = 0usize;
+		while self.row < h && done < budget {
+			let cy = self.row;
+			for cx in 0..w {
+				let tile = project.compose_cell(cx as u16, cy as u16);
+				for py in 0..TILE_SIZE {
+					let row = (cy * TILE_SIZE + py) * tw + cx * TILE_SIZE;
+					for px in 0..TILE_SIZE {
+						let idx = tile[py * TILE_SIZE + px];
+						let at = (row + px) * 4;
+						let p = idx as usize * 3;
+						self.rgba[at..at + 3].copy_from_slice(&self.internal[p..p + 3]);
+						self.rgba[at + 3] = 255;
+						if self.preserve_water && (96..=127).contains(&idx) {
+							self.pins[row + px] = idx;
+						}
+					}
+				}
+			}
+			self.row += 1;
+			done += w * TILE_DATA_SIZE / 16; // a composed cell is cheaper than a dithered one
+		}
+		if self.row < h {
+			return;
+		}
+		if self.inner.is_none() {
+			// Raster complete — build the import session (moves the buffers).
+			let th = h * TILE_SIZE;
+			let opts = crate::image_import::ConvertOpts {
+				dedupe: self.dedupe,
+				threshold: self.threshold,
+				..crate::image_import::ConvertOpts::fit_source(tw as u32, th as u32)
+			};
+			let rgba = std::mem::take(&mut self.rgba);
+			let pins = std::mem::take(&mut self.pins);
+			match crate::image_import::ConvertSession::new(rgba, tw as u32, th as u32, opts) {
+				Ok(mut session) => {
+					if self.preserve_water {
+						let water: Vec<(u8, [u8; 3])> = (96u8..=127)
+							.map(|s| {
+								let at = s as usize * 3;
+								(s, [self.internal[at], self.internal[at + 1], self.internal[at + 2]])
+							})
+							.collect();
+						if let Err(e) = session.pin(pins, &water) {
+							self.error = Some(e);
+							return;
+						}
+					}
+					self.inner = Some(session);
+				}
+				Err(e) => {
+					self.error = Some(e);
+					return;
+				}
+			}
+		}
+		if let Some(session) = self.inner.as_mut() {
+			session.step(budget.saturating_sub(done).max(1));
+		}
+	}
+
+	/// Consume the finished session into a `WrlFile` (call once `is_done`; an
+	/// errored session returns its error here).
+	pub fn finish(mut self) -> Result<WrlFile, String> {
+		if let Some(e) = self.error.take() {
+			return Err(e);
+		}
+		self.inner.take().ok_or("conversion not finished")?.finish()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1415,6 +1781,113 @@ mod tests {
 		assert_eq!(reloaded.palette, project.palette);
 
 		std::fs::remove_dir_all(&dir).ok();
+	}
+
+	/// The internal palette keeps the WRL's own bytes (statics included) with
+	/// live dynamic edits merged in; conversion rewrites tiles + palette to
+	/// the compatible form and converges the two — and undoes as one unit.
+	#[test]
+	fn wrl_palette_conversion_remaps_tiles_and_converges_palettes() {
+		let mut tiles = vec![0u8; TILE_DATA_SIZE];
+		tiles.fill(40); // every pixel on a fixed game-ramp slot…
+		let mut palette = crate::GAME_PALETTE.to_vec();
+		palette[40 * 3..40 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]); // …claiming hot pink
+		let wrl = WrlFile {
+			header: vec![0; 5],
+			width: 1,
+			height: 1,
+			minimap: vec![0],
+			bigmap: vec![0],
+			tile_count: 1,
+			tiles,
+			palette,
+			pass_table: vec![0],
+		};
+		let mut p = Project::from_wrl(&wrl, "CONV");
+		assert!(p.is_wrl_import());
+		// The working palette resolved slot 40 to the game color, the
+		// internal palette still says pink.
+		assert_eq!(p.palette[40 * 3..40 * 3 + 3], crate::GAME_PALETTE[40 * 3..40 * 3 + 3]);
+		assert_eq!(p.internal_palette()[40 * 3..40 * 3 + 3], [0xff, 0x00, 0xee]);
+		// Dynamic edits show through the internal palette too.
+		assert!(p.set_color(64, [9, 9, 9]).unwrap());
+		assert_eq!(p.internal_palette()[64 * 3..64 * 3 + 3], [9, 9, 9]);
+
+		let opts = crate::palette_convert::ConvertOptions::default();
+		let structure = p.structure_revision();
+		let report = p.convert_to_compatible_palette(opts).expect("off-spec static slot");
+		assert_eq!((report.exact, report.approximated), (1, 0));
+		// The pink moved to an (unused) free dynamic slot — pixels follow, exactly.
+		let to = p.packs[0].tiles[0];
+		assert!(DYNAMIC_SLOTS.contains(&to), "pixels remapped into a free dynamic slot, got {to}");
+		assert!(p.packs[0].tiles.iter().all(|&b| b == to));
+		assert_eq!(p.palette[to as usize * 3..to as usize * 3 + 3], [0xff, 0x00, 0xee]);
+		// Palette and internal palette agree now (compatible), the doc is
+		// dirty + structurally changed, and a re-run is a no-op.
+		assert_eq!(p.internal_palette(), p.palette);
+		assert!(p.dirty());
+		assert_ne!(p.structure_revision(), structure);
+		assert!(p.convert_to_compatible_palette(opts).is_none());
+
+		// One Ctrl+Z brings the whole document back: tiles, palettes,
+		// internal palette — and redo replays it byte-identically.
+		let converted_tiles = p.packs[0].tiles.clone();
+		let converted_palette = p.palette.clone();
+		assert!(p.undo());
+		assert!(p.packs[0].tiles.iter().all(|&b| b == 40), "tiles restored");
+		assert_eq!(p.internal_palette()[40 * 3..40 * 3 + 3], [0xff, 0x00, 0xee], "internal palette restored");
+		// The earlier set_color is still the next undo step (journal intact).
+		assert!(p.undo());
+		assert_ne!(p.internal_palette()[64 * 3..64 * 3 + 3], [9, 9, 9]);
+		assert!(p.redo() && p.redo());
+		assert_eq!(p.packs[0].tiles, converted_tiles);
+		assert_eq!(p.palette, converted_palette);
+	}
+
+	/// The rasterize-and-reimport method rebuilds the tile table from the
+	/// composed pixels; pinned water keeps its cycle slots and colors, and
+	/// per-cell pass survives as overrides. Undoes as one unit.
+	#[test]
+	fn wrl_palette_conversion_by_reimport_pins_water_and_keeps_pass() {
+		// Tile 0: all water-cycle slot 100; tile 1: all off-spec static 40.
+		let mut tiles = vec![0u8; 2 * TILE_DATA_SIZE];
+		tiles[..TILE_DATA_SIZE].fill(100);
+		tiles[TILE_DATA_SIZE..].fill(40);
+		let mut palette = crate::GAME_PALETTE.to_vec();
+		palette[100 * 3..100 * 3 + 3].copy_from_slice(&[12, 34, 56]);
+		palette[40 * 3..40 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]);
+		let wrl = WrlFile {
+			header: vec![0; 5],
+			width: 2,
+			height: 1,
+			minimap: vec![100, 40],
+			bigmap: vec![0, 1],
+			tile_count: 2,
+			tiles,
+			palette,
+			pass_table: vec![1, 0],
+		};
+		let mut p = Project::from_wrl(&wrl, "RAST");
+		let tile_count =
+			p.convert_palette_by_reimport(true, crate::image_import::Dedupe::Strict, 0.0).expect("reimport");
+		assert!(tile_count >= 2);
+		// Water pixels stay pinned to slot 100, with the map's color.
+		assert_eq!(p.compose_cell(0, 0)[..], vec![100u8; TILE_DATA_SIZE][..]);
+		assert_eq!(p.palette[100 * 3..100 * 3 + 3], [12, 34, 56]);
+		// The pink tile re-quantized into stable (non-animated) slots close
+		// to pink; statics are the game's.
+		let cell1 = p.compose_cell(1, 0);
+		assert!(cell1.iter().all(|&b| !(9..=31).contains(&b) && !(96..=127).contains(&b)));
+		assert_eq!(p.palette[32 * 3..32 * 3 + 3], crate::GAME_PALETTE[32 * 3..32 * 3 + 3]);
+		// Pass survived as per-cell overrides.
+		assert_eq!(p.pass_at(0, 0), Some(1));
+		assert_eq!(p.pass_at(1, 0), Some(0));
+		// One undo restores the original document byte-for-byte.
+		assert!(p.undo());
+		assert_eq!(p.compose_cell(0, 0)[..], vec![100u8; TILE_DATA_SIZE][..]);
+		assert_eq!(p.compose_cell(1, 0)[..], vec![40u8; TILE_DATA_SIZE][..]);
+		assert_eq!(p.internal_palette()[40 * 3..40 * 3 + 3], [0xff, 0x00, 0xee]);
+		assert_eq!(p.pass_at(0, 0), Some(1));
 	}
 
 	/// Golden splitmix64 vectors (seed 0) — pins the algorithm forever:

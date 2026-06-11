@@ -179,6 +179,24 @@ impl Default for Workspace {
 					// Max width = 8 max-size swatches + gaps + padding + scrollbar.
 					(251.0, 640.0),
 				),
+				// Hidden by default — a debugging aid (Windows menu shows it);
+				// `prev` points at a real dock so `window wrlpalette on` has
+				// somewhere sensible to restore to.
+				Panel {
+					prev: Place::Docked(RIGHT),
+					..panel(
+						"wrlpalette",
+						"WRL Internal Palette",
+						"the opened WRL's palette as stored in the file",
+						Place::Hidden,
+						300.0,
+						220.0,
+						220.0,
+						(180.0, 170.0),
+						// Same swatch math as the Color Palette, no toolbar row.
+						(251.0, 640.0),
+					)
+				},
 				panel(
 					"toolbox",
 					"Toolbox",

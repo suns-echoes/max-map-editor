@@ -1,5 +1,5 @@
 //! Main menu bar: the ten menus from the design
-//! (`designs/features.drawio`, "Main menu" page). Every leaf is either an
+//! (`designs/features.drawio`, "Main menu" page) plus the Debug menu. Every leaf is either an
 //! **Action** — a command line through the command parser, exactly like a
 //! keybinding — or a **Todo** placeholder that echoes its backlog ticket
 //! (drawn dim, so the unbuilt surface area is visible but honest).
@@ -304,6 +304,8 @@ impl MenuBar {
 					Item::Sep,
 					todo("Auto Generate Pass Table...", "TOOL-6"),
 					Item::Sep,
+					sub("Palette", vec![act("Convert to Compatible Palette...", "convert-palette-modal")]),
+					Item::Sep,
 					act("Generate Random Terrain...", "generate-modal"),
 					Item::Sep,
 					act("Resize Map...", "resize-modal"),
@@ -319,6 +321,7 @@ impl MenuBar {
 							toggle("Minimap", "window minimap", "win:minimap"),
 							toggle("Tile Explorer", "window tiles", "win:tiles"),
 							toggle("Color Palette", "window palette", "win:palette"),
+							toggle("WRL Internal Palette", "window wrlpalette", "win:wrlpalette"),
 							toggle("Toolbox", "window toolbox", "win:toolbox"),
 							toggle("Units", "window units", "win:units"),
 							toggle("Templates Explorer", "window templates", "win:templates"),
@@ -332,6 +335,10 @@ impl MenuBar {
 					Item::Sep,
 					todo("Tabs Positions", "SHELL-9"),
 				],
+			},
+			Menu {
+				title: "Debug",
+				items: vec![toggle("Render using map palette", "map-palette toggle", "debug:map-palette")],
 			},
 			Menu {
 				title: "Help",
@@ -746,7 +753,7 @@ mod tests {
 			}
 		}
 		let b = bar();
-		assert_eq!(b.menus.len(), 10, "the design's ten menus");
+		assert_eq!(b.menus.len(), 11, "the design's ten menus + Debug");
 		for m in &b.menus {
 			check(&m.items, m.title);
 		}
