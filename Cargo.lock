@@ -750,7 +750,7 @@ dependencies = [
 
 [[package]]
 name = "json"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "khronos-egl"
@@ -847,7 +847,7 @@ dependencies = [
 
 [[package]]
 name = "map-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "json",
  "max-assets",
@@ -855,7 +855,7 @@ dependencies = [
 
 [[package]]
 name = "max-assets"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "log",
  "thiserror 2.0.17",
@@ -863,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "max-map-editor"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "ini",
