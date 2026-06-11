@@ -1,6 +1,12 @@
 **/*.drawio.bkp
 
-~temp/
+/temp/
+/testdata/
+/private/
+/resources/maps/
+/CLAUDE.md
+.claude
 dist/
 target
 node_modules/
+resources/user/

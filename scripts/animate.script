@@ -1,0 +1,16 @@
+# Palette cycling: water shimmer must change pixels between ticks.
+# Run: cargo run -- --script scripts/animate.script --headless
+# t0/t1/t2 must all differ pairwise (cycle ranges advance), and the document
+# hash must be untouched (animation is view-only).
+
+hash
+zoom-to 1
+pan-to 4 4                    # open ocean
+screenshot temp/animate-t0.png
+animate on
+tick 0.51                     # > slowest range interval (2 fps = 0.5 s)
+screenshot temp/animate-t1.png
+tick 0.51
+screenshot temp/animate-t2.png
+assert-dirty false            # animation never edits the document
+hash

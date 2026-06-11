@@ -1,0 +1,51 @@
+# Selection + clipboard + templates: rect-select painted tiles, copy,
+# stamp the ghost elsewhere, cut, and export a template.
+# Run: cargo run -- --script scripts/select-template.script --headless
+
+open! resources/templates/GREEN_1.json
+assert-dirty false
+
+# Paint a two-tile patch on open ocean (deterministic water beneath).
+place 3 3 GLa000
+place 4 3 GLa001
+assert-cell 3 3 WATR00,GLa000
+assert-cell 4 3 WATR05,GLa001
+
+# Rect-select the pair and copy it. The clipboard carries both layers,
+# so stamping rewrites the target's water too — fully deterministic.
+select-rect 3 3 4 3
+copy
+paste
+stamp 8 8
+assert-cell 8 8 WATR00,GLa000
+assert-cell 9 8 WATR05,GLa001
+
+# One stamp = one undo unit: undo lifts it, re-stamping lands the same
+# cells again (the ghost stays armed).
+undo
+stamp 8 8
+assert-cell 8 8 WATR00,GLa000
+undo
+
+# Freehand-style cell ops compose: add two, subtract one.
+select clear
+select-cell 3 3 add
+select-cell 4 3 add
+select-cell 4 3 sub
+
+# Cut clears only the selected ground; the water base stays.
+cut
+assert-cell 3 3 WATR00
+assert-cell 4 3 WATR05,GLa001
+
+# Whole-selection ops parse and run.
+select all
+select invert
+select clear
+
+# Export the remaining tile as a template file (scratch dir).
+select-cell 4 3 add
+template-export temp/select-template-probe.json
+
+stamp cancel
+quit!

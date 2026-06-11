@@ -1,0 +1,11 @@
+[package]
+name    = "max-assets"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+log       = { workspace = true }
+thiserror = { workspace = true }

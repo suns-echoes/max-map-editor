@@ -1,191 +1,117 @@
 ![M.A.X.: Mechanized Assault & Exploration Map Editor](./docs/images/title.png)
 
-# The M.A.X. Map Editor
+# M.A.X. Map Editor
 
-> **[M.A.X. Map Editor Website](https://suns-echoes.github.io/max-map-editor/)**
->
-> **The official M.A.X. Map Editor website.**
+A native map editor for **M.A.X.: Mechanized Assault & Exploration**
+(Interplay, 1996) — written in Rust on wgpu + winit, for Linux and Windows.
 
-> **[M.A.X. Map Editor GitHub Repository](https://github.com/suns-echoes/max-map-editor)**
->
-> **The official M.A.X. Map Editor GitHub repository.**
+I started this project because I never stopped wanting new planets to fight
+over. The original maps are great, but after almost thirty years we know
+them a little too well. This editor exists so we can finally draw our own —
+and so that making a map is *enjoyable*, not an exercise in hex editing.
 
-> **[M.A.X. Port](https://klei1984.github.io/max/)**
->
-> The M.A.X. Port is an excellent project dedicated to fixing bugs in the
-> original game that prevent it from being stable and fully enjoyable.
+Made by a MAX Commander, for MAX Commanders, with 🖤 for M.A.X.
 
-> **[M.A.X.: Mechanized Assault & Exploration](https://en.wikipedia.org/wiki/Mechanized_Assault_%26_Exploration)**
->
-> Wiki about the M.A.X. Game.
+> **[Website & progress reports](https://suns-echoes.github.io/max-map-editor/)**
+> · **[M.A.X. Port](https://klei1984.github.io/max/)** — the project that keeps
+> the game itself alive and stable; if you don't know it yet, start there.
+> · **[About the game](https://en.wikipedia.org/wiki/Mechanized_Assault_%26_Exploration)**
 
+## Download
 
-▵
+Grab the zip for your system from
+**[Releases](https://github.com/suns-echoes/max-map-editor/releases)**, unzip
+it anywhere, run `max-map-editor`. That's the whole install — settings live
+beside the binary, nothing is written to your system.
 
-## ▰ Introduction
+- Point the editor at your M.A.X. directory: set `MaxPath` in
+  `config/mme.ini` (the [manual](./MANUAL.md) walks through everything).
+- Linux: the optional `install.sh` adds a menu entry and icons. The editor
+  runs fine without it.
 
-Welcome back M.A.X. Commanders!
+## What it does today
 
-I present the announcement of M.A.X. Map Editor – the ultimate open-source tool
-for crafting custom maps for the classic M.A.X.: Mechanized Assault & Exploration.
+- opens the original `.WRL` maps and exports game-ready ones — round-trips
+  are byte-exact, verified against all 24 original maps;
+- layered map projects with tile packs for all five terrains
+  (green, desert, snow, crater, dark snow) — the 24 originals ship as
+  ready-to-edit starter templates;
+- tile painting with variants randomization, flood fill, and an
+  **auto-shore** solver that draws correct water/land transitions for you;
+- passability editor — paint the movement data, see it as an overlay;
+- palette editor with live color cycling, range retints, palette
+  save/load and hot-swap;
+- **in-game preview**: palette cycling + 6-bit color, with an optional CRT
+  effect for the full 1996 feeling;
+- **unit previews**: stamp real units and buildings from your game data on
+  the map (team colors, turrets, shadows) to judge palette edits against
+  the art that will stand on it;
+- **random terrain generator**: islands, continents, land masses, or
+  river-cut worlds from a seed — tune water/obstruction/decoration balance,
+  reroll until it looks right, abort mid-run; obstructions stamp as whole
+  formations (mountain ranges, forests), not single tiles;
+- a workspace you can rearrange — dockable panels, floating windows,
+  multiple maps open in tabs, minimap, tile explorer;
+- map from image: turn any picture into a map (quantization + dithering);
+- full undo/redo, and a console where every editor action is a typed
+  command — bindable, scriptable, replayable;
+- a hand-machined UI that behaves like a desktop app should: every control
+  answers the cursor, a mis-click can be cancelled by dragging off the
+  button, and no text ever spills out of its window.
 
-I started this project to fulfill our all-long dreams of assault and exploration
-of an unlimited number of new planets and regions where we could try new tactics
-and enjoy exploration like it was the first time.
+## What's planned
 
-The main goal of this project is to provide an intuitive and enjoyable mapping
-experience for all M.A.X. enthusiasts.
+- terrain templates and adjacent-tile suggestions, so mountains stop being
+  homework;
+- custom tile packs and the tooling to build them;
+- installing finished maps straight into your game.
 
-with 🖤 for M.A.X. | maXimum map making
+Only time will tell what else.
 
-### ▰ Planned Features:
+## Building from source
 
-Here’s a sneak peek at some of the features planned for the M.A.X. Map Editor:
-
-- build for Linux and Windows with Tauri and WebGL;
-- modern and intuitive GUI with quick access to all essential features;
-- fluid map zoom and panning with minimap for easy navigation and quick focus on
-  specific areas of your map;
-- toggleable real-time tiles animation;
-- tools for easy and efficient map designing:
-    - auto-shore feature,
-    - semi-random fill (water, ground, obstacles),
-    - terrain templates - no more headaches when drawing mountains!
-    - adjacent tile suggestions to boost the design process;
-- random map generator with customizable parameters:
-    - seed-based generator for easy sharing of awesome maps,
-    - the adjustable amount and distribution of water (open ocean, sea, lakes and rivers),
-    - the adjustable amount of obstacles like mountains, cliffs, and trees;
-- support for custom tile sets and palettes;
-- palette editor for tweaking colors;
-- palette hot swap for fast choosing the best one;
-
-... only time will tell what other features might be.
-
-
-
-[⮝](#)
-
-### ▰ Setting up Linux (Debian / Ubuntu)
-
-> **Tauri v2**
->
-> https://v2.tauri.app/start/
-
-#### ▰ Prerequisites
-
-`Ubuntu 22 (or later)` or `Debian 12 (or later)`
-`Rust`
-`Node.js`
-
-
-[⮝](#)
-
-## ▰ Building project
-
-#### ▰ Building full application
-
-Run this command in the project root folder using the native terminal
-(i.e.: VSCode terminal will not work)
+You need stable Rust (edition 2024). On Debian/Ubuntu, wgpu/winit want:
 
 ```sh
-npm run tauri build
+sudo apt-get install -y libwayland-dev libxkbcommon-dev libx11-dev \
+  libxcursor-dev libxrandr-dev libxi-dev
 ```
 
-The build output directory: `./target/release/bundle`
-
-Generated assets (example):
-
-2. The DEB: `./deb/max-map-editor_X.Y.Z_amd64.deb`
-
-
-#### ▰ Building frontend only
-
-Run this command in project root folder:
+Then:
 
 ```sh
-npm run build
+cargo build --release     # -> target/release/max-map-editor
+cargo run                 # debug build, opens the starter map
+cargo run -- MAP.WRL      # open a document (.WRL or project .json)
 ```
 
-The build output directory: `./front/dist/`
+## Developing & testing
 
-
-
-[⮝](#)
-
-## ▰ Developing project
-
-### ▰ Development build for full application
-
-Run this command in the project root folder using the native terminal
-(i.e., the VSCode terminal will not work):
+Every edit flows through a single `Command` mutator, which makes the editor
+fully scriptable and headless-testable — see [ARCHITECTURE.md](./ARCHITECTURE.md)
+for the tour, and [UI.md](./UI.md) for how the interface is built (the
+widget kit, the interaction model, and the rules that keep it consistent).
+The scripts under `scripts/` double as the regression suite:
 
 ```sh
-npm run tauri dev
+cargo test --workspace                                 # everything
+cargo run -- --script scripts/smoke.script --headless  # replay one script
+cargo fmt                                              # always, before committing
 ```
 
-The above command will build the app in development mode (with access to dev
-tools and hot-module-replacements enabled).
+Tests that compare against the original game maps look for them in
+`testdata/originals/` (not in the repo — they're copyrighted game data).
+`tools/fetch-testdata.sh MAX_DIR` copies them from your own install; without
+them those tests skip and say so.
 
-Frontend (GUI) will be available at http://localhost:1420/ ¹
+## License
 
-> **🛈 NOTE**
->
-> ¹ This may or may not work as intended or at all due to missing API provided
->   by the Tauri backend.
+The editor is MIT — see [LICENSE](./LICENSE).
 
+Copyright © 2024-2026 Aneta Suns
 
-### ▰ Development build for frontend only
-
-Run this command in the project root folder:
-
-```sh
-npm run dev
-```
-
-Frontend (GUI) will be available at http://localhost:1420/ ¹
-
-> **🛈 NOTE**
->
-> ¹ This may or may not work as intended or at all due to missing API provided
->   by the Tauri backend.
-
-
-
-[⮝](#)
-
-## ▰ Testing project
-
-### ▰ Running unit tests
-
-```sh
-npm run test
-```
-
-### ▰ Running unit test coverage
-
-```sh
-npm run coverage
-```
-
-
-
-[⮝](#)
-
-## ▰ License
-
-### M.A.X. Map Editor
-
-Licensed under MIT
-
-Copyright © 2024-2025 Aneta Suns
-
-
-### M.A.X. License
+---
 
 M.A.X. COPYRIGHT © 1996 INTERPLAY PRODUCTIONS. ALL RIGHTS RESERVED.
 INTERPLAY PRODUCTIONS IS THE EXCLUSIVE LICENSEE AND DISTRIBUTOR.
-
-
-
-[⮝](#)
+This project ships no original game content.

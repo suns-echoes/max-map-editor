@@ -1,0 +1,27 @@
+# Grid overlay: 1px-on-screen lines at every cell edge, drawn as a
+# separate pass on top of the map (so it works for the project and the
+# flat-WRL paths alike). A pure view toggle — it never touches the document.
+# Run: cargo run -- --script scripts/grid.script --headless
+
+new 16 16 GREEN 3
+tile GLa000
+stroke begin
+paint 6 6
+paint 7 6
+paint 6 7
+paint 7 7
+stroke end
+shore
+assert-hash 0x02adb7106e274720
+
+zoom-to 18
+pan-to 8 8
+
+# Grid is a view-only toggle: the document hash is unchanged by it.
+grid on
+assert-hash 0x02adb7106e274720
+screenshot temp/grid.png
+grid off
+assert-hash 0x02adb7106e274720
+grid toggle
+assert-hash 0x02adb7106e274720

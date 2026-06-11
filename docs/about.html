@@ -50,25 +50,33 @@
 
 		<section class="log">
 			<div class="log-bg log-header">
-				Planned Features
+				Features
 			</div>
 			<div class="log-bg log-message">
 				<p>
-					Here’s a sneak peek at some of the features planned for the M.A.X. Map Editor:
+					The editor is a native Rust application (wgpu + winit) for
+					Linux and Windows — portable, no installation needed.
+				</p>
+				<p>
+					Working today:
 				</p>
 				<ul>
-					<li>- build for Linux and Windows with Tauri and WebGL;</li>
-					<li>- modern and intuitive GUI with quick access to all essential features;</li>
-					<li>- fluid map zoom and panning with minimap for easy navigation and quick focus on</li>
-					  specific areas of your map;
+					<li>- opening original .WRL maps and exporting game-ready ones;</li>
+					<li>- layered map projects with tile packs for all five terrains;</li>
+					<li>- fluid zoom and panning, minimap, dockable workspace, tabs;</li>
 					<li>- toggleable real-time tiles animation;</li>
-					<li>- tools for easy and efficient map designing:</li>
-					<ul>
-						<li>- auto-shore feature,</li>
-						<li>- semi-random fill (water, ground, obstacles),</li>
-						<li>- terrain templates - no more headaches when drawing mountains!</li>
-						<li>- adjacent tile suggestions to boost the design process;</li>
-					</ul>
+					<li>- tile painting with variant randomization and flood fill;</li>
+					<li>- auto-shore — water/land transitions draw themselves;</li>
+					<li>- passability editor with overlay;</li>
+					<li>- palette editor with live color cycling and hot swap;</li>
+					<li>- in-game preview with optional CRT effect;</li>
+					<li>- new map from any image;</li>
+					<li>- full undo/redo and a scriptable command console.</li>
+				</ul>
+				<p>
+					Planned next:
+				</p>
+				<ul>
 					<li>- random map generator with customizable parameters:</li>
 					<ul>
 						<li>- seed-based generator for easy sharing of awesome maps,</li>
@@ -76,9 +84,10 @@
 						  and rivers),
 						<li>- the adjustable amount of obstacles like mountains, cliffs, and trees;</li>
 					</ul>
-					<li>- support for custom tile sets and palettes;</li>
-					<li>- palette editor for tweaking colors;</li>
-					<li>- palette hot swap for fast choosing the best one;</li>
+					<li>- terrain templates - no more headaches when drawing mountains!</li>
+					<li>- adjacent tile suggestions to boost the design process;</li>
+					<li>- support for custom tile sets;</li>
+					<li>- installing finished maps straight into the game;</li>
 				</ul>
 				<p>
 					... only time will tell what other features might be.

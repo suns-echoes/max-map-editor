@@ -1,0 +1,51 @@
+# Auto-shore, the loop-walk variant (`shore alt`): same anatomy
+# as `shore` (shore grows on the water ring, land untouched, one undo unit,
+# idempotent) but tiles are chosen by walking each boundary loop and rolling
+# a random matching tile per cell — so straight runs vary.
+# Run: cargo run -- --script scripts/shore-alt.script --headless
+
+new 20 14 GREEN 42
+tile GLa000
+
+# A 3x3 island...
+stroke begin
+paint 5 5
+paint 6 5
+paint 7 5
+paint 5 6
+paint 6 6
+paint 7 6
+paint 5 7
+paint 6 7
+paint 7 7
+stroke end
+assert-hash 0x905e0ed305ad18e4
+
+# ...gains a 16-cell shore ring; the walk closes every seam.
+shore alt
+assert-cell 6 6 WATR04,GLa000
+assert-cell 6 5 WATR02,GLa000
+assert-hash 0x41e8d6da13c6f8cf
+
+# One undo unit, deterministic redo.
+undo
+assert-hash 0x905e0ed305ad18e4
+redo
+assert-hash 0x41e8d6da13c6f8cf
+
+# A second pass settles (every ring cell is now valid shore -> no targets).
+shore alt
+assert-hash 0x41e8d6da13c6f8cf
+
+# The region form (with its +1 ring) is available too.
+shore alt 4 4 8 8
+assert-hash 0x41e8d6da13c6f8cf
+
+# `shore fix` is the separate, deliberate repair pass (never auto-chained
+# onto the auto passes, so it can never make a paint stroke hang). On this
+# clean ring there is nothing to fix — it changes nothing (strict
+# improvements only) and stays idempotent.
+shore fix
+assert-hash 0x41e8d6da13c6f8cf
+
+screenshot temp/shore-alt.png

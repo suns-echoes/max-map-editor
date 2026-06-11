@@ -22,6 +22,156 @@
 		</nav>
 
 		<section class="log">
+			<div class="log-bg log-header">Current progress report #7
+				<div class="log-date">log date: distant future from 2026-06-11</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Going native</h2>
+				<p>
+					Commanders, big news: the Map Editor has been rewritten
+					from scratch as a <strong>native Rust application</strong>
+					(wgpu + winit). No browser, no web stack — just one small
+					binary that talks straight to the GPU.
+				</p>
+				<p>
+					The Tauri prototype that carried this project for two years
+					is honorably discharged. It taught us everything about WRL
+					files, palettes, and shores — and the new editor inherited
+					all of it. The first native release, <strong>v0.4.0</strong>,
+					is around the corner: portable zips for <strong>Linux and
+					Windows</strong>. Unzip, run, draw planets — settings live
+					right next to the binary, no installation, no registry,
+					no traces.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>What the editor does today</h2>
+				<p>
+					This is no longer an announcement — the editor edits:
+				</p>
+				<ul>
+					<li>- opening original .WRL maps and exporting game-ready ones
+						(byte-exact round-trips, verified against all 24 originals);</li>
+					<li>- layered map projects with tile packs for all five terrains;</li>
+					<li>- tile painting with variant randomization and flood fill;</li>
+					<li>- the auto-shore solver — water/land transitions draw themselves;</li>
+					<li>- selection tools, copy/cut/paste, and reusable map templates
+						(more below);</li>
+					<li>- passability editor with overlay;</li>
+					<li>- palette editor with live color cycling, retints and hot-swap;</li>
+					<li>- in-game preview: palette cycling + 6-bit color + CRT effect
+						for the full 1996 experience;</li>
+					<li>- unit previews: stamp real units and buildings from your own
+						game data on the map — team colors, turrets, shadows — and
+						tune the palette against them;</li>
+					<li>- dockable workspace, tabs, minimap, tile explorer;</li>
+					<li>- new map from any image (quantization + dithering);</li>
+					<li>- full undo/redo, and a console where every action is a
+						command — bindable, scriptable, replayable.</li>
+				</ul>
+			</div>
+			<div class="log-bg log-message">
+				<h2>The terrain synthesizer is online</h2>
+				<p>
+					The long-promised toy has landed: the
+					<strong>Random Terrain Generator</strong>. Pick a pattern —
+					<strong>Islands</strong>, <strong>Continent</strong>,
+					<strong>Land Mass</strong>, or <strong>River Raid</strong> —
+					set the water / obstruction / decoration balance, and let it
+					roll. Every world comes from a seed, and the seed is printed
+					with the result: like a planet? Write the number down and
+					grow it again, any time, on any machine.
+				</p>
+				<p>
+					Mountains and forests stamp as <strong>whole formations</strong>
+					mined from the original maps — not single-tile confetti — and
+					the coastlines run through the auto-shore solver (pick the
+					method you prefer). A progress bar tracks the run, the editor
+					stays responsive throughout, and Abort rolls the map back as
+					if nothing happened. Reroll until the planet feels like home.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Field engineering: select, copy, stamp</h2>
+				<p>
+					Terrain editing grew a whole construction division. Drag the
+					<strong>select tools</strong> over your map (freehand or
+					rectangles — Shift adds, Ctrl subtracts) and a thick green
+					survey line traces whatever you marked. From there:
+					copy, cut, paste — pasted tiles ride under the cursor as a
+					translucent <strong>ghost</strong>, click to deploy, keep
+					clicking to deploy again. Forests in five clicks.
+				</p>
+				<p>
+					Better yet: save a selection as a <strong>template</strong>.
+					The Templates Explorer shows every template as a live
+					thumbnail — the editor ships with formations mined from the
+					original maps, and your own creations are plain JSON files
+					you can share with other Commanders. Templates know which
+					tile packs they need, so they only offer themselves on maps
+					that can host them.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Cockpit ergonomics</h2>
+				<p>
+					The cockpit itself got a full refit, and it shows:
+				</p>
+				<ul>
+					<li>- every control answers the cursor — buttons light up under
+						it and visibly sink while pressed (drag off before releasing
+						and nothing fires);</li>
+					<li>- the right mouse button now serves a <strong>context
+						menu</strong>: what it offers depends on where you are and
+						what you hold — a selection, a full clipboard, an armed
+						template ghost;</li>
+					<li>- keyboard shortcuts everywhere, shown right in the menus —
+						and every single one is rebindable in <code>mme.ini</code>,
+						where any console command can be given a key;</li>
+					<li>- shortcuts are context-smart: the digit keys pick pass
+						values in the Pass Table Editor and zoom presets on the map;</li>
+					<li>- text stays inside its window, menus and tabs squeeze to
+						fit, and one green progress bar rules every long-running job.</li>
+				</ul>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Hull integrity</h2>
+				<p>
+					The file loaders (WRL, projects, images) went through a
+					security review and now refuse corrupt data politely — with
+					an error dialog that tells you what's wrong. Paranoia is a
+					virtue when you open files from the extranet.
+				</p>
+			</div>
+			<div class="log-bg log-panel">
+				<div class="label">From the bridge:</div>
+				<div class="grid grid-3c">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0025.png" data-preview="true" title="First Contact - an archipelago painted entirely with console commands" /></div>
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0026.png" data-preview="true" title="Templates Explorer - stock formations and the letter A, freshly saved from the selection" /></div>
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0027.png" data-preview="true" title="The right-click context menu, shortcuts included" /></div>
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0023.png" data-preview="true" title="Generated islands - one seed, one planet" /></div>
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0020.png" data-preview="true" title="In-game preview with CRT effect" /></div>
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0022.png" data-preview="true" title="New map from image" /></div>
+				</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>First Contact</h2>
+				<p>
+					About that first screenshot: every click in this editor is a
+					console command, which means a map can be a script. So we let
+					the editor's resident machine intelligence write one — it chose
+					a green world, painted an archipelago that spells its favorite
+					three letters, ran the shore solver over the coastlines, and
+					saved the letter A as a template for good measure. Seed 1996,
+					of course.
+				</p>
+				<p>
+					Let's make some maps!
+				</p>
+			</div>
+		</section>
+
+		<section class="log">
 			<div class="log-bg log-header">Current progress report #6
 				<div class="log-date">log date: distant future from 2025-12-29</div>
 			</div>

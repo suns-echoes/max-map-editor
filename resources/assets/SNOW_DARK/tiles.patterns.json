@@ -1,0 +1,617 @@
+[
+	{
+		"name": "SCA 1",
+		"width": 2,
+		"height": 5,
+		"pattern": [
+			[null, "SCA000"],
+			["SCA001", "SCA002"],
+			["SCA003", "SCA004"],
+			["SCA005", "SCA006"],
+			[null, "SCA007"]
+		]
+	},
+	{
+		"name": "SCA 2",
+		"width": 3,
+		"height": 15,
+		"pattern": [
+			[null, null, "SCA000"],
+			[null, "SCA001", "SCA002"],
+			[null, "SCA003", "SCA004"],
+			[null, "SCA005", "SCA006"],
+			[null, null, "SCA007"],
+			[null, null, "SCA023"],
+			[null, "SCA024", "SCA025"],
+			["SCA001", "SCA026", "SCA027"],
+			["SCA003", "SCA004", null],
+			["SCA005", "SCA006", null],
+			[null, "SCA007", "SCA028"],
+			[null, "SCA000", "SCA029"],
+			[null, "SCA030", "SCA031"],
+			[null, "SCA032", "SCA033"],
+			[null, "SCA034", "SCA035"]
+		]
+	},
+	{
+		"name": "SCA 3",
+		"width": 7,
+		"height": 8,
+		"pattern": [
+			[null, "SCA090", "SCA008", null, null, null, null],
+			["SCA001", "SCA091", "SCA009", "SCA010", null, null, null],
+			["SCA003", "SCA004", "SCA092", "SCA093", "SCA094", null, null],
+			["SCA005", "SCA006", null, "SCA013", "SCA095", "SCA096", null],
+			[null, "SCA097", "SCA028", "SCA098", "SCA099", "SCA100", "SCA015"],
+			[null, null, "SCA030", "SCA033", null, "SCA052", "SCA125"],
+			[null, null, "SCA102", "SCA103", "SCA104", "SCA105", "SCA047"],
+			[null, null, null, null, "SCA106", "SCA049", "SCA050"]
+		]
+	},
+	{
+		"name": "SCA 4",
+		"width": 8,
+		"height": 8,
+		"pattern": [
+			[null, null, "SCA090", "SCA008", null, null, null, null],
+			[null, "SCA001", "SCA091", "SCA009", "SCA010", null, null, null],
+			[null, "SCA003", "SCA004", "SCA092", "SCA093", "SCA094", "SCA023", null],
+			["SCA023", "SCA005", "SCA006", null, "SCA013", "SCA095", "SCA096", null],
+			[null, null, "SCA097", "SCA028", "SCA098", "SCA099", "SCA100", "SCA015"],
+			[null, null, null, "SCA030", "SCA033", null, "SCA052", "SCA101"],
+			[null, null, null, "SCA102", "SCA103", "SCA104", "SCA105", "SCA047"],
+			[null, null, null, null, null, "SCA106", "SCA049", "SCA050"]
+		]
+	},
+	{
+		"name": "SCA 5",
+		"width": 23,
+		"height": 3,
+		"pattern": [
+			["SCA032", "SCA033", "SCA066", "SCA067", "SCA045", "SCA068", "SCA069", "SCA070", "SCA071", "SCA072", "SCA073", "SCA074", "SCA075", "SCA069", "SCA070", "SCA071", "SCA072", "SCA073", "SCA074", "SCA075", "SCA045", "SCA046", "SCA047"],
+			["SCA034", "SCA035", "SCA076", "SCA077", "SCA078", "SCA079", "SCA080", "SCA081", "SCA082", "SCA083", "SCA080", "SCA084", "SCA085", "SCA080", "SCA081", "SCA082", "SCA083", "SCA080", "SCA084", "SCA085", "SCA086", "SCA049", "SCA050"],
+			[null, "SCA087", "SCA088", "SCA089", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]
+		]
+	},
+	{
+		"name": "SCA 6",
+		"width": 18,
+		"height": 4,
+		"pattern": [
+			[null, null, null, null, null, null, null, "SCA056", "SCA038", "SCA039", null, null, null, null, null, null, null, null],
+			[null, null, null, null, null, null, "SCA000", "SCA057", "SCA042", "SCA010", null, null, null, null, null, null, null, null],
+			[null, "SCA024", "SCA037", "SCA038", "SCA056", "SCA025", "SCA058", "SCA059", "SCA043", "SCA012", null, null, null, null, null, "SCA024", "SCA038", null],
+			["SCA000", "SCA057", "SCA060", "SCA027", "SCA061", "SCA062", "SCA063", null, "SCA018", "SCA019", "SCA024", "SCA064", "SCA065", "SCA038", "SCA000", "SCA057", "SCA042", "SCA010"]
+		]
+	},
+	{
+		"name": "SCA 7",
+		"width": 5,
+		"height": 16,
+		"pattern": [
+			["SCA008", null, null, null, null],
+			["SCA009", "SCA010", null, null, null],
+			["SCA011", "SCA012", null, null, null],
+			["SCA013", "SCA014", "SCA015", null, null],
+			[null, "SCA016", "SCA017", null, null],
+			[null, "SCA018", "SCA019", null, null],
+			["SCA020", "SCA021", "SCA022", null, null],
+			["SCA036", "SCA014", "SCA037", "SCA038", "SCA039"],
+			[null, "SCA040", "SCA041", "SCA042", "SCA010"],
+			[null, null, null, "SCA043", "SCA012"],
+			[null, "SCA044", "SCA045", "SCA046", "SCA047"],
+			["SCA020", "SCA021", "SCA048", "SCA049", "SCA050"],
+			["SCA036", "SCA051", "SCA015", null, null],
+			[null, "SCA052", "SCA017", null, null],
+			["SCA053", "SCA046", "SCA047", null, null],
+			["SCA054", "SCA055", "SCA050", null, null]
+		]
+	},
+	{
+		"name": "SCA 8",
+		"width": 9,
+		"height": 10,
+		"pattern": [
+			[null, null, null, null, null, "SCA024", "SCA064", "SCA038", "SCA039"],
+			[null, null, null, null, "SCA001", "SCA026", "SCA027", "SCA107", "SCA108"],
+			[null, null, null, null, "SCA109", "SCA110", null, "SCA018", "SCA019"],
+			[null, null, "SCA024", "SCA025", "SCA058", "SCA059", "SCA020", "SCA111", "SCA112"],
+			[null, "SCA000", "SCA029", "SCA113", "SCA059", "SCA114", "SCA111", "SCA115", null],
+			["SCA001", "SCA002", "SCA059", "SCA116", "SCA045", "SCA046", "SCA047", null, null],
+			["SCA117", "SCA118", "SCA119", "SCA126", "SCA078", "SCA049", "SCA050", null, null],
+			["SCA120", "SCA121", "SCA122", "SCA123", null, null, null, null, null],
+			["SCA034", "SCA124", "SCA046", "SCA047", null, null, null, null, null],
+			[null, "SCA127", "SCA049", "SCA050", null, null, null, null, null]
+		]
+	},
+	{
+		"name": "SMA 1",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			["SMA000"],
+			["SMA001"]
+		]
+	},
+	{
+		"name": "SMA 2",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			["SMA002"],
+			["SMA003"]
+		]
+	},
+	{
+		"name": "SMA 3",
+		"width": 3,
+		"height": 1,
+		"pattern": [
+			["SMA004", "SMA005", "SMA006"]
+		]
+	},
+	{
+		"name": "SMA 4",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			["SMA000", "SMA002"],
+			["SMA001", "SMA003"]
+		]
+	},
+	{
+		"name": "SMA 5",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			["SMA007", "SMA034"],
+			[null, "SMA003"]
+		]
+	},
+	{
+		"name": "SMA 6",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			["SMA004", "SMA005", "SMA014"],
+			["SMA015", "SMA016", "SMA017"],
+			["SMA018", "SMA019", "SMA020"]
+		]
+	},
+	{
+		"name": "SMA 7",
+		"width": 5,
+		"height": 2,
+		"pattern": [
+			[null, null, "SMA008", "SMA009", null],
+			["SMA000", "SMA010", "SMA011", "SMA012", "SMA013"]
+		]
+	},
+	{
+		"name": "SMA 8",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			["SMA003", "SMA004", "SMA005", "SMA014"],
+			["SMA007", "SMA015", "SMA016", "SMA017"],
+			[null, "SMA018", "SMA019", "SMA020"]
+		]
+	},
+	{
+		"name": "SMA 9",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			["SMA004", "SMA005", "SMA014", "SMA000"],
+			["SMA015", "SMA016", "SMA017", null],
+			["SMA018", "SMA019", "SMA020", null]
+		]
+	},
+	{
+		"name": "SMA 10",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[null, "SMA008", "SMA009", null, null],
+			["SMA010", "SMA011", "SMA012", "SMA013", null],
+			["SMA021", "SMA022", "SMA023", "SMA024", "SMA025"],
+			["SMA026", "SMA027", "SMA028", "SMA029", null],
+			["SMA030", "SMA031", "SMA032", null, null]
+		]
+	},
+	{
+		"name": "SMB 1",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			["SMB000"],
+			["SMB001"]
+		]
+	},
+	{
+		"name": "SMB 2",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			["SMB006", "SMB007"],
+			["SMB008", "SMB009"]
+		]
+	},
+	{
+		"name": "SMB 3",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			["SMB006", "SMB007"],
+			["SMB008", "SMB009"],
+			["SMB017", null]
+		]
+	},
+	{
+		"name": "SMB 4",
+		"width": 2,
+		"height": 4,
+		"pattern": [
+			[null, "SMB000"],
+			[null, "SMB002"],
+			[null, "SMB003"],
+			["SMB004", "SMB005"]
+		]
+	},
+	{
+		"name": "SMB 5",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			["SMB000", "SMB014", null],
+			["SMB001", "SMB015", null],
+			["SMB044", "SMB016", "SMB045"],
+			[null, "SMB046", "SMB047"]
+		]
+	},
+	{
+		"name": "SMB 6",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			["SMB006", "SMB007", null, null],
+			["SMB008", "SMB009", "SMB010", "SMB011"],
+			[null, null, "SMB012", "SMB013"]
+		]
+	},
+	{
+		"name": "SMB 7",
+		"width": 6,
+		"height": 3,
+		"pattern": [
+			["SMB000", "SMB014", null, null, null, null],
+			["SMB002", "SMB015", null, null, null, null],
+			["SMB003", "SMB016", "SMB017", "SMB010", "SMB006", "SMB007"]
+		]
+	},
+	{
+		"name": "SMB 8",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			["SMB006", "SMB007", null, null, null],
+			["SMB008", "SMB009", null, null, null],
+			[null, "SMB004", "SMB005", null, null],
+			[null, null, "SMB010", "SMB011", null],
+			[null, null, "SMB012", "SMB013", "SMB043"]
+		]
+	},
+	{
+		"name": "SMB 9",
+		"width": 9,
+		"height": 9,
+		"pattern": [
+			["SMB010", "SMB011", null, null, null, null, null, null, null],
+			["SMB012", "SMB013", "SMB043", "SMB018", "SMB019", null, null, null, null],
+			[null, null, "SMB020", "SMB021", "SMB022", null, null, null, null],
+			[null, null, "SMB023", "SMB024", "SMB025", null, null, null, null],
+			[null, null, "SMB026", "SMB027", "SMB028", null, null, null, null],
+			[null, null, "SMB029", "SMB030", "SMB031", "SMB032", "SMB033", null, null],
+			[null, null, null, null, "SMB034", "SMB035", "SMB036", null, null],
+			[null, null, null, null, "SMB037", "SMB038", "SMB039", null, null],
+			[null, null, null, null, "SMB040", "SMB041", "SMB042", "SMB004", "SMB005"]
+		]
+	},
+	{
+		"name": "SMC 1",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			["SMC038", "SMC039"],
+			["SMC040", null]
+		]
+	},
+	{
+		"name": "SMC 2",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[null, null, "SMC015"],
+			["SMC041", "SMC020", "SMC021"]
+		]
+	},
+	{
+		"name": "SMC 3",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			["SMC013", "SMC014", "SMC002"],
+			["SMC016", "SMC017", "SMC018"]
+		]
+	},
+	{
+		"name": "SMC 4",
+		"width": 5,
+		"height": 2,
+		"pattern": [
+			["SMC003", "SMC004", "SMC005", "SMC006", "SMC007"],
+			["SMC008", "SMC009", "SMC010", "SMC011", "SMC012"]
+		]
+	},
+	{
+		"name": "SMC 5",
+		"width": 6,
+		"height": 2,
+		"pattern": [
+			[null, "SMC022", "SMC023", "SMC024", "SMC025", "SMC001"],
+			["SMC002", "SMC026", "SMC027", "SMC028", "SMC029", "SMC030"]
+		]
+	},
+	{
+		"name": "SMC 6",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[null, "SMC038", "SMC039"],
+			[null, "SMC040", null],
+			["SMC013", "SMC014", null],
+			["SMC016", "SMC017", "SMC018"]
+		]
+	},
+	{
+		"name": "SMC 7",
+		"width": 6,
+		"height": 2,
+		"pattern": [
+			["SMC013", "SMC014", null, null, null, "SMC015"],
+			["SMC016", "SMC017", "SMC018", "SMC019", "SMC020", "SMC021"]
+		]
+	},
+	{
+		"name": "SMC 8",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			["SMC038", "SMC039", null, null],
+			["SMC040", "SMC013", "SMC014", null],
+			[null, "SMC016", "SMC017", "SMC018"]
+		]
+	},
+	{
+		"name": "SMC 9",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			["SMC003", "SMC004", "SMC005", "SMC006", "SMC031"],
+			["SMC008", "SMC009", "SMC010", "SMC011", "SMC032"],
+			["SMC033", "SMC034", "SMC035", "SMC036", "SMC037"]
+		]
+	},
+	{
+		"name": "SMD 1",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			["SMD011", "SMD030"]
+		]
+	},
+	{
+		"name": "SMD 2",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			["SMD025", "SMD026"]
+		]
+	},
+	{
+		"name": "SMD 3",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			["SMD037", "SMD038"]
+		]
+	},
+	{
+		"name": "SMD 4",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			["SMD045"],
+			["SMD044"]
+		]
+	},
+	{
+		"name": "SMD 5",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			["SMD011", "SMD012", null],
+			["SMD014", "SMD015", "SMD016"]
+		]
+	},
+	{
+		"name": "SMD 6",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			["SMD027", "SMD028", "SMD029"],
+			["SMD031", "SMD032", "SMD033"]
+		]
+	},
+	{
+		"name": "SMD 7",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			["SMD027", "SMD028", "SMD029"],
+			["SMD055", "SMD032", "SMD033"]
+		]
+	},
+	{
+		"name": "SMD 8",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[null, "SMD017", "SMD018", "SMD019"],
+			["SMD021", "SMD022", "SMD023", "SMD024"]
+		]
+	},
+	{
+		"name": "SMD 9",
+		"width": 2,
+		"height": 4,
+		"pattern": [
+			["SMD000", null],
+			["SMD001", "SMD002"],
+			["SMD003", "SMD004"],
+			["SMD005", "SMD006"]
+		]
+	},
+	{
+		"name": "SMD 10",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			["SMD021", "SMD022", "SMD023", "SMD024"],
+			["SMD039", "SMD040", "SMD041", "SMD042"]
+		]
+	},
+	{
+		"name": "SMD 11",
+		"width": 2,
+		"height": 5,
+		"pattern": [
+			["SMD025", "SMD026"],
+			["SMD034", "SMD009"],
+			["SMD035", "SMD010"],
+			["SMD036", "SMD013"],
+			[null, "SMD020"]
+		]
+	},
+	{
+		"name": "SMD 12",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[null, "SMD017", "SMD018", "SMD019"],
+			["SMD021", "SMD022", "SMD023", "SMD024"],
+			["SMD039", "SMD040", "SMD041", "SMD042"]
+		]
+	},
+	{
+		"name": "SMD 13",
+		"width": 3,
+		"height": 5,
+		"pattern": [
+			["SMD007", "SMD008", null],
+			["SMD009", "SMD000", null],
+			["SMD010", "SMD001", null],
+			["SMD013", "SMD003", "SMD004"],
+			["SMD020", "SMD005", "SMD006"]
+		]
+	},
+	{
+		"name": "SMD 14",
+		"width": 7,
+		"height": 5,
+		"pattern": [
+			[null, null, null, null, "SMD017", "SMD018", "SMD019"],
+			[null, null, null, "SMD021", "SMD022", "SMD023", "SMD024"],
+			["SMD037", "SMD038", "SMD047", "SMD039", "SMD040", "SMD041", "SMD042"],
+			["SMD048", "SMD049", "SMD050", "SMD051", null, null, null],
+			["SMD052", "SMD053", "SMD054", null, null, null, null]
+		]
+	},
+	{
+		"name": "SMD 15",
+		"width": 8,
+		"height": 7,
+		"pattern": [
+			[null, "SMD025", "SMD026", "SMD043", "SMD044", null, null, null],
+			[null, "SMD034", "SMD009", "SMD000", null, null, null, null],
+			[null, "SMD035", "SMD010", "SMD001", "SMD002", null, null, null],
+			[null, "SMD036", "SMD013", "SMD003", "SMD004", null, null, null],
+			["SMD045", "SMD046", "SMD020", "SMD005", "SMD037", "SMD038", "SMD047", null],
+			[null, null, null, null, "SMD048", "SMD049", "SMD050", "SMD051"],
+			[null, null, null, null, "SMD052", "SMD053", "SMD054", null]
+		]
+	},
+	{
+		"name": "SMD 16",
+		"width": 8,
+		"height": 8,
+		"pattern": [
+			[null, "SMD025", "SMD026", "SMD043", null, null, null, null],
+			[null, "SMD034", "SMD009", "SMD000", null, null, null, null],
+			[null, "SMD035", "SMD010", "SMD001", "SMD002", null, null, null],
+			[null, "SMD036", "SMD013", "SMD003", "SMD004", null, null, null],
+			["SMD045", "SMD046", "SMD020", "SMD005", "SMD006", null, null, null],
+			[null, null, null, null, "SMD037", "SMD038", "SMD047", null],
+			[null, null, null, null, "SMD048", "SMD049", "SMD050", "SMD051"],
+			[null, null, null, null, "SMD052", "SMD053", "SMD054", null]
+		]
+	},
+	{
+		"name": "SME 1",
+		"width": 3,
+		"height": 1,
+		"pattern": [
+			["SME017", "SME018", "SME000"]
+		]
+	},
+	{
+		"name": "SME 2",
+		"width": 1,
+		"height": 4,
+		"pattern": [
+			["SME000"],
+			["SME001"],
+			["SME002"],
+			["SME003"]
+		]
+	},
+	{
+		"name": "SME 3",
+		"width": 4,
+		"height": 1,
+		"pattern": [
+			["SME004", "SME005", "SME006", "SME019"]
+		]
+	},
+	{
+		"name": "SME 4",
+		"width": 1,
+		"height": 4,
+		"pattern": [
+			["SME013"],
+			["SME014"],
+			["SME015"],
+			["SME016"]
+		]
+	},
+	{
+		"name": "SME 5",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			["SME004", "SME005", "SME006"],
+			["SME007", "SME008", "SME009"],
+			["SME010", "SME011", "SME012"]
+		]
+	}
+]

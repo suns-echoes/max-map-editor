@@ -1,0 +1,24 @@
+# Tile Explorer: grid, filters, sizes, scroll, selection highlight.
+# Run: cargo run -- --script scripts/picker.script --headless
+
+open! resources/templates/GREEN_1.json
+
+# Default: all 421 GREEN+WATER tiles at 32 px; the active tile gets a ring.
+tile GSa000
+screenshot temp/picker-all.png
+
+# Pass-based filter + a bigger tile size, scrolled one screen down.
+picker filter shore
+picker size 48
+screenshot temp/picker-shore-48.png
+
+# Used filter on a stock map = its actual tile vocabulary.
+picker filter used
+picker size 24
+screenshot temp/picker-used.png
+
+# Bad inputs fail loudly.
+# (then back to defaults so the next interactive run starts clean)
+picker filter all
+picker size 32
+picker scroll 0

@@ -1,0 +1,9 @@
+# Console overlay: panel + greeting + hash output + prompt visible.
+# Run: cargo run -- --script scripts/console.script --headless
+
+fit
+console on
+hash                          # echoed into the console log
+screenshot temp/console-open.png
+console off
+screenshot temp/console-closed.png

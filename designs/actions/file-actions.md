@@ -3,37 +3,37 @@
 
 ## Map Project
 
-### ⬛ Create new map project using tiles
+### ✅ Create new map project using tiles
 
 **AS A** Dealer in Worlds
 **I WANT TO** create new map from scratch using available tile packs
 **SO THAT** I don't have to prepare assets upfront
 
-### ⬛ Create new map project from image
+### ✅ Create new map project from image
 
 **AS A** Dealer in Worlds
 **I WANT TO** create new map from my image file
 **SO THAT** my map can be converted into tiles and palette automatically
 
-### ⬛ Create map from WRL file
+### ✅ Create map from WRL file
 
 **AS A** Dealer in Worlds
 **I WANT TO** open WRL file to create project from it
 **SO THAT** I can edit M.A.X. native maps
 
-### ⬛ Load map project from project file
+### ✅ Load map project from project file
 
 **AS A** Dealer in Worlds
 **I WANT TO** open map project
 **SO THAT** I can work on a map
 
-### ⬛ Save map project to project file
+### ✅ Save map project to project file
 
 **AS A** Dealer in Worlds
 **I WANT TO** save my project
 **SO THAT** I can work on it later
 
-### ⬛ Save map project to project file as copy
+### ✅ Save map project to project file as copy
 
 **AS A** Dealer in Worlds
 **I WANT TO** quickly create a copy of my project
@@ -48,7 +48,7 @@
 **I WANT TO** import WRL map into my current project
 **SO THAT** it can be part of my map
 
-### ⬛ Export map to WRL file
+### ✅ Export map to WRL file
 
 **AS A** Dealer in Worlds
 **I WANT TO** export map project to WRL file
@@ -72,13 +72,13 @@
 
 ## Palette
 
-### ⬛ Import color palette
+### ✅ Import color palette
 
 **AS A** Dealer in Worlds
 **I WANT TO** import palette into current project
 **SO THAT** I can use predefined colors
 
-### ⬛ Export color palette
+### ✅ Export color palette
 
 **AS A** Dealer in Worlds
 **I WANT TO** export palette from current project

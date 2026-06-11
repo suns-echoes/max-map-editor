@@ -1,0 +1,7 @@
+# rustfmt is the source of truth for Rust formatting in this repo.
+# Run `cargo fmt` before committing; CI gates on `cargo fmt --check`.
+# Tuned to keep the house style: hard tabs, 120-col lines, compact
+# (struct/call/array/chain stay on one line up to the full width).
+hard_tabs = true
+max_width = 120
+use_small_heuristics = "Max"

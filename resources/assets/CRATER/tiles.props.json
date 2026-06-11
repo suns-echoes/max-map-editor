@@ -1,4 +1,20 @@
 {
+	"CHa": {
+		"hasVariants": true,
+		"type": "OBSTRUCTION",
+		"transformable": "invert"
+	},
+	"CLa": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": true
+	},
+	"CMa": {
+		"type": "OBSTRUCTION"
+	},
+	"CMb": {
+		"type": "OBSTRUCTION"
+	},
 	"CSa": {
 		"hasVariants": true,
 		"type": "SHORE",
@@ -74,20 +90,6 @@
 	"CSm": {
 		"hasVariants": true,
 		"type": "SHORE",
-		"transformable": true,
-		"useMaskColor": true
-	},
-	"CLa": {
-		"hasVariants": true,
-		"type": "LAND",
-		"transformable": true,
-		"useMaskColor": true
-	},
-	"INSERT_MOUNTAINS_A_HERE": null,
-	"INSERT_MOUNTAINS_B_HERE": null,
-	"CHa": {
-		"hasVariants": true,
-		"type": "obstruction",
 		"transformable": true,
 		"useMaskColor": true
 	}

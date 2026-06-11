@@ -1,0 +1,13 @@
+# Create New Map modal: both stages + the command it builds.
+# Run: cargo run -- --script scripts/newmap-modal.script --headless
+
+open! resources/templates/GREEN_1.json
+new-map
+screenshot temp/newmap-dialog.png
+new-map packs
+screenshot temp/newmap-packs.png
+
+# The modal's Create produces exactly this command:
+new! 112 112 WATER GREEN 7
+assert-dirty false
+assert-cell 50 50 WATR00

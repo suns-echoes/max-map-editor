@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [rust, main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # The script regression suite (app/tests/scripts.rs) needs a GPU, which the
+  # runners don't have — it self-skips when CI is set. Everything else runs.
+  CI: "true"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # winit + wgpu need these to *build* on Linux (X11/Wayland dev libs).
+      # Adjust here if a future dep pulls in more — this is a starting set.
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwayland-dev libxkbcommon-dev libx11-dev \
+            libxcursor-dev libxrandr-dev libxi-dev
+
+      - name: Add rustfmt + clippy
+        run: rustup component add rustfmt clippy
+
+      # Formatting is the source of truth (rustfmt.toml) — fail on drift.
+      - name: Format check
+        run: cargo fmt --check
+
+      # Dependency license policy (permissive only) + attribution freshness.
+      - name: License check
+        run: node tools/licenses.mjs --check
+
+      # Deny warnings on the crates we own. `ini` is gated now that it's
+      # been brought up to standard; `max-assets` still tracks its re-MAX
+      # upstream (its image/ module has known lints) and stays ungated.
+      - name: Clippy
+        run: cargo clippy -p max-map-editor -p map-core -p ini --all-targets --no-deps -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace

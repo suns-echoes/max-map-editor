@@ -1,0 +1,9 @@
+# Open: switch documents, dirty guard honored via open!.
+# Run: cargo run -- --script scripts/open-switch.script --headless
+
+set-tile 0 0 128              # make the document dirty
+assert-dirty true
+open! testdata/originals/SNOW_3.WRL
+assert-dirty false            # fresh document
+fit
+screenshot temp/open-snow3.png

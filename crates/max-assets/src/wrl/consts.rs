@@ -1,0 +1,29 @@
+pub const TILE_SIZE: usize = 64;
+pub const TILE_DATA_SIZE: usize = TILE_SIZE * TILE_SIZE;
+
+pub const INSTALLED_MAP_FILE_NAMES: [&str; 24] = [
+	"SNOW_1.WRL",
+	"SNOW_2.WRL",
+	"SNOW_3.WRL",
+	"SNOW_4.WRL",
+	"SNOW_5.WRL",
+	"SNOW_6.WRL",
+	"CRATER_1.WRL",
+	"CRATER_2.WRL",
+	"CRATER_3.WRL",
+	"CRATER_4.WRL",
+	"CRATER_5.WRL",
+	"CRATER_6.WRL",
+	"DESERT_1.WRL",
+	"DESERT_2.WRL",
+	"DESERT_3.WRL",
+	"DESERT_4.WRL",
+	"DESERT_5.WRL",
+	"DESERT_6.WRL",
+	"GREEN_1.WRL",
+	"GREEN_2.WRL",
+	"GREEN_3.WRL",
+	"GREEN_4.WRL",
+	"GREEN_5.WRL",
+	"GREEN_6.WRL",
+];

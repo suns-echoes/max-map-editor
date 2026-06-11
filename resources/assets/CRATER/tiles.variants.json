@@ -1,4 +1,6 @@
 {
+	"CHa": ["CHa000", "CHa001", "CHa002", "CHa003", "CHa004", "CHa005", "CHa006", "CHa007", "CHa008", "CHa009", "CHa010", "CHa011", "CHa012", "CHa013", "CHa014"],
+	"CLa": ["CLa000", "CLa001", "CLa002", "CLa003", "CLa004", "CLa005", "CLa006", "CLa007", "CLa008", "CLa009", "CLa010", "CLa011", "CLa012", "CLa013", "CLa014", "CLa015", "CLa016", "CLa017", "CLa018", "CLa019", "CLa020", "CLa021", "CLa022"],
 	"CSa": ["CSa000", "CSa001", "CSa002", "CSa003", "CSa004", "CSa005", "CSa006", "CSa007", "CSa008"],
 	"CSb": ["CSb000", "CSb001", "CSb002", "CSb003", "CSb004"],
 	"CSc": ["CSc000", "CSc001", "CSc002", "CSc003"],
@@ -11,7 +13,5 @@
 	"CSj": ["CSj000", "CSj001", "CSj002", "CSj003", "CSj004", "CSj005", "CSj006", "CSj007", "CSj008"],
 	"CSk": ["CSk000", "CSk001", "CSk002", "CSk003", "CSk004"],
 	"CSl": ["CSl000", "CSl001", "CSl002", "CSl003", "CSl004", "CSl005", "CSl006"],
-	"CSm": ["CSm000"],
-	"CLa": ["CLa000", "CLa001", "CLa002", "CLa003", "CLa004", "CLa005", "CLa006", "CLa007", "CLa008", "CLa009", "CLa010", "CLa011", "CLa012", "CLa013", "CLa014", "CLa015", "CLa016", "CLa017", "CLa018", "CLa019", "CLa020", "CLa021", "CLa022"],
-	"CHa": ["CHa000", "CHa001", "CHa002", "CHa003", "CHa004", "CHa005", "CHa006", "CHa007", "CHa008", "CHa009", "CHa010", "CHa011", "CHa012", "CHa013", "CHa014"]
+	"CSm": ["CSm000"]
 }

@@ -1,4 +1,5 @@
 {
+	"GLa": ["GLa000", "GLa001", "GLa002", "GLa003", "GLa004", "GLa005", "GLa006", "GLa007", "GLa008", "GLa009", "GLa010", "GLa011"],
 	"GSa": ["GSa000", "GSa001", "GSa002", "GSa003", "GSa004", "GSa005", "GSa006", "GSa007"],
 	"GSb": ["GSb000", "GSb001", "GSb002", "GSb003"],
 	"GSc": ["GSc000", "GSc001", "GSc002", "GSc003", "GSc004"],
@@ -13,6 +14,5 @@
 	"GSl": ["GSl000", "GSl001", "GSl002", "GSl003"],
 	"GSm": ["GSm000"],
 	"GSn": ["GSn000"],
-	"GSo": ["GSo000"],
-	"GLa": ["GLa000", "GLa001", "GLa002", "GLa003", "GLa004", "GLa005", "GLa006", "GLa007", "GLa008", "GLa009", "GLa010", "GLa011"]
+	"GSo": ["GSo000"]
 }

@@ -1,0 +1,10 @@
+# Save round-trip: an unedited map saves to a project (.json plus a
+# sibling folder holding the synthetic pack's assets, when it came from a WRL)
+# and stays clean. Baked WRL output is `export`, not `save` (WRL is
+# export-only after the document-model convergence).
+# Run: cargo run -- --script scripts/save-roundtrip.script --headless
+
+assert-dirty false
+save temp/roundtrip.json
+assert-dirty false
+export temp/roundtrip.wrl

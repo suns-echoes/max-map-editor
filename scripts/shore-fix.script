@@ -1,0 +1,220 @@
+# Fix-shore (`shore fix`): a SEPARATE, deliberate pass that
+# re-tiles existing shore to close the discontinuities the single-pass
+# loop-walk leaves on a steep coast. It is never auto-chained onto the
+# auto passes, and is hard-bounded, so it can never make editing hang.
+# Run: cargo run -- --script scripts/shore-fix.script --headless
+
+new 24 18 GREEN 3
+tile GLa000
+
+# A steep sine coast (land below the wave).
+stroke begin
+paint 0 9
+paint 0 10
+paint 0 11
+paint 0 12
+paint 0 13
+paint 0 14
+paint 0 15
+paint 0 16
+paint 0 17
+paint 1 11
+paint 1 12
+paint 1 13
+paint 1 14
+paint 1 15
+paint 1 16
+paint 1 17
+paint 2 13
+paint 2 14
+paint 2 15
+paint 2 16
+paint 2 17
+paint 3 15
+paint 3 16
+paint 3 17
+paint 4 15
+paint 4 16
+paint 4 17
+paint 5 14
+paint 5 15
+paint 5 16
+paint 5 17
+paint 6 13
+paint 6 14
+paint 6 15
+paint 6 16
+paint 6 17
+paint 7 11
+paint 7 12
+paint 7 13
+paint 7 14
+paint 7 15
+paint 7 16
+paint 7 17
+paint 8 9
+paint 8 10
+paint 8 11
+paint 8 12
+paint 8 13
+paint 8 14
+paint 8 15
+paint 8 16
+paint 8 17
+paint 9 6
+paint 9 7
+paint 9 8
+paint 9 9
+paint 9 10
+paint 9 11
+paint 9 12
+paint 9 13
+paint 9 14
+paint 9 15
+paint 9 16
+paint 9 17
+paint 10 4
+paint 10 5
+paint 10 6
+paint 10 7
+paint 10 8
+paint 10 9
+paint 10 10
+paint 10 11
+paint 10 12
+paint 10 13
+paint 10 14
+paint 10 15
+paint 10 16
+paint 10 17
+paint 11 3
+paint 11 4
+paint 11 5
+paint 11 6
+paint 11 7
+paint 11 8
+paint 11 9
+paint 11 10
+paint 11 11
+paint 11 12
+paint 11 13
+paint 11 14
+paint 11 15
+paint 11 16
+paint 11 17
+paint 12 3
+paint 12 4
+paint 12 5
+paint 12 6
+paint 12 7
+paint 12 8
+paint 12 9
+paint 12 10
+paint 12 11
+paint 12 12
+paint 12 13
+paint 12 14
+paint 12 15
+paint 12 16
+paint 12 17
+paint 13 4
+paint 13 5
+paint 13 6
+paint 13 7
+paint 13 8
+paint 13 9
+paint 13 10
+paint 13 11
+paint 13 12
+paint 13 13
+paint 13 14
+paint 13 15
+paint 13 16
+paint 13 17
+paint 14 5
+paint 14 6
+paint 14 7
+paint 14 8
+paint 14 9
+paint 14 10
+paint 14 11
+paint 14 12
+paint 14 13
+paint 14 14
+paint 14 15
+paint 14 16
+paint 14 17
+paint 15 7
+paint 15 8
+paint 15 9
+paint 15 10
+paint 15 11
+paint 15 12
+paint 15 13
+paint 15 14
+paint 15 15
+paint 15 16
+paint 15 17
+paint 16 10
+paint 16 11
+paint 16 12
+paint 16 13
+paint 16 14
+paint 16 15
+paint 16 16
+paint 16 17
+paint 17 12
+paint 17 13
+paint 17 14
+paint 17 15
+paint 17 16
+paint 17 17
+paint 18 14
+paint 18 15
+paint 18 16
+paint 18 17
+paint 19 15
+paint 19 16
+paint 19 17
+paint 20 15
+paint 20 16
+paint 20 17
+paint 21 14
+paint 21 15
+paint 21 16
+paint 21 17
+paint 22 13
+paint 22 14
+paint 22 15
+paint 22 16
+paint 22 17
+paint 23 10
+paint 23 11
+paint 23 12
+paint 23 13
+paint 23 14
+paint 23 15
+paint 23 16
+paint 23 17
+stroke end
+
+# The loop-walk shores it but strands a couple of broken seams at the
+# steep folds (it does not auto-repair).
+shore alt
+assert-hash 0xa2d8591ec59b8095
+
+# `shore fix` re-tiles the broken windows and closes them.
+shore fix
+assert-hash 0xb87dff37db49fc01
+
+# Idempotent: a clean coast has nothing to fix.
+shore fix
+assert-hash 0xb87dff37db49fc01
+
+# One undo unit: back to the broken state.
+undo
+assert-hash 0xa2d8591ec59b8095
+redo
+assert-hash 0xb87dff37db49fc01
+
+screenshot temp/shore-fix.png

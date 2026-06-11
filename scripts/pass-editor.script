@@ -1,0 +1,30 @@
+# Pass Table Editor: switch to pass mode (the pass
+# overlay turns on so painting is visible), then paint per-cell pass values.
+# Overrides are document state — they change the hash, undo as one stroke,
+# and persist in the project JSON / flow into the WRL bake.
+# Run: cargo run -- --script scripts/pass-editor.script --headless
+
+new 16 16 GREEN 3
+assert-hash 0x44d7aa44685c4439
+
+mode pass
+fit
+
+# Paint a few pass values (block / shore / land) over the water map.
+stroke begin
+pass-paint 5 5 3
+pass-paint 6 5 3
+pass-paint 7 5 2
+pass-paint 5 6 0
+stroke end
+assert-hash 0x1a096012bf860953
+screenshot temp/pass-editor.png
+
+# One undo unit: the whole drag reverts.
+undo
+assert-hash 0x44d7aa44685c4439
+redo
+assert-hash 0x1a096012bf860953
+
+# Back to tile painting.
+mode map

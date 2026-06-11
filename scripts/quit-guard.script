@@ -1,0 +1,10 @@
+# test: fail
+# Quit guard: quitting with unsaved changes in any open tab must FAIL
+# (exit 1) without the bang. (Closing projects no longer fails — closing the
+# last one leaves a blank canvas, and closing a dirty tab opens a
+# Save/Discard/Cancel modal a script can't drive; that path has a unit test.)
+# Run: cargo run -- --script scripts/quit-guard.script --headless
+# Expected: exit code 1 with "unsaved changes".
+
+set-tile 0 0 128   # dirty the active tab
+quit               # no bang — refused

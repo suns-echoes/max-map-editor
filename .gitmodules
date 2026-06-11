@@ -1,3 +1,0 @@
-[submodule "front/modules/reactive"]
-	path = front/modules/reactive
-	url = ssh://192.168.89.1/git_repo/aneta/reactive.git

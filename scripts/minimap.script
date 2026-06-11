@@ -1,0 +1,23 @@
+# Interactive minimap: three sources + the view rectangle.
+# Run: cargo run -- --script scripts/minimap.script --headless
+
+open! resources/templates/GREEN_1.json
+
+# Zoom in so the view rectangle is visibly smaller than the map.
+zoom-to 0.5
+pan-to 40 40
+screenshot temp/minimap-overworld.png
+
+minimap pass
+screenshot temp/minimap-pass.png
+
+minimap minimap
+screenshot temp/minimap-ingame.png
+
+# Works for flat WRL docs too (pass from the passtab, stored minimap bytes).
+open! testdata/originals/SNOW_1.WRL
+minimap pass
+zoom-to 0.5
+screenshot temp/minimap-wrl-pass.png
+
+minimap overworld

@@ -1,1 +1,104 @@
-{}
+{
+	"SCa": {
+		"type": "OBSTRUCTION"
+	},
+	"SLa": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": true
+	},
+	"SLb": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": "invert"
+	},
+	"SLc": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": "invert"
+	},
+	"SMa": {
+		"type": "OBSTRUCTION"
+	},
+	"SMb": {
+		"type": "OBSTRUCTION"
+	},
+	"SMc": {
+		"type": "OBSTRUCTION"
+	},
+	"SMd": {
+		"type": "OBSTRUCTION"
+	},
+	"SSa": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSb": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSc": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSd": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSe": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSf": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSg": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSh": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSi": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSj": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSk": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	},
+	"SSl": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true
+	}
+}

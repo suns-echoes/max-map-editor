@@ -1,7 +1,7 @@
 # Pass Editor Actions
 
 
-## ⬛ Toggle the passage overlay
+## ✅ Toggle the passage overlay
 
 **AS A** Dealer in Worlds
 **I WANT TO** enable the passage overlay

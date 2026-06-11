@@ -1,0 +1,30 @@
+# Pass overlay: tint each cell by its pass value (land green, water
+# blue, shore yellow, blocked red), grayscaling the tile first so very dark
+# tiles stay visible — matching simple-wrl-editor. A view-only toggle; the
+# document hash never changes.
+# Run: cargo run -- --script scripts/pass-overlay.script --headless
+
+new 24 24 GREEN 7
+tile GLa000
+stroke begin
+paint 8 8
+paint 9 8
+paint 10 8
+paint 8 9
+paint 9 9
+paint 10 9
+paint 8 10
+paint 9 10
+paint 10 10
+stroke end
+shore
+assert-hash 0x2505cb1feba69ca3
+
+fit
+pass-overlay on
+assert-hash 0x2505cb1feba69ca3
+screenshot temp/pass-overlay.png
+pass-overlay off
+assert-hash 0x2505cb1feba69ca3
+pass-overlay toggle
+assert-hash 0x2505cb1feba69ca3

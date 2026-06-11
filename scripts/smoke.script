@@ -1,0 +1,32 @@
+# Core smoke test: edit → verify → undo-back → verify.
+# Run: cargo run -- --script scripts/smoke.script --headless
+# The two `hash` prints before editing and after undoing must be identical.
+
+assert-dirty false
+hash                          # (1) pristine document
+
+zoom-to 1
+pan-to 7 7
+screenshot temp/smoke-before.png
+
+# Paint a 3×2 block of tile 128 into the ocean corner.
+set-tile 6 6 128
+set-tile 7 6 128
+set-tile 8 6 128
+set-tile 6 7 128
+set-tile 7 7 128
+set-tile 8 7 128
+assert-tile 7 7 128
+assert-dirty true
+hash                          # (2) edited document
+screenshot temp/smoke-after.png
+
+# Unwind the six edits.
+undo
+undo
+undo
+undo
+undo
+undo
+hash                          # (3) must equal (1)
+screenshot temp/smoke-undone.png
