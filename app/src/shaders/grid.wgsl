@@ -2,7 +2,7 @@
 // after the map (so it works for any render path and sits on top of the pass
 // overlay). World is in pixels with 64px tiles, matching the map shaders.
 //
-// Look: each cell reads as a raised tile — a light inner edge on its top/left
+// Look: each cell reads as a raised tile - a light inner edge on its top/left
 // and a dark inner edge on its bottom/right. Because every boundary always
 // pairs a light band with a dark band, the grid stays visible over any
 // terrain color (one of the two tones always contrasts).
@@ -11,7 +11,7 @@
 // clamped to >= 1px, so lines can never fall between pixel centers and
 // vanish at unlucky zoom levels (the old single-line test did exactly that).
 // The only intentional fade-out is when cells get smaller than ~6px on
-// screen — below that a grid is noise, and it fades smoothly, never pops.
+// screen - below that a grid is noise, and it fades smoothly, never pops.
 
 struct U {
 	screen_size: vec2<f32>,

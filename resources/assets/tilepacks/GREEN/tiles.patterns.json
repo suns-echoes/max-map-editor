@@ -1,0 +1,14209 @@
+[
+	{
+		"name": "GLb 1",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb003",
+				"GLb002"
+			]
+		]
+	},
+	{
+		"name": "GLb 2",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb004",
+				"GLb002"
+			]
+		]
+	},
+	{
+		"name": "GLb 3",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb007",
+				"GLb008"
+			]
+		]
+	},
+	{
+		"name": "GLb 4",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb008",
+				"GLb007"
+			]
+		]
+	},
+	{
+		"name": "GLb 5",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb012",
+				"GLb011"
+			]
+		]
+	},
+	{
+		"name": "GLb 6",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb015",
+				"GLb017"
+			]
+		]
+	},
+	{
+		"name": "GLb 7",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb016",
+				"GLb017"
+			]
+		]
+	},
+	{
+		"name": "GLb 8",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb018",
+				"GLb019"
+			]
+		]
+	},
+	{
+		"name": "GLb 9",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb020",
+				"GLb021"
+			]
+		]
+	},
+	{
+		"name": "GLb 10",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb022"
+			],
+			[
+				"GLb026"
+			]
+		]
+	},
+	{
+		"name": "GLb 11",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb026"
+			],
+			[
+				"GLb004"
+			]
+		]
+	},
+	{
+		"name": "GLb 12",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb026"
+			],
+			[
+				"GLb007"
+			]
+		]
+	},
+	{
+		"name": "GLb 13",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GLb027",
+				"GLb028"
+			]
+		]
+	},
+	{
+		"name": "GLb 14",
+		"width": 1,
+		"height": 3,
+		"pattern": [
+			[
+				"GLb022"
+			],
+			[
+				"GLb024"
+			],
+			[
+				"GLb004"
+			]
+		]
+	},
+	{
+		"name": "GLb 15",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb026"
+			],
+			[
+				"GLb007",
+				"GLb008"
+			]
+		]
+	},
+	{
+		"name": "GLb 16",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb022"
+			],
+			[
+				"GLb026",
+				"GLb024"
+			]
+		]
+	},
+	{
+		"name": "GLb 17",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb005",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 18",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb004",
+				null
+			],
+			[
+				null,
+				"GLb008"
+			]
+		]
+	},
+	{
+		"name": "GLb 19",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb004",
+				"GLb007"
+			],
+			[
+				null,
+				"GLb026"
+			]
+		]
+	},
+	{
+		"name": "GLb 20",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb008",
+				null
+			],
+			[
+				null,
+				"GLb015"
+			]
+		]
+	},
+	{
+		"name": "GLb 21",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb013",
+				"GLb014"
+			]
+		]
+	},
+	{
+		"name": "GLb 22",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb020",
+				"GLb021"
+			],
+			[
+				null,
+				"GLb007"
+			]
+		]
+	},
+	{
+		"name": "GLb 23",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb020",
+				"GLb021"
+			],
+			[
+				null,
+				"GLb008"
+			]
+		]
+	},
+	{
+		"name": "GLb 24",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb020",
+				"GLb021"
+			],
+			[
+				"GLb026",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 25",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb022",
+				"GLb011"
+			],
+			[
+				"GLb024",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 26",
+		"width": 1,
+		"height": 4,
+		"pattern": [
+			[
+				"GLb022"
+			],
+			[
+				"GLb024"
+			],
+			[
+				"GLb008"
+			],
+			[
+				"GLb012"
+			]
+		]
+	},
+	{
+		"name": "GLb 27",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb023",
+				"GLb025"
+			],
+			[
+				"GLb024",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 28",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb015"
+			],
+			[
+				"GLb016",
+				"GLb017",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 29",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb007"
+			],
+			[
+				"GLb020",
+				"GLb021"
+			],
+			[
+				"GLb015",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 30",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb016",
+				"GLb017"
+			],
+			[
+				"GLb020",
+				"GLb021",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 31",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb017",
+				null
+			],
+			[
+				"GLb000",
+				"GLb001",
+				"GLb002"
+			]
+		]
+	},
+	{
+		"name": "GLb 32",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb018",
+				"GLb019"
+			],
+			[
+				"GLb023",
+				"GLb025",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 33",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb020",
+				"GLb021"
+			],
+			[
+				"GLb016",
+				"GLb017",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 34",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb020",
+				"GLb021"
+			],
+			[
+				"GLb022",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 35",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb020",
+				"GLb021"
+			],
+			[
+				"GLb026",
+				"GLb022",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 36",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb027",
+				"GLb028"
+			],
+			[
+				"GLb018",
+				"GLb019",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 37",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				null,
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 38",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 39",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb001",
+				"GLb017"
+			],
+			[
+				null,
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 40",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb001",
+				"GLb017"
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 41",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb004",
+				"GLb017",
+				null
+			],
+			[
+				null,
+				null,
+				"GLb015"
+			]
+		]
+	},
+	{
+		"name": "GLb 42",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 43",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb020",
+				"GLb021",
+				null
+			],
+			[
+				null,
+				null,
+				"GLb022"
+			]
+		]
+	},
+	{
+		"name": "GLb 44",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb020",
+				"GLb021",
+				null
+			],
+			[
+				null,
+				"GLb016",
+				"GLb017"
+			]
+		]
+	},
+	{
+		"name": "GLb 45",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb001",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb020",
+				"GLb021",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 46",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb013",
+				"GLb014"
+			]
+		]
+	},
+	{
+		"name": "GLb 47",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 48",
+		"width": 2,
+		"height": 4,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb022"
+			],
+			[
+				"GLb026",
+				"GLb024"
+			],
+			[
+				"GLb007",
+				null
+			],
+			[
+				null,
+				"GLb007"
+			]
+		]
+	},
+	{
+		"name": "GLb 49",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 50",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb007"
+			],
+			[
+				"GLb000",
+				"GLb022",
+				"GLb011"
+			],
+			[
+				null,
+				null,
+				"GLb026"
+			]
+		]
+	},
+	{
+		"name": "GLb 51",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb007",
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 52",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				"GLb001",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb005",
+				"GLb022",
+				"GLb014"
+			],
+			[
+				null,
+				"GLb000",
+				"GLb017"
+			]
+		]
+	},
+	{
+		"name": "GLb 53",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				"GLb026",
+				null,
+				null
+			],
+			[
+				"GLb000",
+				"GLb001",
+				"GLb011"
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 54",
+		"width": 5,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb004",
+				"GLb002",
+				null,
+				null,
+				"GLb015"
+			],
+			[
+				null,
+				null,
+				"GLb016",
+				"GLb017",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 55",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb015"
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 56",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb015"
+			],
+			[
+				null,
+				"GLb016",
+				"GLb017",
+				null
+			],
+			[
+				"GLb015",
+				"GLb017",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 57",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb026"
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 58",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb015",
+				null
+			],
+			[
+				"GLb000",
+				"GLb003",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb007",
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 59",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb026"
+			],
+			[
+				"GLb000",
+				"GLb022",
+				"GLb007"
+			],
+			[
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 60",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb000",
+				"GLb006",
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 61",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GLb007",
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			],
+			[
+				null,
+				null,
+				"GLb008"
+			]
+		]
+	},
+	{
+		"name": "GLb 62",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GLb007",
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			],
+			[
+				null,
+				"GLb026",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 63",
+		"width": 6,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb007",
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb015",
+				null,
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 64",
+		"width": 6,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				null,
+				null
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null,
+				"GLb018",
+				"GLb019"
+			]
+		]
+	},
+	{
+		"name": "GLb 65",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			],
+			[
+				null,
+				"GLb015",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 66",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb016",
+				"GLb017",
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb001",
+				"GLb015"
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 67",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb026",
+				null,
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				null,
+				null
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 68",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb026",
+				null,
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 69",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb032",
+				"GLb033",
+				null
+			],
+			[
+				"GLb018",
+				"GLb019",
+				"GLb023",
+				"GLb025"
+			],
+			[
+				"GLb027",
+				"GLb028",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 70",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb022",
+				null,
+				null
+			],
+			[
+				null,
+				"GLb005",
+				"GLb006",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb007"
+			]
+		]
+	},
+	{
+		"name": "GLb 71",
+		"width": 6,
+		"height": 2,
+		"pattern": [
+			[
+				"GLb001",
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				"GLb016",
+				"GLb017"
+			],
+			[
+				"GLb026",
+				"GLb005",
+				"GLb006",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 72",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				"GLb001",
+				"GLb010",
+				null
+			],
+			[
+				"GLb005",
+				"GLb022",
+				"GLb002"
+			],
+			[
+				null,
+				"GLb000",
+				null
+			],
+			[
+				"GLb018",
+				"GLb019",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 73",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				"GLb007"
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb026"
+			]
+		]
+	},
+	{
+		"name": "GLb 74",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb016",
+				"GLb001",
+				"GLb015"
+			],
+			[
+				"GLb010",
+				"GLb011",
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			],
+			[
+				"GLb014",
+				null,
+				null,
+				null,
+				"GLb008"
+			]
+		]
+	},
+	{
+		"name": "GLb 75",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb000",
+				"GLb007",
+				null,
+				null
+			],
+			[
+				"GLb009",
+				"GLb010",
+				"GLb001",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb013",
+				"GLb014",
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 76",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb001",
+				"GLb002",
+				null,
+				null
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				"GLb004",
+				"GLb008"
+			],
+			[
+				null,
+				null,
+				"GLb016",
+				"GLb017",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 77",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null,
+				null
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				"GLb022",
+				"GLb007"
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb024",
+				"GLb026"
+			]
+		]
+	},
+	{
+		"name": "GLb 78",
+		"width": 3,
+		"height": 5,
+		"pattern": [
+			[
+				"GLb016",
+				"GLb017",
+				null
+			],
+			[
+				null,
+				"GLb026",
+				null
+			],
+			[
+				null,
+				"GLb008",
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 79",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb007"
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				null,
+				"GLb013",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb000",
+				"GLb022",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 80",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb007"
+			],
+			[
+				null,
+				"GLb016",
+				"GLb017",
+				null
+			],
+			[
+				"GLb022",
+				"GLb015",
+				null,
+				null
+			],
+			[
+				"GLb026",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 81",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb017"
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				"GLb007"
+			],
+			[
+				"GLb015",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 82",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb026"
+			],
+			[
+				"GLb008",
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				"GLb004"
+			],
+			[
+				"GLb007",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 83",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb020",
+				"GLb021"
+			],
+			[
+				null,
+				"GLb016",
+				"GLb017",
+				"GLb015"
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb027",
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 84",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GLb015",
+				null,
+				null
+			],
+			[
+				null,
+				"GLb022",
+				"GLb011",
+				null
+			],
+			[
+				"GLb004",
+				"GLb026",
+				"GLb001",
+				"GLb007"
+			],
+			[
+				null,
+				"GLb016",
+				"GLb015",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 85",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb022",
+				"GLb011",
+				null
+			],
+			[
+				null,
+				null,
+				"GLb007",
+				null
+			],
+			[
+				"GLb020",
+				"GLb021",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 86",
+		"width": 6,
+		"height": 3,
+		"pattern": [
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GLb005",
+				"GLb006",
+				"GLb007",
+				"GLb008",
+				"GLb002"
+			],
+			[
+				null,
+				null,
+				"GLb015",
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLb 87",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GLb007"
+			],
+			[
+				null,
+				null,
+				"GLb000",
+				"GLb022",
+				"GLb011"
+			],
+			[
+				"GLb015",
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				"GLb026"
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 88",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GLb026"
+			],
+			[
+				null,
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				null,
+				"GLb016",
+				"GLb013",
+				"GLb014",
+				null
+			],
+			[
+				"GLb015",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 89",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb007",
+				null
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				"GLb015"
+			],
+			[
+				null,
+				"GLb013",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				"GLb000",
+				"GLb022",
+				"GLb005",
+				"GLb006",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 90",
+		"width": 4,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb007"
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				null,
+				"GLb013",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				"GLb000",
+				"GLb022",
+				"GLb005",
+				"GLb006"
+			],
+			[
+				"GLb015",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 91",
+		"width": 4,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb016"
+			],
+			[
+				null,
+				null,
+				"GLb018",
+				"GLb019"
+			],
+			[
+				null,
+				"GLb023",
+				"GLb025",
+				null
+			],
+			[
+				"GLb004",
+				"GLb008",
+				null,
+				null
+			],
+			[
+				null,
+				"GLb024",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 92",
+		"width": 4,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb016",
+				"GLb017"
+			],
+			[
+				null,
+				null,
+				"GLb018",
+				"GLb019"
+			],
+			[
+				null,
+				"GLb023",
+				"GLb028",
+				null
+			],
+			[
+				"GLb004",
+				"GLb008",
+				null,
+				null
+			],
+			[
+				null,
+				"GLb024",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 93",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb016",
+				"GLb022",
+				"GLb017"
+			],
+			[
+				null,
+				null,
+				"GLb026",
+				"GLb024",
+				"GLb004"
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null,
+				null
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 94",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GLb008",
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb015",
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				"GLb007"
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb020",
+				"GLb021"
+			],
+			[
+				null,
+				null,
+				"GLb016",
+				"GLb017",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 95",
+		"width": 4,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			],
+			[
+				"GLb000",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				null,
+				"GLb005",
+				"GLb006",
+				null
+			],
+			[
+				null,
+				"GLb004",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 96",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				"GLb020",
+				"GLb021",
+				"GLb015",
+				null,
+				null
+			],
+			[
+				"GLb022",
+				"GLb007",
+				"GLb014",
+				null,
+				null
+			],
+			[
+				"GLb024",
+				"GLb008",
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				null,
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 97",
+		"width": 7,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GLb016",
+				"GLb017",
+				null,
+				"GLb022",
+				"GLb011",
+				null
+			],
+			[
+				"GLb020",
+				"GLb021",
+				null,
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				"GLb000"
+			]
+		]
+	},
+	{
+		"name": "GLb 98",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				null,
+				null,
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			],
+			[
+				"GLb000",
+				"GLb001",
+				"GLb015",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GLb005",
+				"GLb006",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 99",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GLb000",
+				"GLb003",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				null,
+				"GLb007",
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			],
+			[
+				"GLb015",
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				null,
+				null
+			],
+			[
+				null,
+				"GLb013",
+				"GLb014",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 100",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb016",
+				"GLb017"
+			],
+			[
+				null,
+				null,
+				"GLb018",
+				"GLb019",
+				null
+			],
+			[
+				null,
+				"GLb023",
+				"GLb025",
+				null,
+				null
+			],
+			[
+				"GLb004",
+				"GLb008",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GLb024",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 101",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb020",
+				"GLb021"
+			],
+			[
+				null,
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				"GLb015"
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				null
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				null
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb016",
+				"GLb017",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 102",
+		"width": 6,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GLb010",
+				"GLb011",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb003",
+				"GLb001",
+				"GLb007"
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				"GLb007",
+				null
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				"GLb015",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 103",
+		"width": 5,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				"GLb015",
+				null,
+				null,
+				null
+			],
+			[
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				"GLb000",
+				null
+			],
+			[
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				"GLb022",
+				"GLb011"
+			],
+			[
+				null,
+				null,
+				"GLb026",
+				"GLb007",
+				null
+			],
+			[
+				null,
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				null,
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 104",
+		"width": 5,
+		"height": 6,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb022",
+				"GLb011",
+				null,
+				null
+			],
+			[
+				"GLb017",
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				"GLb017"
+			],
+			[
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				"GLb007"
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb015",
+				null
+			],
+			[
+				null,
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011"
+			],
+			[
+				null,
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 105",
+		"width": 7,
+		"height": 5,
+		"pattern": [
+			[
+				"GLb000",
+				"GLb022",
+				null,
+				"GLb003",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				"GLb026",
+				"GLb024",
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				"GLb015"
+			],
+			[
+				null,
+				"GLb008",
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				"GLb007",
+				null
+			],
+			[
+				null,
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				null,
+				"GLb020",
+				"GLb021"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GLb016",
+				"GLb017",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 106",
+		"width": 8,
+		"height": 9,
+		"pattern": [
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GLb012",
+				"GLb013",
+				"GLb014",
+				"GLb016",
+				"GLb017",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GLb020",
+				"GLb021",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb026",
+				"GLb022",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb024",
+				"GLb008",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GLb006",
+				"GLb017",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GLb000",
+				"GLb001",
+				"GLb002",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006",
+				"GLb017"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GLb026",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLb 107",
+		"width": 12,
+		"height": 8,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GLb007",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GLb007",
+				"GLb022",
+				"GLb010",
+				"GLb013",
+				"GLb001",
+				"GLb002",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GLb009",
+				"GLb010",
+				"GLb011",
+				null,
+				"GLb000",
+				"GLb022",
+				"GLb005",
+				"GLb006",
+				"GLb016",
+				"GLb017",
+				null
+			],
+			[
+				null,
+				"GLb013",
+				"GLb001",
+				"GLb002",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GLb026",
+				null
+			],
+			[
+				"GLb000",
+				"GLb022",
+				"GLb005",
+				"GLb006",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GLb008",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GLb003",
+				"GLb001",
+				"GLb002"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GLb004",
+				"GLb005",
+				"GLb006"
+			]
+		]
+	},
+	{
+		"name": "GLc 1",
+		"width": 3,
+		"height": 1,
+		"pattern": [
+			[
+				"GLc000",
+				"GLc001",
+				"GLc002"
+			]
+		]
+	},
+	{
+		"name": "GLc 2",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				"GLc013",
+				"GLc014"
+			],
+			[
+				"GLc015",
+				"GLc016"
+			],
+			[
+				"GLc017",
+				"GLc010"
+			]
+		]
+	},
+	{
+		"name": "GLc 3",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				"GLc000",
+				"GLc002",
+				null
+			],
+			[
+				"GLc003",
+				"GLc005",
+				"GLc018"
+			],
+			[
+				"GLc007",
+				"GLc008",
+				"GLc019"
+			],
+			[
+				null,
+				"GLc011",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLc 4",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				"GLc000",
+				"GLc001",
+				"GLc002",
+				null
+			],
+			[
+				"GLc003",
+				"GLc004",
+				"GLc005",
+				"GLc006"
+			],
+			[
+				"GLc007",
+				"GLc008",
+				"GLc009",
+				"GLc010"
+			],
+			[
+				null,
+				"GLc011",
+				"GLc012",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLc 5",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				"GLc000",
+				"GLc001",
+				"GLc002",
+				null
+			],
+			[
+				"GLc003",
+				"GLc004",
+				"GLc005",
+				"GLc006"
+			],
+			[
+				"GLc007",
+				"GLc008",
+				"GLc009",
+				"GLc019"
+			],
+			[
+				null,
+				"GLc011",
+				"GLc012",
+				null
+			]
+		]
+	},
+	{
+		"name": "GLc 6",
+		"width": 5,
+		"height": 6,
+		"pattern": [
+			[
+				"GLc013",
+				"GLc014",
+				null,
+				null,
+				null
+			],
+			[
+				"GLc015",
+				"GLc016",
+				null,
+				null,
+				null
+			],
+			[
+				"GLc017",
+				"GLc010",
+				"GLc000",
+				"GLc002",
+				null
+			],
+			[
+				null,
+				null,
+				"GLc003",
+				"GLc005",
+				"GLc018"
+			],
+			[
+				null,
+				null,
+				"GLc007",
+				"GLc008",
+				"GLc019"
+			],
+			[
+				null,
+				null,
+				null,
+				"GLc011",
+				"GLc012"
+			]
+		]
+	},
+	{
+		"name": "GMa 1",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035"
+			],
+			[
+				"GMa037"
+			]
+		]
+	},
+	{
+		"name": "GMa 2",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GMa037",
+				"GMa035"
+			]
+		]
+	},
+	{
+		"name": "GMa 3",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GMa063",
+				"GMa064"
+			]
+		]
+	},
+	{
+		"name": "GMa 4",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GMa105",
+				"GMa106"
+			]
+		]
+	},
+	{
+		"name": "GMa 5",
+		"width": 1,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa121"
+			],
+			[
+				"GMa036"
+			]
+		]
+	},
+	{
+		"name": "GMa 6",
+		"width": 1,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa000"
+			],
+			[
+				"GMa001"
+			],
+			[
+				"GMa003"
+			]
+		]
+	},
+	{
+		"name": "GMa 7",
+		"width": 1,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa005"
+			],
+			[
+				"GMa007"
+			],
+			[
+				"GMa024"
+			]
+		]
+	},
+	{
+		"name": "GMa 8",
+		"width": 3,
+		"height": 1,
+		"pattern": [
+			[
+				"GMa105",
+				"GMa106",
+				"GMa121"
+			]
+		]
+	},
+	{
+		"name": "GMa 9",
+		"width": 1,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa111"
+			],
+			[
+				"GMa110"
+			],
+			[
+				"GMa036"
+			]
+		]
+	},
+	{
+		"name": "GMa 10",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GMa036"
+			],
+			[
+				"GMa035",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 11",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GMa037"
+			],
+			[
+				"GMa036",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 12",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GMa102"
+			],
+			[
+				"GMa103",
+				"GMa104"
+			]
+		]
+	},
+	{
+		"name": "GMa 13",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GMa152"
+			],
+			[
+				"GMa105",
+				"GMa106"
+			]
+		]
+	},
+	{
+		"name": "GMa 14",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa033",
+				"GMa034"
+			],
+			[
+				null,
+				"GMa037"
+			]
+		]
+	},
+	{
+		"name": "GMa 15",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035",
+				null
+			],
+			[
+				null,
+				"GMa037"
+			]
+		]
+	},
+	{
+		"name": "GMa 16",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035",
+				null
+			],
+			[
+				null,
+				"GMa121"
+			]
+		]
+	},
+	{
+		"name": "GMa 17",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035",
+				"GMa102"
+			],
+			[
+				"GMa103",
+				"GMa104"
+			]
+		]
+	},
+	{
+		"name": "GMa 18",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa037",
+				null
+			],
+			[
+				null,
+				"GMa035"
+			]
+		]
+	},
+	{
+		"name": "GMa 19",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa037",
+				null
+			],
+			[
+				null,
+				"GMa036"
+			]
+		]
+	},
+	{
+		"name": "GMa 20",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa056",
+				"GMa036"
+			],
+			[
+				"GMa063",
+				"GMa064"
+			]
+		]
+	},
+	{
+		"name": "GMa 21",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa063",
+				"GMa064"
+			],
+			[
+				"GMa035",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 22",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa063",
+				"GMa064"
+			],
+			[
+				"GMa083",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 23",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa082",
+				"GMa083"
+			],
+			[
+				"GMa122",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 24",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa100",
+				"GMa101"
+			],
+			[
+				"GMa110",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 25",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa111",
+				"GMa112"
+			],
+			[
+				"GMa110",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 26",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa113",
+				"GMa114"
+			],
+			[
+				"GMa120",
+				"GMa115"
+			]
+		]
+	},
+	{
+		"name": "GMa 27",
+		"width": 1,
+		"height": 5,
+		"pattern": [
+			[
+				"GMa102"
+			],
+			[
+				"GMa104"
+			],
+			[
+				"GMa106"
+			],
+			[
+				"GMa029"
+			],
+			[
+				"GMa032"
+			]
+		]
+	},
+	{
+		"name": "GMa 28",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GMa035",
+				"GMa036"
+			],
+			[
+				"GMa037",
+				"GMa121",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 29",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GMa036"
+			],
+			[
+				"GMa082",
+				"GMa083"
+			],
+			[
+				"GMa110",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 30",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GMa037"
+			],
+			[
+				"GMa063",
+				"GMa064"
+			],
+			[
+				"GMa035",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 31",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GMa056"
+			],
+			[
+				"GMa149",
+				"GMa142"
+			],
+			[
+				"GMa150",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 32",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GMa099"
+			],
+			[
+				"GMa111",
+				"GMa112"
+			],
+			[
+				"GMa110",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 33",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GMa111"
+			],
+			[
+				null,
+				"GMa142"
+			],
+			[
+				"GMa121",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 34",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GMa113",
+				"GMa114"
+			],
+			[
+				"GMa121",
+				"GMa120",
+				"GMa115"
+			]
+		]
+	},
+	{
+		"name": "GMa 35",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GMa121"
+			],
+			[
+				"GMa035",
+				"GMa036"
+			],
+			[
+				"GMa037",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 36",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa035",
+				null
+			],
+			[
+				"GMa056",
+				null
+			],
+			[
+				"GMa063",
+				"GMa064"
+			]
+		]
+	},
+	{
+		"name": "GMa 37",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa035",
+				null
+			],
+			[
+				"GMa056",
+				"GMa036"
+			],
+			[
+				"GMa063",
+				"GMa064"
+			]
+		]
+	},
+	{
+		"name": "GMa 38",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035",
+				"GMa111",
+				"GMa112"
+			],
+			[
+				null,
+				"GMa110",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 39",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa037",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa000",
+				"GMa036"
+			]
+		]
+	},
+	{
+		"name": "GMa 40",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa037",
+				null
+			],
+			[
+				"GMa111",
+				"GMa112"
+			],
+			[
+				"GMa110",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 41",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa116",
+				"GMa117",
+				null
+			],
+			[
+				null,
+				"GMa118",
+				"GMa119"
+			]
+		]
+	},
+	{
+		"name": "GMa 42",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa162",
+				"GMa163",
+				"GMa121"
+			],
+			[
+				"GMa120",
+				"GMa115",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 43",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GMa037"
+			],
+			[
+				"GMa027",
+				"GMa028",
+				"GMa029",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 44",
+		"width": 2,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GMa111"
+			],
+			[
+				"GMa121",
+				"GMa122"
+			],
+			[
+				"GMa063",
+				"GMa064"
+			],
+			[
+				"GMa035",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 45",
+		"width": 2,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa000",
+				null
+			],
+			[
+				"GMa001",
+				"GMa002"
+			],
+			[
+				"GMa003",
+				"GMa004"
+			],
+			[
+				null,
+				"GMa006"
+			]
+		]
+	},
+	{
+		"name": "GMa 46",
+		"width": 2,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa000",
+				"GMa036"
+			],
+			[
+				"GMa001",
+				"GMa002"
+			],
+			[
+				"GMa003",
+				"GMa004"
+			],
+			[
+				"GMa035",
+				"GMa006"
+			]
+		]
+	},
+	{
+		"name": "GMa 47",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa116",
+				"GMa117",
+				null,
+				"GMa121"
+			],
+			[
+				null,
+				"GMa118",
+				"GMa119",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 48",
+		"width": 2,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa121",
+				null
+			],
+			[
+				null,
+				"GMa116"
+			],
+			[
+				null,
+				"GMa111"
+			],
+			[
+				null,
+				"GMa110"
+			]
+		]
+	},
+	{
+		"name": "GMa 49",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa121",
+				"GMa116",
+				"GMa117",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa118",
+				"GMa119"
+			]
+		]
+	},
+	{
+		"name": "GMa 50",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GMa035",
+				"GMa036"
+			],
+			[
+				"GMa100",
+				"GMa101",
+				null
+			],
+			[
+				"GMa099",
+				"GMa037",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 51",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa024",
+				"GMa036",
+				null
+			],
+			[
+				null,
+				"GMa082",
+				"GMa083"
+			],
+			[
+				null,
+				"GMa122",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 52",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa109",
+				null,
+				null
+			],
+			[
+				"GMa107",
+				"GMa108",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa121"
+			]
+		]
+	},
+	{
+		"name": "GMa 53",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa111",
+				"GMa112",
+				null
+			],
+			[
+				"GMa110",
+				null,
+				null
+			],
+			[
+				"GMa037",
+				"GMa082",
+				"GMa083"
+			]
+		]
+	},
+	{
+		"name": "GMa 54",
+		"width": 5,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GMa111",
+				"GMa112",
+				"GMa033",
+				"GMa034"
+			],
+			[
+				"GMa121",
+				"GMa122",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 55",
+		"width": 2,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GMa121"
+			],
+			[
+				"GMa126",
+				"GMa127"
+			],
+			[
+				"GMa131",
+				"GMa132"
+			],
+			[
+				"GMa136",
+				"GMa137"
+			],
+			[
+				null,
+				"GMa142"
+			]
+		]
+	},
+	{
+		"name": "GMa 56",
+		"width": 5,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035",
+				null,
+				"GMa063",
+				"GMa064",
+				"GMa036"
+			],
+			[
+				null,
+				"GMa037",
+				"GMa121",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 57",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GMa036"
+			],
+			[
+				null,
+				null,
+				"GMa035",
+				null
+			],
+			[
+				"GMa102",
+				"GMa100",
+				"GMa101",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 58",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa037"
+			],
+			[
+				null,
+				"GMa111",
+				"GMa112"
+			],
+			[
+				"GMa036",
+				"GMa110",
+				"GMa102"
+			],
+			[
+				null,
+				"GMa103",
+				"GMa104"
+			]
+		]
+	},
+	{
+		"name": "GMa 59",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GMa036",
+				null
+			],
+			[
+				"GMa116",
+				"GMa117",
+				null
+			],
+			[
+				null,
+				"GMa118",
+				"GMa119"
+			],
+			[
+				null,
+				"GMa037",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 60",
+		"width": 6,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa010",
+				"GMa153",
+				"GMa012",
+				"GMa111",
+				"GMa112"
+			]
+		]
+	},
+	{
+		"name": "GMa 61",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa056",
+				"GMa037",
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null
+			],
+			[
+				null,
+				"GMa060",
+				"GMa061",
+				"GMa151"
+			]
+		]
+	},
+	{
+		"name": "GMa 62",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null
+			],
+			[
+				null,
+				"GMa060",
+				"GMa061",
+				"GMa062"
+			],
+			[
+				null,
+				"GMa063",
+				"GMa064",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 63",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa058",
+				"GMa059",
+				null,
+				"GMa036"
+			],
+			[
+				"GMa060",
+				"GMa061",
+				"GMa062",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa037",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 64",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa082",
+				"GMa083",
+				null,
+				null
+			],
+			[
+				"GMa122",
+				null,
+				"GMa037",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa035"
+			]
+		]
+	},
+	{
+		"name": "GMa 65",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa111",
+				"GMa112",
+				null
+			],
+			[
+				"GMa110",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa082",
+				"GMa083"
+			],
+			[
+				null,
+				"GMa122",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 66",
+		"width": 7,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035",
+				"GMa036",
+				"GMa109",
+				"GMa116",
+				"GMa117",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa110",
+				null,
+				"GMa118",
+				"GMa119",
+				"GMa121"
+			]
+		]
+	},
+	{
+		"name": "GMa 67",
+		"width": 3,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GMa113",
+				"GMa114"
+			],
+			[
+				"GMa035",
+				"GMa120",
+				"GMa115"
+			],
+			[
+				"GMa116",
+				"GMa117",
+				"GMa121"
+			],
+			[
+				null,
+				"GMa118",
+				"GMa119"
+			],
+			[
+				null,
+				null,
+				"GMa037"
+			]
+		]
+	},
+	{
+		"name": "GMa 68",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa037",
+				"GMa113",
+				"GMa114",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa120",
+				"GMa115",
+				"GMa035",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa121",
+				"GMa036"
+			]
+		]
+	},
+	{
+		"name": "GMa 69",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa035",
+				null
+			],
+			[
+				"GMa037",
+				"GMa105",
+				"GMa106",
+				null
+			],
+			[
+				null,
+				"GMa056",
+				"GMa036",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa121"
+			]
+		]
+	},
+	{
+		"name": "GMa 70",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GMa037",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa056",
+				null,
+				null
+			],
+			[
+				"GMa035",
+				"GMa063",
+				"GMa064",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa036"
+			]
+		]
+	},
+	{
+		"name": "GMa 71",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa000",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa001",
+				"GMa002",
+				null,
+				null
+			],
+			[
+				"GMa003",
+				"GMa004",
+				"GMa005",
+				null
+			],
+			[
+				null,
+				"GMa006",
+				"GMa007",
+				"GMa036"
+			]
+		]
+	},
+	{
+		"name": "GMa 72",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa056",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null
+			],
+			[
+				null,
+				"GMa060",
+				"GMa061",
+				"GMa062"
+			],
+			[
+				null,
+				"GMa063",
+				"GMa064",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 73",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa056",
+				"GMa036",
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null
+			],
+			[
+				"GMa035",
+				"GMa060",
+				"GMa061",
+				"GMa062"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa037"
+			]
+		]
+	},
+	{
+		"name": "GMa 74",
+		"width": 3,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa121"
+			],
+			[
+				null,
+				"GMa035",
+				"GMa036"
+			],
+			[
+				null,
+				"GMa037",
+				null
+			],
+			[
+				"GMa027",
+				"GMa028",
+				"GMa029"
+			],
+			[
+				"GMa030",
+				"GMa031",
+				"GMa032"
+			],
+			[
+				"GMa033",
+				"GMa034",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 75",
+		"width": 9,
+		"height": 2,
+		"pattern": [
+			[
+				"GMa035",
+				"GMa063",
+				"GMa064",
+				"GMa037",
+				"GMa021",
+				"GMa022",
+				"GMa023",
+				"GMa024",
+				"GMa035"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa025",
+				"GMa026",
+				"GMa063",
+				"GMa064"
+			]
+		]
+	},
+	{
+		"name": "GMa 76",
+		"width": 3,
+		"height": 6,
+		"pattern": [
+			[
+				"GMa063",
+				"GMa064",
+				null
+			],
+			[
+				"GMa000",
+				"GMa035",
+				null
+			],
+			[
+				"GMa001",
+				"GMa002",
+				null
+			],
+			[
+				"GMa003",
+				"GMa004",
+				"GMa005"
+			],
+			[
+				null,
+				"GMa006",
+				"GMa007"
+			],
+			[
+				null,
+				"GMa121",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 77",
+		"width": 4,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GMa035",
+				null,
+				null
+			],
+			[
+				"GMa037",
+				"GMa000",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa001",
+				"GMa002",
+				null
+			],
+			[
+				null,
+				"GMa003",
+				"GMa004",
+				"GMa005"
+			],
+			[
+				null,
+				null,
+				"GMa006",
+				"GMa007"
+			]
+		]
+	},
+	{
+		"name": "GMa 78",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GMa084",
+				"GMa085",
+				null,
+				null
+			],
+			[
+				"GMa086",
+				"GMa087",
+				"GMa088",
+				"GMa089",
+				null
+			],
+			[
+				"GMa090",
+				"GMa091",
+				"GMa092",
+				"GMa093",
+				"GMa094"
+			],
+			[
+				"GMa095",
+				"GMa096",
+				"GMa097",
+				"GMa098",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 79",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa000",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa001",
+				"GMa002",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa003",
+				"GMa004",
+				"GMa005",
+				"GMa111",
+				"GMa112"
+			],
+			[
+				"GMa083",
+				"GMa006",
+				"GMa007",
+				"GMa122",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 80",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa056",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null,
+				null
+			],
+			[
+				"GMa036",
+				"GMa060",
+				"GMa061",
+				"GMa151",
+				null
+			],
+			[
+				null,
+				"GMa152",
+				null,
+				null,
+				"GMa037"
+			]
+		]
+	},
+	{
+		"name": "GMa 81",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				null,
+				null
+			],
+			[
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072"
+			],
+			[
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077"
+			],
+			[
+				"GMa121",
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081"
+			]
+		]
+	},
+	{
+		"name": "GMa 82",
+		"width": 2,
+		"height": 10,
+		"pattern": [
+			[
+				"GMa065",
+				"GMa066"
+			],
+			[
+				"GMa068",
+				"GMa069"
+			],
+			[
+				"GMa073",
+				"GMa074"
+			],
+			[
+				"GMa113",
+				"GMa114"
+			],
+			[
+				"GMa120",
+				"GMa115"
+			],
+			[
+				"GMa121",
+				"GMa036"
+			],
+			[
+				null,
+				"GMa149"
+			],
+			[
+				null,
+				"GMa150"
+			],
+			[
+				"GMa037",
+				"GMa035"
+			],
+			[
+				null,
+				"GMa036"
+			]
+		]
+	},
+	{
+		"name": "GMa 83",
+		"width": 7,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa105",
+				"GMa106"
+			],
+			[
+				null,
+				"GMa111",
+				"GMa112",
+				"GMa116",
+				"GMa117",
+				null,
+				null
+			],
+			[
+				"GMa121",
+				"GMa122",
+				null,
+				null,
+				"GMa118",
+				"GMa119",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 84",
+		"width": 2,
+		"height": 11,
+		"pattern": [
+			[
+				null,
+				"GMa037"
+			],
+			[
+				null,
+				"GMa086"
+			],
+			[
+				null,
+				"GMa090"
+			],
+			[
+				null,
+				"GMa095"
+			],
+			[
+				"GMa085",
+				"GMa035"
+			],
+			[
+				"GMa057",
+				"GMa058"
+			],
+			[
+				null,
+				"GMa086"
+			],
+			[
+				null,
+				"GMa078"
+			],
+			[
+				null,
+				"GMa065"
+			],
+			[
+				null,
+				"GMa068"
+			],
+			[
+				null,
+				"GMa073"
+			]
+		]
+	},
+	{
+		"name": "GMa 85",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GMa036",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa035",
+				"GMa060",
+				"GMa061",
+				"GMa062",
+				"GMa105",
+				"GMa106"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa037",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 86",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072"
+			],
+			[
+				null,
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077"
+			],
+			[
+				"GMa082",
+				"GMa083",
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081"
+			],
+			[
+				"GMa122",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 87",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa035",
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				"GMa063",
+				"GMa064"
+			],
+			[
+				"GMa037",
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072"
+			],
+			[
+				"GMa036",
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077"
+			],
+			[
+				null,
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081"
+			]
+		]
+	},
+	{
+		"name": "GMa 88",
+		"width": 4,
+		"height": 6,
+		"pattern": [
+			[
+				"GMa042",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa047",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa052",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa056",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null
+			],
+			[
+				"GMa106",
+				"GMa060",
+				"GMa061",
+				"GMa062"
+			]
+		]
+	},
+	{
+		"name": "GMa 89",
+		"width": 8,
+		"height": 3,
+		"pattern": [
+			[
+				"GMa110",
+				null,
+				null,
+				"GMa090",
+				"GMa091",
+				"GMa092",
+				"GMa093",
+				"GMa094"
+			],
+			[
+				null,
+				"GMa082",
+				"GMa083",
+				"GMa095",
+				"GMa096",
+				"GMa097",
+				"GMa098",
+				null
+			],
+			[
+				null,
+				"GMa122",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 90",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa100",
+				"GMa101",
+				null
+			],
+			[
+				null,
+				"GMa056",
+				"GMa099",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null
+			],
+			[
+				"GMa082",
+				"GMa083",
+				"GMa060",
+				"GMa061",
+				"GMa062"
+			],
+			[
+				"GMa122",
+				"GMa063",
+				"GMa064",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 91",
+		"width": 7,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa082",
+				"GMa083"
+			],
+			[
+				"GMa036",
+				null,
+				null,
+				null,
+				"GMa035",
+				"GMa122",
+				null
+			],
+			[
+				null,
+				"GMa035",
+				null,
+				"GMa037",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa000",
+				"GMa010",
+				"GMa011",
+				"GMa012",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 92",
+		"width": 7,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GMa035",
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				"GMa063",
+				"GMa064"
+			],
+			[
+				null,
+				"GMa037",
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072"
+			],
+			[
+				"GMa121",
+				"GMa036",
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081"
+			]
+		]
+	},
+	{
+		"name": "GMa 93",
+		"width": 4,
+		"height": 7,
+		"pattern": [
+			[
+				"GMa027",
+				"GMa028",
+				"GMa029",
+				null
+			],
+			[
+				"GMa030",
+				"GMa031",
+				"GMa032",
+				null
+			],
+			[
+				"GMa033",
+				"GMa034",
+				"GMa037",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa035",
+				"GMa123"
+			],
+			[
+				null,
+				"GMa126",
+				"GMa127",
+				"GMa128"
+			],
+			[
+				null,
+				"GMa131",
+				"GMa132",
+				"GMa133"
+			],
+			[
+				null,
+				"GMa136",
+				"GMa137",
+				"GMa138"
+			]
+		]
+	},
+	{
+		"name": "GMa 94",
+		"width": 5,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GMa035",
+				null
+			],
+			[
+				"GMa035",
+				"GMa008",
+				"GMa009",
+				"GMa010",
+				"GMa011"
+			],
+			[
+				null,
+				"GMa013",
+				"GMa014",
+				"GMa015",
+				"GMa016"
+			],
+			[
+				null,
+				"GMa017",
+				"GMa018",
+				"GMa019",
+				"GMa020"
+			],
+			[
+				null,
+				"GMa021",
+				"GMa022",
+				"GMa023",
+				"GMa024"
+			],
+			[
+				null,
+				null,
+				"GMa025",
+				"GMa026",
+				"GMa035"
+			]
+		]
+	},
+	{
+		"name": "GMa 95",
+		"width": 5,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa111",
+				"GMa112",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa110",
+				"GMa056",
+				"GMa036"
+			],
+			[
+				null,
+				"GMa037",
+				"GMa102",
+				"GMa063",
+				"GMa064"
+			],
+			[
+				null,
+				"GMa103",
+				"GMa104",
+				null,
+				null
+			],
+			[
+				"GMa149",
+				"GMa109",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa150",
+				"GMa107",
+				"GMa108",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 96",
+		"width": 6,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GMa036",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa082",
+				"GMa083",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa035",
+				"GMa063",
+				"GMa064",
+				"GMa149",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa150",
+				"GMa102",
+				"GMa109"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa103",
+				"GMa104",
+				"GMa122"
+			]
+		]
+	},
+	{
+		"name": "GMa 97",
+		"width": 5,
+		"height": 6,
+		"pattern": [
+			[
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				null,
+				"GMa035"
+			],
+			[
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072"
+			],
+			[
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077"
+			],
+			[
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081"
+			],
+			[
+				"GMa082",
+				"GMa083",
+				"GMa036",
+				null,
+				null
+			],
+			[
+				"GMa122",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 98",
+		"width": 4,
+		"height": 8,
+		"pattern": [
+			[
+				null,
+				"GMa037",
+				null,
+				null
+			],
+			[
+				"GMa056",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null
+			],
+			[
+				"GMa036",
+				"GMa060",
+				"GMa061",
+				"GMa062"
+			],
+			[
+				"GMa035",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa109",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa110",
+				null,
+				null
+			],
+			[
+				"GMa121",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 99",
+		"width": 8,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa100",
+				"GMa101",
+				"GMa036",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa099",
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null,
+				null,
+				null,
+				"GMa037"
+			],
+			[
+				null,
+				"GMa035",
+				"GMa060",
+				"GMa061",
+				"GMa062",
+				"GMa105",
+				"GMa106",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa037",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 100",
+		"width": 3,
+		"height": 13,
+		"pattern": [
+			[
+				null,
+				"GMa027",
+				"GMa028"
+			],
+			[
+				null,
+				"GMa030",
+				"GMa031"
+			],
+			[
+				null,
+				"GMa033",
+				"GMa034"
+			],
+			[
+				"GMa000",
+				"GMa035",
+				null
+			],
+			[
+				"GMa001",
+				"GMa002",
+				null
+			],
+			[
+				"GMa003",
+				"GMa004",
+				"GMa005"
+			],
+			[
+				null,
+				"GMa006",
+				"GMa007"
+			],
+			[
+				null,
+				null,
+				"GMa056"
+			],
+			[
+				null,
+				null,
+				"GMa057"
+			],
+			[
+				null,
+				"GMa035",
+				"GMa065"
+			],
+			[
+				null,
+				"GMa037",
+				"GMa068"
+			],
+			[
+				null,
+				"GMa036",
+				"GMa073"
+			],
+			[
+				null,
+				null,
+				"GMa043"
+			]
+		]
+	},
+	{
+		"name": "GMa 101",
+		"width": 7,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa100",
+				"GMa101"
+			],
+			[
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				"GMa063",
+				"GMa064",
+				"GMa110",
+				null
+			],
+			[
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072",
+				null,
+				null
+			],
+			[
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081",
+				null,
+				null
+			],
+			[
+				"GMa036",
+				"GMa121",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 102",
+		"width": 7,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa038",
+				"GMa036",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa039",
+				"GMa040",
+				"GMa041",
+				"GMa042"
+			],
+			[
+				null,
+				null,
+				"GMa043",
+				"GMa167",
+				"GMa158",
+				"GMa159",
+				"GMa047"
+			],
+			[
+				null,
+				"GMa121",
+				"GMa048",
+				"GMa049",
+				"GMa050",
+				"GMa160",
+				"GMa052"
+			],
+			[
+				"GMa149",
+				null,
+				null,
+				"GMa053",
+				"GMa168",
+				"GMa055",
+				null
+			],
+			[
+				"GMa150",
+				"GMa063",
+				"GMa064",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 103",
+		"width": 6,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa100",
+				"GMa101"
+			],
+			[
+				null,
+				"GMa036",
+				"GMa084",
+				"GMa085",
+				"GMa099",
+				"GMa152"
+			],
+			[
+				null,
+				"GMa086",
+				"GMa087",
+				"GMa088",
+				"GMa089",
+				null
+			],
+			[
+				null,
+				"GMa090",
+				"GMa091",
+				"GMa092",
+				"GMa093",
+				"GMa094"
+			],
+			[
+				"GMa037",
+				"GMa095",
+				"GMa096",
+				"GMa097",
+				"GMa098",
+				"GMa037"
+			],
+			[
+				"GMa105",
+				"GMa106",
+				null,
+				"GMa082",
+				"GMa083",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa122",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 104",
+		"width": 7,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa035",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa008",
+				"GMa009",
+				"GMa010",
+				"GMa011",
+				"GMa012",
+				null,
+				null
+			],
+			[
+				"GMa013",
+				"GMa014",
+				"GMa015",
+				"GMa016",
+				"GMa036",
+				"GMa037",
+				null
+			],
+			[
+				"GMa017",
+				"GMa018",
+				"GMa019",
+				"GMa020",
+				"GMa027",
+				"GMa028",
+				"GMa029"
+			],
+			[
+				"GMa021",
+				"GMa022",
+				"GMa023",
+				"GMa024",
+				"GMa030",
+				"GMa031",
+				"GMa032"
+			],
+			[
+				null,
+				"GMa025",
+				"GMa026",
+				"GMa035",
+				"GMa033",
+				"GMa034",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 105",
+		"width": 8,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa035",
+				"GMa149",
+				null
+			],
+			[
+				null,
+				"GMa008",
+				"GMa009",
+				"GMa010",
+				"GMa153",
+				"GMa012",
+				"GMa150",
+				"GMa037"
+			],
+			[
+				null,
+				"GMa164",
+				"GMa014",
+				"GMa154",
+				"GMa155",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa017",
+				"GMa165",
+				"GMa156",
+				"GMa020",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa109",
+				"GMa021",
+				"GMa166",
+				"GMa157",
+				"GMa024",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa107",
+				"GMa108",
+				"GMa025",
+				"GMa026",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 106",
+		"width": 8,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa038",
+				null,
+				null,
+				null,
+				"GMa063",
+				"GMa064"
+			],
+			[
+				null,
+				"GMa039",
+				"GMa040",
+				"GMa041",
+				"GMa042",
+				"GMa149",
+				"GMa109",
+				null
+			],
+			[
+				"GMa043",
+				"GMa044",
+				"GMa045",
+				"GMa046",
+				"GMa047",
+				"GMa150",
+				"GMa107",
+				"GMa108"
+			],
+			[
+				"GMa048",
+				"GMa049",
+				"GMa050",
+				"GMa051",
+				"GMa052",
+				"GMa121",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa053",
+				"GMa054",
+				"GMa055",
+				"GMa100",
+				"GMa101",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa099",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 107",
+		"width": 8,
+		"height": 6,
+		"pattern": [
+			[
+				"GMa000",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa001",
+				"GMa002",
+				null,
+				"GMa008",
+				"GMa009",
+				"GMa010",
+				"GMa011",
+				"GMa012"
+			],
+			[
+				"GMa003",
+				"GMa004",
+				"GMa005",
+				"GMa013",
+				"GMa014",
+				"GMa015",
+				"GMa016",
+				null
+			],
+			[
+				null,
+				"GMa006",
+				"GMa007",
+				"GMa017",
+				"GMa018",
+				"GMa019",
+				"GMa020",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa021",
+				"GMa022",
+				"GMa023",
+				"GMa024",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa025",
+				"GMa026",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 108",
+		"width": 17,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa000",
+				null,
+				null,
+				null,
+				null,
+				"GMa109",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa056",
+				null,
+				"GMa063",
+				"GMa064",
+				"GMa001",
+				"GMa002",
+				null,
+				null,
+				null,
+				"GMa110",
+				null,
+				null,
+				"GMa082",
+				"GMa083",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null,
+				"GMa003",
+				"GMa004",
+				"GMa005",
+				"GMa085",
+				"GMa035",
+				"GMa027",
+				"GMa028",
+				"GMa029",
+				"GMa122",
+				"GMa036",
+				"GMa065",
+				"GMa066",
+				"GMa067"
+			]
+		]
+	},
+	{
+		"name": "GMa 109",
+		"width": 4,
+		"height": 13,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa149",
+				null
+			],
+			[
+				"GMa109",
+				"GMa121",
+				"GMa150",
+				null
+			],
+			[
+				"GMa110",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa035",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa084",
+				"GMa085",
+				null,
+				null
+			],
+			[
+				"GMa087",
+				"GMa088",
+				"GMa089",
+				null
+			],
+			[
+				"GMa091",
+				"GMa092",
+				"GMa093",
+				"GMa094"
+			],
+			[
+				"GMa096",
+				"GMa097",
+				"GMa098",
+				null
+			],
+			[
+				"GMa101",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa111",
+				"GMa112",
+				null,
+				null
+			],
+			[
+				"GMa122",
+				"GMa037",
+				"GMa035",
+				null
+			],
+			[
+				"GMa102",
+				"GMa036",
+				null,
+				null
+			],
+			[
+				"GMa104",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 110",
+		"width": 9,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GMa038",
+				null,
+				null,
+				null,
+				"GMa063",
+				"GMa064"
+			],
+			[
+				null,
+				null,
+				"GMa039",
+				"GMa040",
+				"GMa041",
+				"GMa042",
+				"GMa149",
+				"GMa109",
+				null
+			],
+			[
+				"GMa105",
+				"GMa043",
+				"GMa044",
+				"GMa045",
+				"GMa046",
+				"GMa047",
+				"GMa150",
+				"GMa107",
+				"GMa108"
+			],
+			[
+				"GMa037",
+				"GMa048",
+				"GMa049",
+				"GMa050",
+				"GMa051",
+				"GMa052",
+				"GMa121",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa053",
+				"GMa054",
+				"GMa055",
+				"GMa100",
+				"GMa101",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa099",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 111",
+		"width": 8,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa102",
+				"GMa037"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa103",
+				"GMa104",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa035",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa084",
+				"GMa085",
+				"GMa105",
+				"GMa106"
+			],
+			[
+				null,
+				null,
+				"GMa036",
+				"GMa086",
+				"GMa087",
+				"GMa088",
+				"GMa089",
+				null
+			],
+			[
+				null,
+				"GMa063",
+				"GMa064",
+				"GMa090",
+				"GMa091",
+				"GMa092",
+				"GMa093",
+				"GMa094"
+			],
+			[
+				"GMa035",
+				null,
+				null,
+				"GMa095",
+				"GMa096",
+				"GMa097",
+				"GMa098",
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 112",
+		"width": 8,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				"GMa035",
+				"GMa123",
+				"GMa124",
+				"GMa125",
+				null,
+				null
+			],
+			[
+				"GMa036",
+				"GMa126",
+				"GMa127",
+				"GMa128",
+				"GMa129",
+				"GMa130",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa131",
+				"GMa132",
+				"GMa133",
+				"GMa134",
+				"GMa135",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa136",
+				"GMa137",
+				"GMa138",
+				"GMa139",
+				"GMa140",
+				"GMa141",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa142",
+				"GMa143",
+				"GMa144",
+				"GMa145",
+				null,
+				"GMa121"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa146",
+				"GMa147",
+				"GMa148",
+				"GMa113",
+				"GMa114"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa120",
+				"GMa115"
+			]
+		]
+	},
+	{
+		"name": "GMa 113",
+		"width": 14,
+		"height": 4,
+		"pattern": [
+			[
+				"GMa013",
+				"GMa014",
+				"GMa015",
+				"GMa016",
+				"GMa035",
+				"GMa036",
+				"GMa030",
+				"GMa031",
+				"GMa032",
+				"GMa006",
+				"GMa007",
+				"GMa025",
+				"GMa026",
+				"GMa036"
+			],
+			[
+				"GMa017",
+				"GMa018",
+				"GMa019",
+				"GMa020",
+				null,
+				null,
+				"GMa033",
+				"GMa034",
+				null,
+				null,
+				null,
+				"GMa037",
+				null,
+				null
+			],
+			[
+				"GMa021",
+				"GMa022",
+				"GMa023",
+				"GMa024",
+				null,
+				null,
+				null,
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				"GMa036",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa025",
+				"GMa026",
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa060",
+				"GMa061",
+				"GMa062",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 114",
+		"width": 5,
+		"height": 12,
+		"pattern": [
+			[
+				"GMa010",
+				"GMa153",
+				"GMa012",
+				null,
+				null
+			],
+			[
+				"GMa154",
+				"GMa155",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa156",
+				"GMa020",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa157",
+				"GMa024",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa026",
+				"GMa035",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa062",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa038",
+				null,
+				"GMa036",
+				"GMa082",
+				"GMa083"
+			],
+			[
+				"GMa040",
+				"GMa041",
+				"GMa042",
+				"GMa122",
+				null
+			],
+			[
+				"GMa158",
+				"GMa159",
+				"GMa047",
+				null,
+				null
+			],
+			[
+				"GMa050",
+				"GMa160",
+				"GMa052",
+				null,
+				null
+			],
+			[
+				"GMa161",
+				"GMa055",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa037",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 115",
+		"width": 10,
+		"height": 6,
+		"pattern": [
+			[
+				"GMa035",
+				"GMa063",
+				"GMa064",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa037",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa101",
+				"GMa036",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa035",
+				"GMa060",
+				"GMa061",
+				"GMa062",
+				"GMa105",
+				"GMa106"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa037",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 116",
+		"width": 9,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa036",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa008",
+				"GMa009",
+				"GMa010",
+				"GMa011",
+				"GMa012"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa013",
+				"GMa014",
+				"GMa015",
+				"GMa016",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa035",
+				"GMa017",
+				"GMa018",
+				"GMa019",
+				"GMa020",
+				null
+			],
+			[
+				null,
+				"GMa027",
+				"GMa028",
+				"GMa029",
+				"GMa021",
+				"GMa022",
+				"GMa023",
+				"GMa024",
+				null
+			],
+			[
+				"GMa037",
+				"GMa030",
+				"GMa031",
+				"GMa032",
+				null,
+				"GMa025",
+				"GMa026",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa033",
+				"GMa034",
+				"GMa036",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 117",
+		"width": 7,
+		"height": 9,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa037",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa111",
+				"GMa112",
+				"GMa109",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa036",
+				"GMa110",
+				"GMa102",
+				"GMa107",
+				"GMa108"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa103",
+				"GMa104",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa105",
+				"GMa106",
+				"GMa100",
+				"GMa101",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa084",
+				"GMa085",
+				"GMa099",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa086",
+				"GMa087",
+				"GMa088",
+				"GMa089",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa090",
+				"GMa091",
+				"GMa092",
+				"GMa093",
+				"GMa094",
+				null,
+				null
+			],
+			[
+				"GMa095",
+				"GMa096",
+				"GMa097",
+				"GMa098",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 118",
+		"width": 7,
+		"height": 9,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa037",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa111",
+				"GMa112",
+				"GMa109",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa036",
+				"GMa110",
+				"GMa102",
+				"GMa107",
+				"GMa108"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa103",
+				"GMa104",
+				null,
+				null
+			],
+			[
+				"GMa105",
+				"GMa106",
+				null,
+				"GMa100",
+				"GMa101",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa084",
+				"GMa085",
+				"GMa099",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa086",
+				"GMa087",
+				"GMa088",
+				"GMa089",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa090",
+				"GMa091",
+				"GMa092",
+				"GMa093",
+				"GMa094",
+				null,
+				null
+			],
+			[
+				"GMa095",
+				"GMa096",
+				"GMa097",
+				"GMa098",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 119",
+		"width": 8,
+		"height": 8,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa123",
+				"GMa124",
+				"GMa125",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa126",
+				"GMa127",
+				"GMa128",
+				"GMa129",
+				"GMa130",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa131",
+				"GMa132",
+				"GMa133",
+				"GMa134",
+				"GMa135",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa136",
+				"GMa137",
+				"GMa138",
+				"GMa139",
+				"GMa140",
+				"GMa141"
+			],
+			[
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				"GMa142",
+				"GMa143",
+				"GMa144",
+				"GMa145",
+				null
+			],
+			[
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa146",
+				"GMa147",
+				"GMa148",
+				null
+			],
+			[
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 120",
+		"width": 8,
+		"height": 9,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa056"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa000",
+				"GMa035",
+				"GMa100",
+				"GMa101",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa001",
+				"GMa002",
+				"GMa099",
+				"GMa121",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa003",
+				"GMa004",
+				"GMa005",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa105",
+				"GMa106",
+				"GMa006",
+				"GMa007",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa027",
+				"GMa028",
+				"GMa029",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa030",
+				"GMa031",
+				"GMa032",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa037",
+				"GMa033",
+				"GMa034",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa036",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 121",
+		"width": 11,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GMa123",
+				"GMa124",
+				"GMa125",
+				null,
+				null,
+				null,
+				null,
+				"GMa036"
+			],
+			[
+				null,
+				"GMa126",
+				"GMa127",
+				"GMa128",
+				"GMa129",
+				"GMa130",
+				"GMa105",
+				"GMa106",
+				"GMa102",
+				"GMa063",
+				"GMa064"
+			],
+			[
+				null,
+				"GMa131",
+				"GMa132",
+				"GMa133",
+				"GMa134",
+				"GMa135",
+				null,
+				"GMa103",
+				"GMa104",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa136",
+				"GMa137",
+				"GMa138",
+				"GMa139",
+				"GMa140",
+				"GMa141",
+				"GMa037",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa142",
+				"GMa143",
+				"GMa144",
+				"GMa145",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa113",
+				"GMa114",
+				"GMa146",
+				"GMa147",
+				"GMa148",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa121",
+				"GMa120",
+				"GMa115",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 122",
+		"width": 13,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa084",
+				"GMa085",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa008",
+				"GMa009",
+				"GMa010",
+				"GMa011",
+				"GMa012",
+				null,
+				null,
+				"GMa086",
+				"GMa087",
+				"GMa088",
+				"GMa089",
+				null
+			],
+			[
+				"GMa038",
+				"GMa013",
+				"GMa014",
+				"GMa015",
+				"GMa016",
+				"GMa116",
+				"GMa117",
+				"GMa036",
+				"GMa090",
+				"GMa091",
+				"GMa092",
+				"GMa093",
+				"GMa094"
+			],
+			[
+				null,
+				"GMa017",
+				"GMa018",
+				"GMa019",
+				"GMa020",
+				null,
+				"GMa118",
+				"GMa119",
+				"GMa095",
+				"GMa096",
+				"GMa097",
+				"GMa098",
+				null
+			],
+			[
+				null,
+				"GMa021",
+				"GMa022",
+				"GMa023",
+				"GMa024",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa037",
+				"GMa025",
+				"GMa026",
+				"GMa035",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 123",
+		"width": 8,
+		"height": 10,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa102",
+				"GMa037"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa035",
+				"GMa103",
+				"GMa104",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa000",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa001",
+				"GMa002",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa003",
+				"GMa004",
+				"GMa005",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa006",
+				"GMa007",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa100",
+				"GMa101",
+				"GMa036",
+				null
+			],
+			[
+				null,
+				null,
+				"GMa111",
+				"GMa112",
+				"GMa099",
+				null,
+				null,
+				null
+			],
+			[
+				"GMa149",
+				"GMa109",
+				"GMa110",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa150",
+				"GMa107",
+				"GMa108",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 124",
+		"width": 9,
+		"height": 11,
+		"pattern": [
+			[
+				"GMa118",
+				"GMa119",
+				"GMa107",
+				"GMa108",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa027",
+				"GMa028",
+				"GMa029",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa030",
+				"GMa031",
+				"GMa032",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa033",
+				"GMa034",
+				"GMa037",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa035",
+				"GMa123",
+				"GMa124",
+				"GMa125",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa126",
+				"GMa127",
+				"GMa128",
+				"GMa129",
+				"GMa130",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa131",
+				"GMa132",
+				"GMa133",
+				"GMa134",
+				"GMa135",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa136",
+				"GMa137",
+				"GMa138",
+				"GMa139",
+				"GMa140",
+				"GMa141",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa142",
+				"GMa143",
+				"GMa144",
+				"GMa145",
+				null,
+				"GMa121"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa146",
+				"GMa147",
+				"GMa148",
+				"GMa113",
+				"GMa114"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa120",
+				"GMa115"
+			]
+		]
+	},
+	{
+		"name": "GMa 125",
+		"width": 11,
+		"height": 10,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa036"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa035",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa038",
+				null,
+				"GMa036",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa039",
+				"GMa040",
+				"GMa041",
+				"GMa042",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa043",
+				"GMa044",
+				"GMa045",
+				"GMa046",
+				"GMa047",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa048",
+				"GMa049",
+				"GMa050",
+				"GMa051",
+				"GMa052",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa056",
+				null,
+				"GMa053",
+				"GMa054",
+				"GMa055",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa027",
+				"GMa028",
+				"GMa029",
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa030",
+				"GMa031",
+				"GMa032",
+				null,
+				"GMa060",
+				"GMa061",
+				"GMa062",
+				"GMa063",
+				"GMa064",
+				null
+			],
+			[
+				"GMa035",
+				"GMa033",
+				"GMa034",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 126",
+		"width": 10,
+		"height": 11,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa038",
+				null,
+				null,
+				"GMa100",
+				"GMa101"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa039",
+				"GMa040",
+				"GMa041",
+				"GMa042",
+				"GMa099",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa043",
+				"GMa044",
+				"GMa045",
+				"GMa046",
+				"GMa047",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa048",
+				"GMa049",
+				"GMa050",
+				"GMa051",
+				"GMa052",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa085",
+				null,
+				"GMa053",
+				"GMa054",
+				"GMa055",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GMa063",
+				"GMa064",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa116",
+				"GMa117",
+				"GMa035",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa118",
+				"GMa119",
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa082",
+				"GMa083",
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072",
+				null,
+				null
+			],
+			[
+				null,
+				"GMa122",
+				null,
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 127",
+		"width": 13,
+		"height": 9,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa035",
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				"GMa063",
+				"GMa064"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa037",
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa038",
+				null,
+				"GMa121",
+				"GMa036",
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa039",
+				"GMa040",
+				"GMa041",
+				"GMa042",
+				null,
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081"
+			],
+			[
+				null,
+				null,
+				"GMa043",
+				"GMa044",
+				"GMa045",
+				"GMa046",
+				"GMa047",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa056",
+				null,
+				"GMa048",
+				"GMa049",
+				"GMa050",
+				"GMa051",
+				"GMa052",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa057",
+				"GMa058",
+				"GMa059",
+				"GMa053",
+				"GMa054",
+				"GMa055",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa035",
+				"GMa060",
+				"GMa061",
+				"GMa062",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa063",
+				"GMa064",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 128",
+		"width": 15,
+		"height": 9,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa123",
+				"GMa124",
+				"GMa125",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa126",
+				"GMa127",
+				"GMa128",
+				"GMa129",
+				"GMa130",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa131",
+				"GMa132",
+				"GMa133",
+				"GMa134",
+				"GMa135",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa136",
+				"GMa137",
+				"GMa138",
+				"GMa139",
+				"GMa140",
+				"GMa141",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa112",
+				"GMa082",
+				"GMa083",
+				"GMa105",
+				"GMa106",
+				null,
+				"GMa142",
+				"GMa143",
+				"GMa144",
+				"GMa145",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa114",
+				"GMa122",
+				"GMa102",
+				null,
+				null,
+				null,
+				null,
+				"GMa146",
+				"GMa147",
+				"GMa148",
+				"GMa065",
+				"GMa066",
+				"GMa067",
+				null,
+				null
+			],
+			[
+				"GMa115",
+				"GMa103",
+				"GMa104",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa068",
+				"GMa069",
+				"GMa070",
+				"GMa071",
+				"GMa072"
+			],
+			[
+				"GMa109",
+				"GMa121",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077"
+			],
+			[
+				"GMa110",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081"
+			]
+		]
+	},
+	{
+		"name": "GMa 129",
+		"width": 17,
+		"height": 8,
+		"pattern": [
+			[
+				"GMa012",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa037",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa008",
+				"GMa009",
+				"GMa010",
+				"GMa011",
+				"GMa012",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa013",
+				"GMa014",
+				"GMa015",
+				"GMa016",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa017",
+				"GMa018",
+				"GMa019",
+				"GMa020",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GMa021",
+				"GMa022",
+				"GMa023",
+				"GMa024",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa111",
+				"GMa112",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GMa025",
+				"GMa026",
+				"GMa035",
+				null,
+				null,
+				"GMa038",
+				null,
+				null,
+				"GMa000",
+				null,
+				"GMa122",
+				null,
+				null,
+				"GMa082",
+				"GMa083",
+				"GMa121"
+			],
+			[
+				null,
+				null,
+				null,
+				"GMa036",
+				"GMa038",
+				"GMa039",
+				"GMa040",
+				"GMa041",
+				"GMa042",
+				"GMa001",
+				"GMa002",
+				"GMa109",
+				"GMa116",
+				"GMa117",
+				"GMa122",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GMa 130",
+		"width": 14,
+		"height": 14,
+		"pattern": [
+			[
+				"GMa105",
+				"GMa106",
+				"GMa099",
+				"GMa073",
+				"GMa074",
+				"GMa075",
+				"GMa076",
+				"GMa077",
+				"GMa025",
+				"GMa026",
+				"GMa063",
+				"GMa064",
+				"GMa000",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GMa078",
+				"GMa079",
+				"GMa080",
+				"GMa081",
+				null,
+				null,
+				null,
+				null,
+				"GMa001",
+				"GMa002"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa003",
+				"GMa004"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa121",
+				"GMa006"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa037"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa065"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa068"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa073"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa082",
+				"GMa083"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa122",
+				"GMa036"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa126",
+				"GMa127"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa131",
+				"GMa132"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa136",
+				"GMa137"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GMa035",
+				"GMa142"
+			]
+		]
+	},
+	{
+		"name": "GTa 1",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GTa023",
+				"GTa024"
+			]
+		]
+	},
+	{
+		"name": "GTa 2",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GTa033",
+				"GTa034"
+			]
+		]
+	},
+	{
+		"name": "GTa 3",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GTa051",
+				"GTa005"
+			]
+		]
+	},
+	{
+		"name": "GTa 4",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GTa062",
+				"GTa063"
+			]
+		]
+	},
+	{
+		"name": "GTa 5",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GTa062",
+				"GTa083"
+			]
+		]
+	},
+	{
+		"name": "GTa 6",
+		"width": 2,
+		"height": 1,
+		"pattern": [
+			[
+				"GTa080",
+				"GTa001"
+			]
+		]
+	},
+	{
+		"name": "GTa 7",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa021"
+			],
+			[
+				"GTa022",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 8",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa022"
+			],
+			[
+				"GTa023",
+				"GTa024"
+			]
+		]
+	},
+	{
+		"name": "GTa 9",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa022"
+			],
+			[
+				"GTa062",
+				"GTa063"
+			]
+		]
+	},
+	{
+		"name": "GTa 10",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GTa000",
+				"GTa001"
+			],
+			[
+				"GTa064",
+				"GTa065"
+			]
+		]
+	},
+	{
+		"name": "GTa 11",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				"GTa022"
+			]
+		]
+	},
+	{
+		"name": "GTa 12",
+		"width": 1,
+		"height": 4,
+		"pattern": [
+			[
+				"GTa031"
+			],
+			[
+				"GTa030"
+			],
+			[
+				"GTa032"
+			],
+			[
+				"GTa054"
+			]
+		]
+	},
+	{
+		"name": "GTa 13",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GTa037",
+				"GTa038"
+			],
+			[
+				"GTa039",
+				"GTa040"
+			]
+		]
+	},
+	{
+		"name": "GTa 14",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GTa054",
+				"GTa055"
+			],
+			[
+				"GTa056",
+				"GTa057"
+			]
+		]
+	},
+	{
+		"name": "GTa 15",
+		"width": 2,
+		"height": 2,
+		"pattern": [
+			[
+				"GTa062",
+				"GTa063"
+			],
+			[
+				null,
+				"GTa022"
+			]
+		]
+	},
+	{
+		"name": "GTa 16",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa021",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 17",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa022",
+				"GTa000",
+				"GTa001"
+			]
+		]
+	},
+	{
+		"name": "GTa 18",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa037",
+				"GTa038"
+			],
+			[
+				"GTa022",
+				"GTa039",
+				"GTa040"
+			]
+		]
+	},
+	{
+		"name": "GTa 19",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa049",
+				"GTa050"
+			],
+			[
+				"GTa022",
+				"GTa035",
+				"GTa036"
+			]
+		]
+	},
+	{
+		"name": "GTa 20",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GTa017",
+				"GTa018",
+				"GTa025"
+			],
+			[
+				"GTa019",
+				"GTa020",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 21",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa022",
+				null
+			],
+			[
+				"GTa051",
+				"GTa052"
+			],
+			[
+				null,
+				"GTa006"
+			]
+		]
+	},
+	{
+		"name": "GTa 22",
+		"width": 3,
+		"height": 2,
+		"pattern": [
+			[
+				"GTa022",
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa051",
+				"GTa005",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 23",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa041",
+				"GTa042"
+			],
+			[
+				"GTa044",
+				"GTa045"
+			],
+			[
+				"GTa047",
+				"GTa048"
+			]
+		]
+	},
+	{
+		"name": "GTa 24",
+		"width": 2,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa073",
+				"GTa074"
+			],
+			[
+				"GTa076",
+				"GTa077"
+			],
+			[
+				"GTa022",
+				"GTa071"
+			]
+		]
+	},
+	{
+		"name": "GTa 25",
+		"width": 4,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa022",
+				null,
+				null
+			],
+			[
+				"GTa021",
+				null,
+				"GTa000",
+				"GTa001"
+			]
+		]
+	},
+	{
+		"name": "GTa 26",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa021"
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa022",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 27",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa000",
+				"GTa001",
+				null
+			],
+			[
+				"GTa064",
+				"GTa065",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 28",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa061",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				"GTa028",
+				"GTa029"
+			]
+		]
+	},
+	{
+		"name": "GTa 29",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GTa051",
+				"GTa005"
+			],
+			[
+				"GTa017",
+				"GTa018",
+				"GTa025"
+			],
+			[
+				"GTa019",
+				"GTa020",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 30",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa000",
+				"GTa001",
+				null
+			],
+			[
+				"GTa064",
+				"GTa065",
+				null
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024"
+			]
+		]
+	},
+	{
+		"name": "GTa 31",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				"GTa047",
+				"GTa048",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 32",
+		"width": 3,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				"GTa047",
+				"GTa048",
+				"GTa022"
+			]
+		]
+	},
+	{
+		"name": "GTa 33",
+		"width": 5,
+		"height": 2,
+		"pattern": [
+			[
+				null,
+				"GTa000",
+				"GTa001",
+				null,
+				null
+			],
+			[
+				"GTa022",
+				"GTa064",
+				"GTa065",
+				"GTa062",
+				"GTa063"
+			]
+		]
+	},
+	{
+		"name": "GTa 34",
+		"width": 5,
+		"height": 2,
+		"pattern": [
+			[
+				"GTa033",
+				"GTa034",
+				null,
+				"GTa062",
+				"GTa063"
+			],
+			[
+				"GTa035",
+				"GTa036",
+				"GTa022",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 35",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa000",
+				"GTa001"
+			],
+			[
+				null,
+				null,
+				"GTa064",
+				"GTa065"
+			],
+			[
+				"GTa023",
+				"GTa024",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 36",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa051"
+			],
+			[
+				"GTa062",
+				"GTa063",
+				"GTa054",
+				"GTa055"
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa057"
+			]
+		]
+	},
+	{
+		"name": "GTa 37",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GTa021",
+				null
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				"GTa047",
+				"GTa048",
+				"GTa022"
+			]
+		]
+	},
+	{
+		"name": "GTa 38",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GTa022",
+				null
+			],
+			[
+				"GTa062",
+				"GTa063",
+				null
+			],
+			[
+				"GTa017",
+				"GTa018",
+				"GTa025"
+			],
+			[
+				"GTa019",
+				"GTa020",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 39",
+		"width": 3,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa051",
+				"GTa005",
+				null
+			],
+			[
+				"GTa049",
+				"GTa050",
+				null
+			],
+			[
+				"GTa035",
+				"GTa036",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 40",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				"GTa062",
+				"GTa063",
+				null
+			],
+			[
+				"GTa021",
+				"GTa002",
+				"GTa003",
+				"GTa025"
+			],
+			[
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067"
+			]
+		]
+	},
+	{
+		"name": "GTa 41",
+		"width": 4,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa033",
+				"GTa034",
+				null,
+				null
+			],
+			[
+				"GTa035",
+				"GTa036",
+				"GTa062",
+				"GTa063"
+			],
+			[
+				null,
+				"GTa022",
+				"GTa023",
+				"GTa024"
+			]
+		]
+	},
+	{
+		"name": "GTa 42",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa051",
+				"GTa005"
+			],
+			[
+				"GTa062",
+				"GTa063",
+				"GTa054",
+				"GTa055",
+				null
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa057",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 43",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				null
+			],
+			[
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa004",
+				"GTa005"
+			],
+			[
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 44",
+		"width": 3,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GTa054",
+				"GTa055"
+			],
+			[
+				null,
+				"GTa056",
+				"GTa000"
+			],
+			[
+				null,
+				null,
+				"GTa022"
+			],
+			[
+				"GTa037",
+				"GTa038",
+				null
+			],
+			[
+				"GTa039",
+				"GTa040",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 45",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa000",
+				"GTa001",
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa064",
+				"GTa065",
+				"GTa062",
+				"GTa063",
+				null
+			],
+			[
+				null,
+				"GTa022",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 46",
+		"width": 3,
+		"height": 5,
+		"pattern": [
+			[
+				"GTa021",
+				"GTa041",
+				"GTa042"
+			],
+			[
+				null,
+				"GTa044",
+				"GTa045"
+			],
+			[
+				null,
+				"GTa047",
+				"GTa048"
+			],
+			[
+				null,
+				null,
+				"GTa022"
+			],
+			[
+				null,
+				null,
+				"GTa023"
+			]
+		]
+	},
+	{
+		"name": "GTa 47",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				null,
+				null
+			],
+			[
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				"GTa033",
+				"GTa034"
+			],
+			[
+				"GTa032",
+				null,
+				null,
+				"GTa035",
+				"GTa036"
+			]
+		]
+	},
+	{
+		"name": "GTa 48",
+		"width": 5,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				null
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null
+			],
+			[
+				"GTa047",
+				"GTa048",
+				null,
+				"GTa051",
+				"GTa005"
+			]
+		]
+	},
+	{
+		"name": "GTa 49",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa022",
+				null
+			],
+			[
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				"GTa021",
+				"GTa030",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				null,
+				"GTa032",
+				"GTa023",
+				"GTa024"
+			]
+		]
+	},
+	{
+		"name": "GTa 50",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				"GTa022",
+				"GTa030",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				null,
+				"GTa032",
+				null,
+				"GTa070"
+			]
+		]
+	},
+	{
+		"name": "GTa 51",
+		"width": 4,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GTa062",
+				"GTa063",
+				null
+			],
+			[
+				null,
+				"GTa022",
+				"GTa033",
+				"GTa034"
+			],
+			[
+				"GTa000",
+				"GTa001",
+				"GTa035",
+				"GTa036"
+			],
+			[
+				"GTa064",
+				"GTa065",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 52",
+		"width": 6,
+		"height": 3,
+		"pattern": [
+			[
+				"GTa023",
+				"GTa024",
+				"GTa021",
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				"GTa033",
+				"GTa034",
+				"GTa030",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				null,
+				"GTa035",
+				"GTa036",
+				"GTa032",
+				null,
+				"GTa070"
+			]
+		]
+	},
+	{
+		"name": "GTa 53",
+		"width": 4,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa022"
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				null
+			],
+			[
+				"GTa061",
+				"GTa026",
+				"GTa027",
+				null
+			],
+			[
+				null,
+				"GTa028",
+				"GTa029",
+				null
+			],
+			[
+				null,
+				null,
+				"GTa070",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 54",
+		"width": 4,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa033",
+				"GTa034"
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa035",
+				"GTa036"
+			],
+			[
+				null,
+				"GTa021",
+				"GTa022",
+				null
+			],
+			[
+				null,
+				null,
+				"GTa000",
+				"GTa001"
+			],
+			[
+				null,
+				null,
+				"GTa064",
+				"GTa065"
+			]
+		]
+	},
+	{
+		"name": "GTa 55",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				"GTa049",
+				"GTa050",
+				"GTa047",
+				"GTa048",
+				null
+			],
+			[
+				"GTa035",
+				"GTa036",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 56",
+		"width": 4,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				null,
+				"GTa047",
+				"GTa048",
+				null
+			],
+			[
+				"GTa000",
+				"GTa001",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa065",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 57",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				"GTa022",
+				"GTa058",
+				"GTa053",
+				"GTa068",
+				null
+			],
+			[
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa022",
+				"GTa041"
+			],
+			[
+				"GTa049",
+				"GTa050",
+				null,
+				null,
+				"GTa044"
+			],
+			[
+				"GTa035",
+				"GTa036",
+				null,
+				null,
+				"GTa047"
+			]
+		]
+	},
+	{
+		"name": "GTa 58",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				"GTa033",
+				"GTa034",
+				null,
+				"GTa021",
+				null
+			],
+			[
+				"GTa035",
+				"GTa036",
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				"GTa022",
+				"GTa030",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				null,
+				null,
+				"GTa032",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 59",
+		"width": 5,
+		"height": 4,
+		"pattern": [
+			[
+				"GTa037",
+				"GTa038",
+				null,
+				"GTa022",
+				null
+			],
+			[
+				"GTa039",
+				"GTa040",
+				"GTa061",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				"GTa022",
+				"GTa021",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa070"
+			]
+		]
+	},
+	{
+		"name": "GTa 60",
+		"width": 7,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa021",
+				null,
+				"GTa033",
+				"GTa034"
+			],
+			[
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				"GTa035",
+				"GTa036"
+			]
+		]
+	},
+	{
+		"name": "GTa 61",
+		"width": 3,
+		"height": 7,
+		"pattern": [
+			[
+				"GTa023",
+				"GTa024",
+				null
+			],
+			[
+				"GTa053",
+				"GTa004",
+				"GTa005"
+			],
+			[
+				"GTa066",
+				"GTa067",
+				null
+			],
+			[
+				"GTa043",
+				null,
+				null
+			],
+			[
+				"GTa046",
+				null,
+				null
+			],
+			[
+				"GTa022",
+				"GTa000",
+				"GTa001"
+			],
+			[
+				"GTa024",
+				"GTa064",
+				"GTa065"
+			]
+		]
+	},
+	{
+		"name": "GTa 62",
+		"width": 4,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa022"
+			],
+			[
+				null,
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				"GTa000",
+				"GTa001",
+				null
+			],
+			[
+				null,
+				"GTa064",
+				"GTa065",
+				null
+			],
+			[
+				"GTa061",
+				"GTa026",
+				"GTa027",
+				null
+			],
+			[
+				"GTa022",
+				"GTa028",
+				"GTa029",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 63",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa037",
+				"GTa038",
+				"GTa021",
+				"GTa022"
+			],
+			[
+				null,
+				null,
+				"GTa039",
+				"GTa040",
+				null,
+				null
+			],
+			[
+				"GTa023",
+				"GTa024",
+				null,
+				"GTa033",
+				"GTa034",
+				null
+			],
+			[
+				null,
+				"GTa054",
+				"GTa055",
+				"GTa035",
+				"GTa036",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 64",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GTa000",
+				"GTa001",
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				"GTa002",
+				"GTa003",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				"GTa022",
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				"GTa000",
+				"GTa001"
+			],
+			[
+				null,
+				null,
+				"GTa021",
+				null,
+				"GTa064",
+				"GTa065"
+			]
+		]
+	},
+	{
+		"name": "GTa 65",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa047",
+				"GTa048",
+				null,
+				"GTa000",
+				"GTa001"
+			],
+			[
+				"GTa022",
+				null,
+				null,
+				null,
+				"GTa064",
+				"GTa065"
+			]
+		]
+	},
+	{
+		"name": "GTa 66",
+		"width": 6,
+		"height": 4,
+		"pattern": [
+			[
+				"GTa021",
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				null,
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				null,
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa014",
+				"GTa015",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 67",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa021"
+			],
+			[
+				"GTa023",
+				"GTa024",
+				null,
+				"GTa037",
+				"GTa038"
+			],
+			[
+				"GTa022",
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				"GTa040"
+			],
+			[
+				null,
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				null
+			],
+			[
+				null,
+				"GTa032",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 68",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				null,
+				"GTa021",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa022",
+				"GTa000",
+				"GTa001",
+				null
+			],
+			[
+				"GTa037",
+				"GTa038",
+				"GTa064",
+				"GTa065",
+				null
+			],
+			[
+				"GTa039",
+				"GTa040",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 69",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa049",
+				"GTa081"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa035",
+				"GTa082"
+			],
+			[
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				null
+			],
+			[
+				null,
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005"
+			],
+			[
+				"GTa022",
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 70",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				"GTa022",
+				null,
+				"GTa047",
+				"GTa048",
+				null
+			],
+			[
+				"GTa018",
+				"GTa025",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa020",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 71",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GTa022",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				null,
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			]
+		]
+	},
+	{
+		"name": "GTa 72",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				"GTa000",
+				"GTa001",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa002",
+				"GTa003",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				null,
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			]
+		]
+	},
+	{
+		"name": "GTa 73",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				"GTa051",
+				"GTa005",
+				"GTa022",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				"GTa021",
+				"GTa030",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				null,
+				null,
+				"GTa032",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 74",
+		"width": 5,
+		"height": 5,
+		"pattern": [
+			[
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				"GTa066",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			],
+			[
+				"GTa051",
+				"GTa005",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 75",
+		"width": 9,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				"GTa022",
+				"GTa054",
+				"GTa055",
+				null
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa032",
+				null,
+				"GTa021",
+				null,
+				"GTa056",
+				"GTa000",
+				"GTa001"
+			]
+		]
+	},
+	{
+		"name": "GTa 76",
+		"width": 7,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				"GTa022",
+				"GTa030",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				"GTa032",
+				null,
+				"GTa070"
+			],
+			[
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 77",
+		"width": 4,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa023"
+			],
+			[
+				null,
+				null,
+				"GTa049",
+				"GTa050"
+			],
+			[
+				null,
+				null,
+				"GTa035",
+				"GTa036"
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				"GTa037"
+			],
+			[
+				"GTa047",
+				"GTa048",
+				"GTa000",
+				"GTa001"
+			],
+			[
+				null,
+				null,
+				"GTa064",
+				"GTa065"
+			]
+		]
+	},
+	{
+		"name": "GTa 78",
+		"width": 4,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa041",
+				"GTa042"
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045"
+			],
+			[
+				null,
+				null,
+				"GTa047",
+				"GTa011"
+			],
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa014"
+			],
+			[
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				"GTa021",
+				"GTa047",
+				"GTa048",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 79",
+		"width": 4,
+		"height": 7,
+		"pattern": [
+			[
+				"GTa071",
+				"GTa072",
+				null,
+				null
+			],
+			[
+				"GTa074",
+				"GTa075",
+				null,
+				null
+			],
+			[
+				"GTa077",
+				"GTa078",
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				null,
+				"GTa037",
+				"GTa038"
+			],
+			[
+				null,
+				null,
+				"GTa039",
+				"GTa040"
+			],
+			[
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				null
+			],
+			[
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 80",
+		"width": 6,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa030",
+				"GTa069",
+				"GTa029"
+			],
+			[
+				"GTa054",
+				"GTa055",
+				null,
+				"GTa032",
+				"GTa039",
+				"GTa070"
+			],
+			[
+				"GTa056",
+				"GTa057",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 81",
+		"width": 5,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa022",
+				null
+			],
+			[
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				null,
+				"GTa021",
+				"GTa047",
+				"GTa048",
+				null
+			],
+			[
+				"GTa022",
+				"GTa033",
+				"GTa034",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa064",
+				"GTa065",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 82",
+		"width": 5,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				"GTa021",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa000",
+				"GTa001",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa064",
+				"GTa065",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa022",
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				null,
+				null,
+				"GTa047",
+				"GTa048",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 83",
+		"width": 6,
+		"height": 5,
+		"pattern": [
+			[
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa068",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa062",
+				"GTa063",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa054",
+				"GTa055"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa056",
+				"GTa057"
+			]
+		]
+	},
+	{
+		"name": "GTa 84",
+		"width": 4,
+		"height": 8,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa062"
+			],
+			[
+				null,
+				null,
+				"GTa031",
+				"GTa026"
+			],
+			[
+				null,
+				"GTa022",
+				"GTa030",
+				"GTa028"
+			],
+			[
+				null,
+				null,
+				"GTa032",
+				null
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null
+			],
+			[
+				"GTa044",
+				"GTa059",
+				"GTa060",
+				null
+			],
+			[
+				"GTa047",
+				"GTa048",
+				"GTa021",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa051"
+			]
+		]
+	},
+	{
+		"name": "GTa 85",
+		"width": 4,
+		"height": 8,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa021",
+				null
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				null
+			],
+			[
+				"GTa022",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa021",
+				null,
+				"GTa064"
+			],
+			[
+				null,
+				null,
+				"GTa051",
+				"GTa052"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa006"
+			],
+			[
+				null,
+				"GTa062",
+				"GTa063",
+				"GTa037"
+			],
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa021"
+			]
+		]
+	},
+	{
+		"name": "GTa 86",
+		"width": 8,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa021",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				"GTa022"
+			],
+			[
+				null,
+				"GTa061",
+				"GTa026",
+				"GTa027",
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa028",
+				"GTa029",
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa070",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 87",
+		"width": 8,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				null,
+				null,
+				null,
+				"GTa022"
+			],
+			[
+				"GTa021",
+				"GTa019",
+				"GTa020",
+				"GTa022",
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa047",
+				"GTa048",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 88",
+		"width": 11,
+		"height": 3,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa051",
+				"GTa005",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa021",
+				null,
+				null,
+				"GTa022",
+				null,
+				null,
+				"GTa022",
+				null
+			],
+			[
+				"GTa022",
+				"GTa061",
+				"GTa026",
+				"GTa027",
+				null,
+				null,
+				"GTa021",
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005"
+			]
+		]
+	},
+	{
+		"name": "GTa 89",
+		"width": 7,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null,
+				"GTa000",
+				"GTa001"
+			],
+			[
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013",
+				"GTa064",
+				"GTa065"
+			],
+			[
+				null,
+				null,
+				"GTa014",
+				null,
+				"GTa016",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 90",
+		"width": 7,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GTa051",
+				"GTa005",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa021",
+				"GTa058",
+				"GTa053",
+				"GTa068",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa022",
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				"GTa049",
+				"GTa050",
+				null,
+				null,
+				"GTa044",
+				"GTa059",
+				"GTa060"
+			],
+			[
+				"GTa035",
+				"GTa036",
+				null,
+				null,
+				"GTa047",
+				"GTa048",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 91",
+		"width": 5,
+		"height": 7,
+		"pattern": [
+			[
+				"GTa026",
+				"GTa027",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa028",
+				"GTa029",
+				"GTa022",
+				"GTa054",
+				"GTa055"
+			],
+			[
+				"GTa037",
+				"GTa038",
+				"GTa062",
+				"GTa063",
+				null
+			],
+			[
+				null,
+				"GTa040",
+				null,
+				"GTa021",
+				null
+			],
+			[
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null
+			],
+			[
+				null,
+				"GTa044",
+				"GTa059",
+				"GTa060",
+				null
+			],
+			[
+				"GTa000",
+				"GTa001",
+				"GTa048",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 92",
+		"width": 6,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa047",
+				"GTa048",
+				null
+			],
+			[
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa032",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 93",
+		"width": 6,
+		"height": 6,
+		"pattern": [
+			[
+				"GTa051",
+				"GTa005",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa000",
+				"GTa001",
+				"GTa037",
+				"GTa038"
+			],
+			[
+				null,
+				"GTa022",
+				"GTa002",
+				"GTa003",
+				"GTa068",
+				"GTa040"
+			],
+			[
+				null,
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null
+			],
+			[
+				null,
+				"GTa000",
+				"GTa001",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa064",
+				"GTa065",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 94",
+		"width": 10,
+		"height": 4,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa021",
+				null,
+				"GTa037",
+				"GTa038",
+				null,
+				null
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				"GTa039",
+				"GTa040",
+				"GTa051",
+				"GTa005"
+			],
+			[
+				null,
+				"GTa022",
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 95",
+		"width": 4,
+		"height": 10,
+		"pattern": [
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				null
+			],
+			[
+				"GTa026",
+				"GTa027",
+				null,
+				null
+			],
+			[
+				"GTa028",
+				"GTa029",
+				null,
+				null
+			],
+			[
+				"GTa064",
+				"GTa001",
+				null,
+				null
+			],
+			[
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				null
+			],
+			[
+				"GTa019",
+				"GTa020",
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa031",
+				"GTa074",
+				"GTa075",
+				null
+			],
+			[
+				"GTa030",
+				"GTa077",
+				"GTa078",
+				null
+			],
+			[
+				"GTa032",
+				"GTa022",
+				"GTa079",
+				null
+			],
+			[
+				"GTa062",
+				"GTa063",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 96",
+		"width": 7,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa021",
+				null
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				null,
+				"GTa022",
+				"GTa033",
+				"GTa034"
+			],
+			[
+				null,
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				"GTa035",
+				"GTa036"
+			],
+			[
+				null,
+				null,
+				"GTa019",
+				"GTa020",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa049",
+				"GTa050",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa035",
+				"GTa036",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 97",
+		"width": 7,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa022",
+				"GTa000",
+				"GTa001",
+				null,
+				"GTa022",
+				null
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa002",
+				"GTa003",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				null,
+				"GTa021",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				"GTa019",
+				"GTa020",
+				"GTa022",
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			]
+		]
+	},
+	{
+		"name": "GTa 98",
+		"width": 7,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa021",
+				"GTa051",
+				"GTa005",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				"GTa019",
+				"GTa020",
+				"GTa022",
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				"GTa021",
+				"GTa048",
+				null
+			],
+			[
+				null,
+				null,
+				"GTa037",
+				"GTa038",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa039",
+				"GTa040",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 99",
+		"width": 7,
+		"height": 6,
+		"pattern": [
+			[
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa021",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa068",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa062",
+				"GTa063"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa054"
+			]
+		]
+	},
+	{
+		"name": "GTa 100",
+		"width": 9,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa021",
+				"GTa023",
+				"GTa024",
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				"GTa037",
+				"GTa038",
+				"GTa061",
+				"GTa026",
+				"GTa027",
+				null,
+				"GTa047",
+				"GTa048",
+				null
+			],
+			[
+				"GTa039",
+				"GTa040",
+				"GTa022",
+				"GTa028",
+				"GTa029",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 101",
+		"width": 9,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa022",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa021",
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013",
+				null
+			],
+			[
+				null,
+				"GTa044",
+				"GTa059",
+				"GTa060",
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016",
+				null
+			],
+			[
+				null,
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 102",
+		"width": 8,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa033",
+				"GTa034"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa035",
+				"GTa036"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa021",
+				"GTa022",
+				"GTa061",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				null,
+				"GTa030",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				"GTa022",
+				"GTa019",
+				"GTa020",
+				null,
+				null,
+				"GTa032",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 103",
+		"width": 6,
+		"height": 8,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa000",
+				"GTa001"
+			],
+			[
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa064",
+				"GTa065"
+			],
+			[
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				"GTa022",
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa021",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa047",
+				"GTa048",
+				"GTa022",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 104",
+		"width": 7,
+		"height": 7,
+		"pattern": [
+			[
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa042",
+				"GTa043",
+				null,
+				"GTa037",
+				"GTa038",
+				null,
+				null
+			],
+			[
+				"GTa045",
+				"GTa046",
+				null,
+				"GTa039",
+				"GTa040",
+				null,
+				null
+			],
+			[
+				"GTa048",
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa025",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				null,
+				"GTa021",
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			]
+		]
+	},
+	{
+		"name": "GTa 105",
+		"width": 5,
+		"height": 11,
+		"pattern": [
+			[
+				null,
+				"GTa080",
+				"GTa001",
+				null,
+				null
+			],
+			[
+				"GTa022",
+				"GTa064",
+				"GTa065",
+				"GTa023",
+				"GTa024"
+			],
+			[
+				"GTa021",
+				"GTa037",
+				"GTa038",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa039",
+				"GTa040",
+				"GTa051",
+				"GTa005"
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				null
+			],
+			[
+				"GTa044",
+				"GTa059",
+				"GTa060",
+				null,
+				null
+			],
+			[
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa052",
+				"GTa053",
+				"GTa025",
+				null,
+				null
+			],
+			[
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				null,
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			]
+		]
+	},
+	{
+		"name": "GTa 106",
+		"width": 8,
+		"height": 7,
+		"pattern": [
+			[
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa021",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa068",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa062",
+				"GTa063",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa054",
+				"GTa055"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa056",
+				"GTa057"
+			]
+		]
+	},
+	{
+		"name": "GTa 107",
+		"width": 10,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa054",
+				"GTa055"
+			],
+			[
+				null,
+				null,
+				"GTa062",
+				"GTa063",
+				"GTa022",
+				"GTa062",
+				"GTa063",
+				null,
+				"GTa033",
+				"GTa034"
+			],
+			[
+				"GTa051",
+				"GTa005",
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				"GTa002",
+				"GTa003",
+				"GTa068",
+				"GTa035",
+				"GTa036"
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				null,
+				null,
+				"GTa047",
+				"GTa048",
+				"GTa021",
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			]
+		]
+	},
+	{
+		"name": "GTa 108",
+		"width": 10,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa049",
+				"GTa050",
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				"GTa037",
+				"GTa038",
+				null,
+				null
+			],
+			[
+				"GTa035",
+				"GTa036",
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				"GTa039",
+				"GTa040",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa047",
+				"GTa048",
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa025",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa021",
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			]
+		]
+	},
+	{
+		"name": "GTa 109",
+		"width": 14,
+		"height": 5,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa061",
+				"GTa026",
+				"GTa027",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa021"
+			],
+			[
+				"GTa037",
+				"GTa038",
+				null,
+				"GTa028",
+				"GTa029",
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043"
+			],
+			[
+				"GTa039",
+				"GTa040",
+				null,
+				null,
+				null,
+				null,
+				"GTa066",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				"GTa022",
+				"GTa044",
+				"GTa045",
+				"GTa046"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013",
+				"GTa047",
+				"GTa048",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 110",
+		"width": 10,
+		"height": 7,
+		"pattern": [
+			[
+				"GTa051",
+				"GTa005",
+				"GTa022",
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa058",
+				"GTa053",
+				"GTa068",
+				"GTa021",
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				"GTa051",
+				"GTa005",
+				null
+			],
+			[
+				"GTa066",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				"GTa047",
+				"GTa048",
+				"GTa022",
+				"GTa061",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				"GTa022",
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013",
+				null,
+				null,
+				null,
+				"GTa028",
+				"GTa029"
+			],
+			[
+				"GTa037",
+				"GTa038",
+				"GTa014",
+				"GTa015",
+				"GTa016",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa039",
+				"GTa040",
+				"GTa051",
+				"GTa005",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa022",
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 111",
+		"width": 8,
+		"height": 9,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa062",
+				"GTa063",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa021",
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				"GTa054",
+				"GTa055"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa032",
+				"GTa022",
+				"GTa070",
+				"GTa056",
+				"GTa057"
+			],
+			[
+				null,
+				"GTa061",
+				"GTa026",
+				"GTa027",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa028",
+				"GTa029",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa066",
+				"GTa007",
+				"GTa018",
+				"GTa025",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa010",
+				"GTa048",
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 112",
+		"width": 9,
+		"height": 8,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa062",
+				"GTa063",
+				"GTa033",
+				"GTa034",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				"GTa035",
+				"GTa036",
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				null,
+				null,
+				"GTa022",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa032",
+				"GTa022",
+				"GTa070",
+				"GTa002",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa021",
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null,
+				null
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 113",
+		"width": 9,
+		"height": 8,
+		"pattern": [
+			[
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa022",
+				"GTa000",
+				"GTa001",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa021",
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				null,
+				"GTa021",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa032",
+				null,
+				null,
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa004",
+				"GTa005"
+			],
+			[
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				"GTa022",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 114",
+		"width": 11,
+		"height": 8,
+		"pattern": [
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa021",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa061",
+				"GTa026",
+				"GTa027",
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa028",
+				"GTa029",
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016",
+				null,
+				"GTa021",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa070",
+				null,
+				null,
+				null,
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa030",
+				"GTa028",
+				"GTa029"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa032",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 115",
+		"width": 9,
+		"height": 10,
+		"pattern": [
+			[
+				"GTa023",
+				"GTa024",
+				"GTa000",
+				"GTa001",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa022",
+				"GTa064",
+				"GTa065",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa021",
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa030",
+				"GTa028",
+				"GTa029",
+				null,
+				"GTa021",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa032",
+				null,
+				null,
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa004",
+				"GTa005"
+			],
+			[
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				"GTa022",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa047",
+				"GTa048",
+				"GTa022",
+				"GTa021",
+				null,
+				"GTa033",
+				"GTa034"
+			],
+			[
+				null,
+				null,
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				"GTa035",
+				"GTa036"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				"GTa023",
+				"GTa024",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 116",
+		"width": 13,
+		"height": 7,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa033",
+				"GTa034",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa035",
+				"GTa036",
+				null,
+				"GTa022",
+				"GTa000",
+				"GTa001",
+				null,
+				"GTa022",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa002",
+				"GTa003",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null,
+				"GTa021",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null,
+				null,
+				null
+			],
+			[
+				"GTa047",
+				"GTa048",
+				"GTa062",
+				"GTa063",
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				null,
+				"GTa023",
+				"GTa024"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa019",
+				"GTa020",
+				"GTa022",
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa054",
+				"GTa055",
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa056",
+				"GTa057",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 117",
+		"width": 16,
+		"height": 6,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				null,
+				"GTa021",
+				null,
+				null,
+				null,
+				"GTa054",
+				"GTa055",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				"GTa051",
+				"GTa005",
+				"GTa022",
+				"GTa037",
+				"GTa038",
+				"GTa023",
+				"GTa024",
+				"GTa056",
+				"GTa057",
+				"GTa022",
+				null
+			],
+			[
+				"GTa023",
+				"GTa024",
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013",
+				null,
+				null,
+				"GTa039",
+				"GTa040",
+				null,
+				null,
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa021",
+				"GTa030",
+				"GTa069",
+				"GTa029"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa032",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 118",
+		"width": 18,
+		"height": 7,
+		"pattern": [
+			[
+				"GTa061",
+				"GTa074",
+				"GTa075",
+				"GTa080",
+				"GTa001",
+				"GTa037",
+				"GTa038",
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				"GTa022",
+				"GTa021",
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				"GTa071",
+				"GTa072"
+			],
+			[
+				"GTa076",
+				"GTa077",
+				"GTa078",
+				"GTa021",
+				"GTa065",
+				"GTa039",
+				"GTa040",
+				"GTa022",
+				"GTa019",
+				"GTa020",
+				null,
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				"GTa023"
+			],
+			[
+				null,
+				null,
+				"GTa079",
+				null,
+				null,
+				null,
+				"GTa049",
+				"GTa050",
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				"GTa022"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa035",
+				"GTa036",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa002"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa030"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa021",
+				"GTa032"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa062",
+				"GTa063",
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 119",
+		"width": 10,
+		"height": 13,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa021",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa000",
+				"GTa001",
+				"GTa051",
+				"GTa005",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa051",
+				"GTa052",
+				"GTa003",
+				"GTa068",
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null
+			],
+			[
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null
+			],
+			[
+				"GTa022",
+				null,
+				null,
+				"GTa000",
+				"GTa001",
+				null,
+				"GTa047",
+				"GTa048",
+				null,
+				"GTa023"
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa064",
+				null,
+				"GTa022",
+				"GTa000",
+				"GTa001",
+				"GTa021",
+				"GTa022"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa002",
+				"GTa003",
+				"GTa004",
+				"GTa005"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa021",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				"GTa010",
+				"GTa011",
+				"GTa012"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa019",
+				"GTa020",
+				"GTa022",
+				null,
+				"GTa014",
+				"GTa015"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa023",
+				"GTa024",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa030",
+				"GTa069",
+				"GTa029",
+				"GTa021",
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 120",
+		"width": 11,
+		"height": 12,
+		"pattern": [
+			[
+				null,
+				null,
+				"GTa021",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa000",
+				"GTa001",
+				"GTa051",
+				"GTa005",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa051",
+				"GTa052",
+				"GTa003",
+				"GTa068",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa022",
+				null,
+				null,
+				"GTa000",
+				"GTa001",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa064",
+				"GTa065",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa033",
+				"GTa034",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa035",
+				"GTa036",
+				null,
+				"GTa022",
+				"GTa000",
+				"GTa001",
+				null,
+				"GTa022",
+				null
+			],
+			[
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				"GTa023",
+				"GTa024",
+				"GTa002",
+				"GTa003",
+				"GTa004",
+				"GTa005",
+				null
+			],
+			[
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null,
+				"GTa021",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null
+			],
+			[
+				"GTa047",
+				"GTa048",
+				"GTa062",
+				"GTa063",
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				"GTa019",
+				"GTa020",
+				"GTa022",
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016"
+			]
+		]
+	},
+	{
+		"name": "GTa 121",
+		"width": 28,
+		"height": 5,
+		"pattern": [
+			[
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa021",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa021",
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa022",
+				null,
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa005",
+				null,
+				"GTa051",
+				"GTa013",
+				"GTa019",
+				"GTa020",
+				null,
+				"GTa000",
+				"GTa001",
+				null,
+				"GTa062",
+				"GTa063",
+				null,
+				"GTa021",
+				"GTa037",
+				"GTa038",
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa051",
+				"GTa052",
+				"GTa003",
+				"GTa068",
+				null,
+				null,
+				"GTa064",
+				"GTa022",
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				"GTa054",
+				"GTa055",
+				"GTa039",
+				"GTa040",
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				"GTa058",
+				"GTa053",
+				"GTa068"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa006",
+				"GTa007",
+				"GTa043",
+				null,
+				null,
+				null,
+				null,
+				"GTa030",
+				"GTa069",
+				"GTa029",
+				"GTa056",
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa047",
+				"GTa048",
+				null,
+				"GTa022",
+				"GTa006",
+				"GTa066",
+				"GTa067"
+			]
+		]
+	},
+	{
+		"name": "GTa 122",
+		"width": 9,
+		"height": 16,
+		"pattern": [
+			[
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa021",
+				"GTa022",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				"GTa051",
+				"GTa052",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				"GTa022",
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013",
+				"GTa051",
+				"GTa005"
+			],
+			[
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa025",
+				"GTa014",
+				"GTa015",
+				"GTa016",
+				null,
+				null
+			],
+			[
+				null,
+				"GTa019",
+				"GTa020",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa051",
+				"GTa005",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa006",
+				"GTa066",
+				"GTa067",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa049",
+				"GTa050",
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				"GTa035",
+				"GTa036",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	},
+	{
+		"name": "GTa 123",
+		"width": 27,
+		"height": 6,
+		"pattern": [
+			[
+				"GTa022",
+				null,
+				null,
+				null,
+				"GTa021",
+				"GTa022",
+				null,
+				null,
+				"GTa017",
+				"GTa018",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa022",
+				"GTa021",
+				"GTa041",
+				"GTa042",
+				"GTa043",
+				"GTa071",
+				"GTa072",
+				"GTa021"
+			],
+			[
+				null,
+				"GTa021",
+				"GTa058",
+				"GTa053",
+				"GTa004",
+				"GTa005",
+				null,
+				null,
+				"GTa019",
+				"GTa020",
+				null,
+				"GTa000",
+				"GTa001",
+				null,
+				"GTa062",
+				"GTa063",
+				null,
+				"GTa021",
+				null,
+				null,
+				null,
+				"GTa044",
+				"GTa045",
+				"GTa046",
+				null,
+				"GTa037",
+				"GTa038"
+			],
+			[
+				null,
+				null,
+				"GTa006",
+				"GTa066",
+				"GTa005",
+				"GTa051",
+				"GTa052",
+				"GTa003",
+				"GTa068",
+				null,
+				null,
+				"GTa064",
+				"GTa022",
+				"GTa031",
+				"GTa026",
+				"GTa027",
+				"GTa054",
+				"GTa055",
+				"GTa058",
+				"GTa053",
+				"GTa068",
+				"GTa047",
+				"GTa048",
+				null,
+				null,
+				"GTa039",
+				"GTa040"
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa006",
+				"GTa007",
+				"GTa043",
+				null,
+				null,
+				null,
+				null,
+				"GTa030",
+				"GTa069",
+				"GTa029",
+				"GTa056",
+				"GTa057",
+				"GTa006",
+				"GTa007",
+				"GTa008",
+				"GTa009",
+				null,
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa035",
+				"GTa048",
+				"GTa022",
+				null,
+				null,
+				null,
+				"GTa032",
+				null,
+				"GTa070",
+				null,
+				null,
+				null,
+				"GTa010",
+				"GTa011",
+				"GTa012",
+				"GTa013",
+				null,
+				null,
+				null,
+				null
+			],
+			[
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"GTa014",
+				"GTa015",
+				"GTa016",
+				null,
+				null,
+				null,
+				null
+			]
+		]
+	}
+]

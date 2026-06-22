@@ -1,9 +1,0 @@
-{
-	"name": "Water tile pack",
-	"description": "Tile set based on original water.",
-	"version": "1",
-	"date": "2024-11-04",
-	"contents": [
-		"transformable water tiles"
-	]
-}

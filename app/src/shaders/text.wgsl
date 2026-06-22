@@ -1,12 +1,12 @@
 // Screen-space textured quads. Two fragment entry points share one vertex
 // shader (and one bind-group layout: texture + sampler):
-//   fs_cover — font/coverage atlases (R8): uv.x < 0 = solid fill, else the
+//   fs_cover - font/coverage atlases (R8): uv.x < 0 = solid fill, else the
 //              sampled .r modulates alpha. Used for shapes + labels.
-//   fs_steel — the brushed-steel sheet (RGBA, REPEAT-sampled): the texel rgb
+//   fs_steel - the brushed-steel sheet (RGBA, REPEAT-sampled): the texel rgb
 //              is tinted by the vertex color, alpha = grain strength. Used for
 //              chrome fills, so every panel/button is cut from one metal sheet.
 // Positions arrive already in clip space (built on the CPU from pixels), so
-// there is no uniform — just the texture + sampler.
+// there is no uniform - just the texture + sampler.
 
 @group(0) @binding(0) var atlas: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;

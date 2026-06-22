@@ -1,11 +1,11 @@
 //! Auto-shore vs the original game maps (the auto-shore ground truth): the 24
 //! converted projects in `resources/templates/` carry hand-crafted (game-true)
-//! coastlines — a correct auto-shore must leave them alone. A
+//! coastlines - a correct auto-shore must leave them alone. A
 //! direction-mapping bug in the transform math lights up thousands of
 //! cells here (the pass-based shore classification did exactly that).
 //!
 //! One known exception, a genuine boundary violation shipped in the
-//! originals (the kind a shore-bug finder will list): CRATER_1 (17,98) `CSl000:S` —
+//! originals (the kind a shore-bug finder will list): CRATER_1 (17,98) `CSl000:S` -
 //! a shore tile whose landward edge faces open water. (DESERT_4 (83,80),
 //! flagged by the first cut of the law, is actually legal: its sea-only
 //! edge presses against another band tile, the double-thick-band pattern
@@ -18,8 +18,8 @@ use map_core::Project;
 #[test]
 fn auto_shore_leaves_original_maps_alone() {
 	let resources = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources");
-	let maps = resources.join("templates");
-	let assets = resources.join("assets");
+	let maps = resources.join("assets/maps");
+	let assets = resources.join("assets/tilepacks");
 
 	let mut entries: Vec<_> = std::fs::read_dir(&maps)
 		.expect("resources/templates")
@@ -58,8 +58,8 @@ fn auto_shore_leaves_original_maps_alone() {
 #[test]
 fn auto_shore_alt_leaves_original_maps_alone() {
 	let resources = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources");
-	let maps = resources.join("templates");
-	let assets = resources.join("assets");
+	let maps = resources.join("assets/maps");
+	let assets = resources.join("assets/tilepacks");
 
 	let mut entries: Vec<_> = std::fs::read_dir(&maps)
 		.expect("resources/templates")

@@ -1,7 +1,7 @@
 //! In-app console: line input + scrollback over the command parser
-//!. Pure state — rendering lives in `text.rs`, key routing in
+//!. Pure state - rendering lives in `text.rs`, key routing in
 //! `main.rs`, execution in `state.rs`. Leaner than world-editor's original
-//! (no autocomplete yet — `suggestions()` is wired but empty).
+//! (no autocomplete yet - `suggestions()` is wired but empty).
 
 const MAX_LOG: usize = 500;
 
@@ -23,7 +23,7 @@ impl Console {
 			open: false,
 			input: String::new(),
 			log: vec![
-				"M.A.X. Map Editor console — Enter runs, Up/Down history, PgUp/PgDn scroll".into(),
+				"M.A.X. Map Editor console - Enter runs, Up/Down history, PgUp/PgDn scroll".into(),
 				"commands: new[!] new-map tile tool transform pick paint shore[ alt|fix] stroke".into(),
 				"          mode pass-pick pass-paint  grid pass-overlay  resize[-modal]".into(),
 				"          place erase undo redo open[!] save save-project save-copy export".into(),
@@ -54,7 +54,7 @@ impl Console {
 	pub fn scroll(&self) -> usize {
 		self.scroll
 	}
-	/// Autocomplete entries (name, help) — not implemented yet; hooks for
+	/// Autocomplete entries (name, help) - not implemented yet; hooks for
 	/// the world-editor-style dropdown.
 	#[allow(dead_code)]
 	pub fn suggestions(&self) -> &[(String, String)] {
@@ -166,5 +166,20 @@ mod tests {
 		assert_eq!(c.scroll(), 0);
 		c.push_line("new");
 		assert_eq!(c.scroll(), 0, "new output snaps to tail");
+	}
+
+	#[test]
+	fn home_and_end_jump_to_oldest_and_newest() {
+		let mut c = Console::new();
+		c.set_view_rows(2);
+		for i in 0..10 {
+			c.push_line(format!("line {i}"));
+		}
+		// Home (a huge positive delta) pins the view to the oldest visible page.
+		c.scroll_lines(i32::MAX);
+		assert_eq!(c.scroll(), c.log().len() - 2);
+		// End (a huge negative delta) returns to the live tail.
+		c.scroll_lines(i32::MIN);
+		assert_eq!(c.scroll(), 0);
 	}
 }

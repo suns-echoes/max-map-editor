@@ -1,4 +1,4 @@
-// Minimap blit: one textured quad, nearest sampling — the
+// Minimap blit: one textured quad, nearest sampling - the
 // source texture is CPU-built per mode (overworld sample / pass colors /
 // in-game minimap bytes through the palette).
 

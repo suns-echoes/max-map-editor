@@ -1,8 +1,8 @@
 //! MAX asset decoders.
 //!
-//! Pure decoders for M.A.X. file formats — RES archives, WRL maps, indexed
+//! Pure decoders for M.A.X. file formats - RES archives, WRL maps, indexed
 //! images (simple / big / multi), and base-unit-data files. No game logic,
-//! no rendering — just bytes in, typed values out.
+//! no rendering - just bytes in, typed values out.
 //!
 //! Kept deliberately free of `wgpu` / `winit` dependencies so the binary
 //! asset extractor and headless tests can link against it cheaply.

@@ -110,18 +110,7 @@ impl CrtPass {
 
 	/// Post-process the scene (via `bind_group`) onto `target`.
 	pub fn draw(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView, bind_group: &wgpu::BindGroup) {
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("crt.pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: target,
-				resolve_target: None,
-				ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-		});
+		let mut pass = crate::render::load_pass(encoder, target, "crt.pass");
 		pass.set_pipeline(&self.pipeline);
 		pass.set_bind_group(0, bind_group, &[]);
 		pass.draw(0..3, 0..1);

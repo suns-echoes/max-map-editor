@@ -5,14 +5,14 @@
 //!
 //! The pass owns its own 256×1 palette texture (updated from the cycler
 //! alongside the map renderer's), so unit colors follow palette edits and
-//! color cycling live — which is the whole point of the feature.
+//! color cycling live - which is the whole point of the feature.
 
 use wgpu::util::DeviceExt;
 
 use crate::ui::Rect;
 use crate::units::{UnitLibrary, UnitQuad};
 
-/// Atlas geometry: 32×32 slots of 128px in a 4096² texture — room for ~340
+/// Atlas geometry: 32×32 slots of 128px in a 4096² texture - room for ~340
 /// units × 3 sprites each, far beyond the game's roster.
 const SLOT: u32 = 128;
 const SLOTS_PER_ROW: u32 = 32;
@@ -209,11 +209,11 @@ impl UnitsGpu {
 		gpu
 	}
 
-	/// Re-upload the working palette (256 RGBA bytes) — call alongside the
+	/// Re-upload the working palette (256 RGBA bytes) - call alongside the
 	/// map renderer's palette update so cycling stays in sync.
 	///
 	/// Unit art is authored against the *game* palette: the game overwrites
-	/// every static slot (0-63, 160-255 — team ramps included) at runtime
+	/// every static slot (0-63, 160-255 - team ramps included) at runtime
 	/// and only the dynamic slots (64-159) keep map/pack colors. Apply the
 	/// same statics here, or units render in terrain colors.
 	pub fn update_palette(&self, queue: &wgpu::Queue, rgba: &[u8]) {
@@ -238,17 +238,22 @@ impl UnitsGpu {
 		quads: &[UnitQuad],
 		scissor: Option<Rect>,
 		screen: (u32, u32),
+		scale: f32,
 	) {
 		if quads.is_empty() {
 			return;
 		}
+		// Unit quads in the panel are laid out in **logical** px (project from the
+		// logical size, physical / scale; convert the scissor to **physical** px).
+		// The on-map units overlay passes `scale = 1.0` → the original path.
 		let (w, h) = (screen.0 as f32, screen.1 as f32);
+		let (lw, lh) = (w / scale, h / scale);
 		let (sx, sy, sw, sh) = match scissor {
 			Some(s) => {
-				let sx = s.x.clamp(0.0, w) as u32;
-				let sy = s.y.clamp(0.0, h) as u32;
-				let sw = (s.x + s.w).clamp(0.0, w) as u32 - sx;
-				let sh = (s.y + s.h).clamp(0.0, h) as u32 - sy;
+				let sx = (s.x * scale).clamp(0.0, w) as u32;
+				let sy = (s.y * scale).clamp(0.0, h) as u32;
+				let sw = ((s.x + s.w) * scale).clamp(0.0, w) as u32 - sx;
+				let sh = ((s.y + s.h) * scale).clamp(0.0, h) as u32 - sy;
 				(sx, sy, sw, sh)
 			}
 			None => (0, 0, screen.0, screen.1),
@@ -257,8 +262,8 @@ impl UnitsGpu {
 			return;
 		}
 
-		let nx = |x: f32| x / w * 2.0 - 1.0;
-		let ny = |y: f32| 1.0 - y / h * 2.0;
+		let nx = |x: f32| x / lw * 2.0 - 1.0;
+		let ny = |y: f32| 1.0 - y / lh * 2.0;
 		let mut verts = Vec::with_capacity(quads.len() * 6);
 		for q in quads {
 			let flags = (q.team as u32) | ((q.shadow as u32) << 3);
@@ -279,18 +284,7 @@ impl UnitsGpu {
 			usage: wgpu::BufferUsages::VERTEX,
 		});
 
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("units.pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: target,
-				resolve_target: None,
-				ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-		});
+		let mut pass = crate::render::load_pass(encoder, target, "units.pass");
 		pass.set_scissor_rect(sx, sy, sw, sh);
 		pass.set_pipeline(&self.pipeline);
 		pass.set_bind_group(0, &self.bind_group, &[]);

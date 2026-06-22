@@ -1,7 +1,7 @@
 # Tile Explorer: grid, filters, sizes, scroll, selection highlight.
 # Run: cargo run -- --script scripts/picker.script --headless
 
-open! resources/templates/GREEN_1.json
+open! resources/assets/maps/GREEN_1.json
 
 # Default: all 421 GREEN+WATER tiles at 32 px; the active tile gets a ring.
 tile GSa000

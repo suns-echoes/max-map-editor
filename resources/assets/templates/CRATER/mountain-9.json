@@ -1,0 +1,26 @@
+{
+	"version": "1",
+	"name": "Mountain 9",
+	"width": 2,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "CRATER",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR06,CMb046",
+			"WATR09,CMb047"
+		],
+		[
+			"",
+			"WATR05,CMb048"
+		]
+	]
+}

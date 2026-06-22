@@ -1,6 +1,4 @@
-/**
- * FRAMEPIC palette with alpha channel, converted to BGRA format.
- */
+//! FRAMEPIC palette with alpha channel, converted to BGRA format.
 
 pub static FRAMEPIC_PALETTE_BGRA: [u8; 1024] = [
 	0xff, 0x00, 0xff, 0xff, // #ff00ffff

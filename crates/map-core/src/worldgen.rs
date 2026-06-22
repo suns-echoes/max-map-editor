@@ -1,5 +1,5 @@
 //! Random terrain generator: seeded, parameterized,
-//! **deterministic** — the same seed + params always produce the same map,
+//! **deterministic** - the same seed + params always produce the same map,
 //! so a seed is a shareable recipe. Semantic family classes come from
 //! `tiles.props.json` (the LAND variant group fills ground); obstructions
 //! and passable decorations stamp as whole multi-tile formations from
@@ -13,7 +13,7 @@
 //! carves until the quota is met, so it may overshoot by part of a stamp.
 
 use crate::pack::{TileKind, Transformable, family_of};
-use crate::project::{LAYER_GROUND, LAYER_WATER, Project, Rng, TileRef, Transform};
+use crate::project::{LAYER_GROUND, LAYER_WATER, Project, Rng, TileRef, Transform, splitmix};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GenPattern {
@@ -73,7 +73,7 @@ pub struct GenParams {
 	/// Percent of land cells covered by passable decorations (0..=100).
 	pub decorations: u8,
 	pub seed: u64,
-	/// Shore the coastlines with the loop-walk pass (`auto_shore_alt` —
+	/// Shore the coastlines with the loop-walk pass (`auto_shore_alt` -
 	/// varied coastline) instead of the sweep optimizer.
 	pub alt_shore: bool,
 }
@@ -89,20 +89,21 @@ pub struct GenStats {
 	pub unresolved: usize,
 }
 
-// ----- deterministic value noise ---------------------------------------------
+/// Per-`step` work budgets. An interactive generate runs one bounded slice per
+/// frame so the UI stays responsive; the run-to-completion path just loops
+/// `step` until done. (Raising these speeds headless runs at the cost of frame
+/// latency; they don't affect the generated map.)
+const FIELD_CELLS_PER_STEP: usize = 32_768; // land-ness field samples per step
+const STAMP_ATTEMPTS_PER_STEP: usize = 16_384; // formation placement tries per step
+const FIX_WORK_PER_STEP: i64 = 200_000; // shore-fix work units per step
 
-/// splitmix64 finalizer — the same mixer the variant rng uses.
-fn mix(mut x: u64) -> u64 {
-	x ^= x >> 30;
-	x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-	x ^= x >> 27;
-	x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
-	x ^ (x >> 31)
-}
+// ----- deterministic value noise ---------------------------------------------
 
 /// Lattice value in [0, 1) for an integer grid point.
 fn lattice(seed: u64, x: i64, y: i64) -> f32 {
-	let h = mix(seed ^ (x as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ (y as u64).wrapping_mul(0xc2b2_ae3d_27d4_eb4f));
+	let h = splitmix(
+		seed ^ (x as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ (y as u64).wrapping_mul(0xc2b2_ae3d_27d4_eb4f),
+	);
 	(h >> 40) as f32 / (1u64 << 24) as f32
 }
 
@@ -124,7 +125,7 @@ fn value_noise(seed: u64, fx: f32, fy: f32) -> f32 {
 	a + (b - a) * ty
 }
 
-/// Fractal sum, 4 octaves — per-octave seed offsets decorrelate the lattices.
+/// Fractal sum, 4 octaves - per-octave seed offsets decorrelate the lattices.
 fn fbm(seed: u64, fx: f32, fy: f32) -> f32 {
 	let (mut sum, mut amp, mut norm, mut f) = (0.0f32, 1.0f32, 0.0f32, 1.0f32);
 	for octave in 0..4u64 {
@@ -138,7 +139,7 @@ fn fbm(seed: u64, fx: f32, fy: f32) -> f32 {
 
 // ----- water mask --------------------------------------------------------------
 
-/// `fbm` sampled through two displacement noises (domain warping) — the
+/// `fbm` sampled through two displacement noises (domain warping) - the
 /// lattice's straight contour runs wander into organic shapes.
 fn warped_fbm(seed: u64, fx: f32, fy: f32) -> f32 {
 	const AMP: f32 = 0.9; // displacement in lattice cells
@@ -176,7 +177,7 @@ fn field_at(pattern: GenPattern, seed: u64, w: usize, h: usize, x: usize, y: usi
 }
 
 /// Rotate a direction by `turn` steps of ~7.2°. Built from one hardcoded
-/// (cos, sin) pair — pure arithmetic, so walks are deterministic on every
+/// (cos, sin) pair - pure arithmetic, so walks are deterministic on every
 /// platform (std trig is not guaranteed bit-identical across libms).
 fn rotated(base: (f32, f32), turn: i32) -> (f32, f32) {
 	const C: f32 = 0.992_115; // cos 7.2°
@@ -226,7 +227,7 @@ fn smooth_mask(mask: &mut [bool], w: usize, h: usize) {
 
 /// Open diagonal water pinches: two water cells touching only at a corner
 /// force the shore bands to cross diagonally, which the tilesets cannot
-/// express — widen the pinch into water until none remain.
+/// express - widen the pinch into water until none remain.
 fn depinch(mask: &mut [bool], w: usize, h: usize) {
 	loop {
 		let mut changed = false;
@@ -253,7 +254,7 @@ fn depinch(mask: &mut [bool], w: usize, h: usize) {
 /// All land, then meandering rivers carve across the map until the water
 /// quota is met. Each river enters on one edge aimed at the opposite one
 /// and walks with a random-walking heading (clamped to ±~58°, so it always
-/// crosses) — curves, not corridors. Constant width per river: width
+/// crosses) - curves, not corridors. Constant width per river: width
 /// changes mid-run leave stair-step notches the shore tileset struggles to
 /// continue.
 fn rivers_mask(p: &GenParams, w: usize, h: usize, rng: &mut Rng) -> Vec<bool> {
@@ -310,31 +311,28 @@ fn rivers_mask(p: &GenParams, w: usize, h: usize, rng: &mut Rng) -> Vec<bool> {
 /// 3-wide land causeway (LandMass promises *connected* land).
 fn connect_land(mask: &mut [bool], w: usize, h: usize, rng: &mut Rng) {
 	let n = w * h;
-	// Label 4-connected land components.
+	// Label 4-connected land components (one shared `seen` across the sweep so
+	// each cell is visited once; `comp` carries the labels downstream).
 	let mut comp = vec![u32::MAX; n];
 	let mut sizes: Vec<usize> = Vec::new();
+	let mut seen = vec![false; n];
 	for start in 0..n {
-		if mask[start] || comp[start] != u32::MAX {
+		if mask[start] || seen[start] {
 			continue;
 		}
 		let id = sizes.len() as u32;
 		let mut size = 0usize;
-		let mut stack = vec![start];
-		comp[start] = id;
-		while let Some(i) = stack.pop() {
-			size += 1;
-			let (x, y) = (i % w, i / w);
-			for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
-				if nx >= w || ny >= h {
-					continue;
-				}
-				let j = ny * w + nx;
-				if !mask[j] && comp[j] == u32::MAX {
-					comp[j] = id;
-					stack.push(j);
-				}
-			}
-		}
+		crate::grid::flood4(
+			w,
+			h,
+			start,
+			&mut seen,
+			|j| !mask[j],
+			|i| {
+				comp[i] = id;
+				size += 1;
+			},
+		);
 		sizes.push(size);
 	}
 	if sizes.len() <= 1 {
@@ -344,8 +342,8 @@ fn connect_land(mask: &mut [bool], w: usize, h: usize, rng: &mut Rng) {
 
 	// One causeway per secondary component: from a random cell of it, walk
 	// home toward a random cell of the main mass with a wobbling heading
-	// (re-aimed every step, clamped to ±~43° — arrival is guaranteed, the
-	// path is not straight), stamping a plus-shape (3-wide — auto-shore
+	// (re-aimed every step, clamped to ±~43° - arrival is guaranteed, the
+	// path is not straight), stamping a plus-shape (3-wide - auto-shore
 	// needs room to ring both banks).
 	let cells_of = |comp: &[u32], id: u32, rng: &mut Rng| -> usize {
 		let cells: Vec<usize> = (0..n).filter(|&i| comp[i] == id).collect();
@@ -402,14 +400,14 @@ enum Stamp {
 	/// stamped untransformed (the formation's light is baked as authored).
 	Pattern { w: i32, h: i32, cells: Vec<(i32, i32, u16)> },
 	/// A single tile from an interchangeable variant group (e.g. CRATER's
-	/// `CHa` hills) — picked and transformed per placement.
+	/// `CHa` hills) - picked and transformed per placement.
 	Single { tiles: Vec<u16>, spin: Transformable },
 }
 
 /// Stamp from `pool` onto `overlay` toward `target` covered cells, at most
 /// `chunk` placement attempts per call (the session steps this between
 /// frames). Every populated cell must be land at Chebyshev distance ≥ 2
-/// from water — clear of the shore band and the seam-fix solver's reach —
+/// from water - clear of the shore band and the seam-fix solver's reach -
 /// and not already claimed. Returns `true` when the pass is finished
 /// (target met or the attempt budget ran out).
 #[allow(clippy::too_many_arguments)]
@@ -492,7 +490,7 @@ enum Phase {
 	Bisect {
 		iter: u32,
 	},
-	/// River Raid: carve the rivers (one step — it's cheap).
+	/// River Raid: carve the rivers (one step - it's cheap).
 	Rivers,
 	/// Land Mass: bridge secondary islands (one step).
 	Connect,
@@ -500,10 +498,10 @@ enum Phase {
 	Stamp {
 		decorations: bool,
 	},
-	/// Open the stroke and lay both layers — fresh water across the whole
+	/// Open the stroke and lay both layers - fresh water across the whole
 	/// bottom layer, the generated terrain on the ground layer (one step).
 	Apply,
-	/// Grow the coastlines (one step — the chosen auto-shore pass is not
+	/// Grow the coastlines (one step - the chosen auto-shore pass is not
 	/// resumable; the longest single hitch on very large maps).
 	Shore,
 	/// Run the Destructive seam-fix solver, a budget slice per step.
@@ -512,7 +510,7 @@ enum Phase {
 }
 
 /// A resumable terrain generation: created cheaply, advanced by [`step`]
-/// (bounded work per call — the shell drives it per frame so the UI never
+/// (bounded work per call - the shell drives it per frame so the UI never
 /// freezes), abortable mid-run. Nothing touches the project before the
 /// Apply phase; from there every edit lives in one open stroke, so
 /// [`abort`] rolls the document back as if the run never happened, and a
@@ -554,9 +552,9 @@ pub struct GenSession {
 	shore_changed: usize,
 	fix: Option<crate::FixSession>,
 	fix_found: usize,
-	/// `project.dirty()` at session start — restored on abort.
+	/// `project.dirty()` at session start - restored on abort.
 	was_dirty: bool,
-	/// The stroke is open (Apply ran) — abort must roll back.
+	/// The stroke is open (Apply ran) - abort must roll back.
 	mutated: bool,
 	stats: Option<GenStats>,
 }
@@ -580,12 +578,12 @@ impl GenSession {
 					.filter(|(_, fp)| fp.kind == Some(TileKind::Land) && fp.has_variants)
 					.map(|(f, _)| f)
 					.collect();
-				families.sort(); // HashMap order is not deterministic — the run must be
+				families.sort(); // HashMap order is not deterministic - the run must be
 				families.first().map(|f| (i, (*f).clone()))
 			})
-			.ok_or("no pack with a LAND variant group (tiles.props.json) — add a tileset like GREEN")?;
+			.ok_or("no pack with a LAND variant group (tiles.props.json) - add a tileset like GREEN")?;
 		// The water pack + its WATER variant group: the run starts from a
-		// clean slate — the whole bottom layer refills from this group and
+		// clean slate - the whole bottom layer refills from this group and
 		// the ground layer is fully rewritten, so nothing of the previous
 		// map survives under the generated terrain.
 		let (water_pack_idx, water_family) = project
@@ -599,10 +597,10 @@ impl GenSession {
 					.filter(|(_, fp)| fp.kind == Some(TileKind::Water) && fp.has_variants)
 					.map(|(f, _)| f)
 					.collect();
-				families.sort(); // HashMap order is not deterministic — the run must be
+				families.sort(); // HashMap order is not deterministic - the run must be
 				families.first().map(|f| (i, (*f).clone()))
 			})
-			.ok_or("no pack with a WATER variant group (tiles.props.json) — add the WATER tileset")?;
+			.ok_or("no pack with a WATER variant group (tiles.props.json) - add the WATER tileset")?;
 		let water_pack = &project.packs[water_pack_idx];
 		let water_tiles = water_pack.group_tiles(&water_family);
 		let water_spin = water_pack.props[&water_family].transformable;
@@ -616,7 +614,7 @@ impl GenSession {
 			return Err(format!("{}: LAND family '{land_family}' has no tiles", pack.name));
 		}
 		// Stamp pools, all from the land pack (cohesion: no snow rocks on
-		// green grass). A pattern's kind = its family's props type — the
+		// green grass). A pattern's kind = its family's props type - the
 		// props are definitive (MAX's own pass data is inconsistent).
 		let pattern_kind = |pt: &crate::TilePattern| -> Option<TileKind> {
 			let idx = pt.cells.iter().flatten().next()?;
@@ -753,7 +751,7 @@ impl GenSession {
 				if self.field.is_empty() {
 					self.field = Vec::with_capacity(self.w * self.h);
 				}
-				let rows = (32_768 / self.w.max(1)).max(1);
+				let rows = (FIELD_CELLS_PER_STEP / self.w.max(1)).max(1);
 				let end = (row + rows).min(self.h);
 				for y in row..end {
 					for x in 0..self.w {
@@ -764,7 +762,7 @@ impl GenSession {
 					self.phase = Phase::Field { row: end };
 				} else {
 					self.sorted = self.field.clone();
-					self.sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+					self.sorted.sort_by(|a, b| a.total_cmp(b));
 					self.phase = Phase::Bisect { iter: 0 };
 				}
 			}
@@ -814,7 +812,7 @@ impl GenSession {
 					self.stamp_target,
 					&mut self.placed,
 					&mut self.attempts,
-					16_384,
+					STAMP_ATTEMPTS_PER_STEP,
 					&self.mask,
 					(self.w, self.h),
 					self.pack_no,
@@ -834,9 +832,9 @@ impl GenSession {
 				}
 			}
 			Phase::Apply => {
-				// Lay both layers in one stroke — fresh water across the whole
+				// Lay both layers in one stroke - fresh water across the whole
 				// bottom layer, land fill + stamps on the ground layer, then
-				// the shore passes — all of it one Ctrl+Z. Rewriting the water
+				// the shore passes - all of it one Ctrl+Z. Rewriting the water
 				// layer too is the clean slate: whatever the previous map kept
 				// there (an imported WRL's tiles, stale variants) would
 				// otherwise show through every generated water cell.
@@ -893,7 +891,7 @@ impl GenSession {
 			}
 			Phase::Fix => {
 				let mut fix = self.fix.take().expect("fix session in Fix phase");
-				fix.step(200_000);
+				fix.step(FIX_WORK_PER_STEP);
 				if fix.is_done() {
 					let fixed = fix.apply(project);
 					self.finish(project, fixed, fix.remaining());
@@ -907,7 +905,7 @@ impl GenSession {
 		self.is_done()
 	}
 
-	/// Cancel the run. Everything the session wrote is rolled back — the
+	/// Cancel the run. Everything the session wrote is rolled back - the
 	/// document (content, dirty flag) is as if Generate was never pressed.
 	pub fn abort(mut self, project: &mut Project) {
 		self.fix = None;
@@ -949,9 +947,9 @@ impl GenSession {
 
 impl Project {
 	/// Replace the terrain with a generated one, synchronously (scripts,
-	/// tests, the `generate` command) — the whole water layer refills and
+	/// tests, the `generate` command) - the whole water layer refills and
 	/// the whole ground layer is rewritten, so nothing of the previous map
-	/// survives. Interactive runs drive a [`GenSession`] per frame instead —
+	/// survives. Interactive runs drive a [`GenSession`] per frame instead -
 	/// same code path, stepped.
 	pub fn generate_terrain(&mut self, p: &GenParams) -> Result<GenStats, String> {
 		let mut session = GenSession::new(self, *p)?;
@@ -966,7 +964,7 @@ mod tests {
 	use std::path::Path;
 
 	fn assets_root() -> std::path::PathBuf {
-		Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets")
+		Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks")
 	}
 
 	fn make(pattern: GenPattern, water: u8, obstructions: u8, seed: u64) -> (Project, GenStats) {
@@ -1032,7 +1030,7 @@ mod tests {
 	#[test]
 	fn land_mass_is_one_connected_component() {
 		let (p, _) = make(GenPattern::LandMass, 40, 0, 11);
-		// Flood-fill ground tiles (shore included — it's walkable coastline).
+		// Flood-fill ground tiles (shore included - it's walkable coastline).
 		let (w, h) = (p.width as usize, p.height as usize);
 		let land: Vec<bool> = (0..w * h)
 			.map(|i| p.cell((i % w) as u16, (i / w) as u16).unwrap()[crate::LAYER_GROUND].is_some())
@@ -1041,23 +1039,8 @@ mod tests {
 		assert!(total > 0);
 		let start = land.iter().position(|&l| l).unwrap();
 		let mut seen = vec![false; w * h];
-		let mut stack = vec![start];
-		seen[start] = true;
 		let mut reached = 0;
-		while let Some(i) = stack.pop() {
-			reached += 1;
-			let (x, y) = (i % w, i / w);
-			for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
-				if nx >= w || ny >= h {
-					continue;
-				}
-				let j = ny * w + nx;
-				if land[j] && !seen[j] {
-					seen[j] = true;
-					stack.push(j);
-				}
-			}
-		}
+		crate::grid::flood4(w, h, start, &mut seen, |j| land[j], |_| reached += 1);
 		assert_eq!(reached, total, "land mass split into islands");
 	}
 
@@ -1286,5 +1269,43 @@ mod tests {
 			assert_eq!(GenPattern::parse(pattern.name()).unwrap(), pattern);
 		}
 		assert!(GenPattern::parse("volcano").is_err());
+	}
+
+	#[test]
+	fn noise_primitives_are_pinned() {
+		// Golden vectors. The worldgen noise is float math, so a toolchain or
+		// optimization change that perturbs it would silently re-roll every map
+		// (the end-to-end `hash` tests would change too, but wouldn't say why).
+		// Pin the primitives to their reference values; regenerate deliberately
+		// only when the generator algorithm itself changes.
+		assert_eq!(splitmix(0), 0, "splitmix finalizer of 0 is 0");
+		assert_eq!(splitmix(0x1234_5678), 11071400828549884513);
+		assert_eq!(value_noise(42, 1.5, 2.5), 0.7627137);
+		assert_eq!(fbm(42, 1.5, 2.5), 0.5670068);
+		assert_eq!(field_at(GenPattern::Continent, 42, 64, 64, 10, 20), 0.46555495);
+		assert_eq!(rotated((1.0, 0.0), 5), (0.80901897, 0.58778495));
+		// Structural invariants alongside the goldens.
+		assert_eq!(rotated((1.0, 0.0), 0), (1.0, 0.0), "no turn = identity");
+		assert!((0.0..1.0).contains(&value_noise(42, 1.5, 2.5)), "value noise in [0, 1)");
+	}
+
+	#[test]
+	fn gen_session_rejects_out_of_range_percentages() {
+		let p = Project::new(8, 8, &["GREEN".into()], &assets_root(), 1).unwrap();
+		let params = |water, obs, dec| GenParams {
+			pattern: GenPattern::Islands,
+			water,
+			obstructions: obs,
+			decorations: dec,
+			seed: 1,
+			alt_shore: false,
+		};
+		let err = |w, o, d| GenSession::new(&p, params(w, o, d)).err().expect("expected a validation error");
+		assert!(err(101, 0, 0).contains("0..=100"), "water > 100");
+		assert!(err(0, 101, 0).contains("0..=100"), "obstructions > 100");
+		assert!(err(0, 0, 101).contains("0..=100"), "decorations > 100");
+		// The boundary values are accepted.
+		assert!(GenSession::new(&p, params(100, 100, 100)).is_ok());
+		assert!(GenSession::new(&p, params(0, 0, 0)).is_ok());
 	}
 }

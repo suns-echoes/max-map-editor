@@ -1,0 +1,23 @@
+{
+	"version": "1",
+	"name": "Dune 13",
+	"width": 3,
+	"height": 1,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "DESERT",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR11,DLb061",
+			"WATR09,DLb060",
+			"WATR04,DLb058"
+		]
+	]
+}

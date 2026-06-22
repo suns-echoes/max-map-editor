@@ -1,0 +1,90 @@
+{
+	"version": "1",
+	"name": "Cliff 4",
+	"width": 7,
+	"height": 8,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"WATR04,SCa000",
+			"WATR09,SCa001",
+			"",
+			"",
+			"",
+			""
+		],
+		[
+			"WATR09,SCa002",
+			"WATR04,SCa003",
+			"WATR11,SCa004",
+			"WATR09,SCa005",
+			"",
+			"",
+			""
+		],
+		[
+			"WATR11,SCa006",
+			"WATR07,SCa007",
+			"WATR07,SCa008",
+			"WATR06,SCa009",
+			"WATR06,SCa010",
+			"",
+			""
+		],
+		[
+			"WATR02,SCa011",
+			"WATR11,SCa012",
+			"",
+			"WATR04,SCa013",
+			"WATR11,SCa014",
+			"WATR04,SCa015",
+			""
+		],
+		[
+			"",
+			"WATR05,SCa016",
+			"WATR09,SCa017",
+			"WATR02,SCa018",
+			"WATR02,SCa019",
+			"WATR01,SCa020",
+			"WATR00,SCa021"
+		],
+		[
+			"",
+			"",
+			"WATR04,SCa022",
+			"WATR04,SCa023",
+			"",
+			"WATR09,SCa024",
+			"WATR11,SCa025"
+		],
+		[
+			"",
+			"",
+			"WATR01,SCa026",
+			"WATR10,SCa027",
+			"WATR04,SCa028",
+			"WATR10,SCa029",
+			"WATR11,SCa030"
+		],
+		[
+			"",
+			"",
+			"",
+			"",
+			"WATR09,SCa031",
+			"WATR00,SCa032",
+			"WATR06,SCa033"
+		]
+	]
+}

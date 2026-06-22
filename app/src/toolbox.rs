@@ -1,5 +1,5 @@
 //! Tile Editing Toolbox dockable (design: features.drawio
-//! "Dockables"): command-bound button groups, no logic of its own — every
+//! "Dockables"): command-bound button groups, no logic of its own - every
 //! live button runs a command line (the menu's pattern), unbuilt tools are
 //! dim Todo placeholders echoing their ticket. The left edge previews the
 //! active tile **with its transform** (the flip/rotate feedback).
@@ -22,7 +22,7 @@ const GROUP_LABEL_H: f32 = 14.0;
 pub enum Act {
 	/// A command line (validated against the parser by a test).
 	Run(&'static str),
-	/// Not built yet — echoes the ticket.
+	/// Not built yet - echoes the ticket.
 	Todo(&'static str),
 }
 
@@ -33,9 +33,18 @@ pub struct Button {
 	pub fill: Option<[f32; 4]>,
 }
 
+/// How a group renders: a block of buttons, or a single dropdown whose
+/// `buttons` are its options (open-state lives in [`EditorState`]).
+#[derive(PartialEq, Eq)]
+pub enum Kind {
+	Buttons,
+	Select,
+}
+
 pub struct Group {
 	pub label: &'static str,
 	pub cols: usize,
+	pub kind: Kind,
 	pub buttons: &'static [Button],
 }
 
@@ -52,6 +61,7 @@ pub const GROUPS: &[Group] = &[
 	Group {
 		label: "draw",
 		cols: 1,
+		kind: Kind::Buttons,
 		buttons: &[
 			b("pencil", Act::Run("tool pencil")),
 			b("pick", Act::Run("tool picker")),
@@ -60,14 +70,38 @@ pub const GROUPS: &[Group] = &[
 			b("random", Act::Run("randomize toggle")),
 		],
 	},
+	// Brush size is a dropdown (the options are wider than the old 1/3/5/7
+	// key row allowed); each option runs its `brush-size N`.
+	Group {
+		label: "brush",
+		cols: 1,
+		kind: Kind::Select,
+		buttons: &[
+			b("1 cells", Act::Run("brush-size 1")),
+			b("2 cells", Act::Run("brush-size 2")),
+			b("3 cells", Act::Run("brush-size 3")),
+			b("5 cells", Act::Run("brush-size 5")),
+			b("7 cells", Act::Run("brush-size 7")),
+			b("9 cells", Act::Run("brush-size 9")),
+			b("13 cells", Act::Run("brush-size 13")),
+		],
+	},
+	Group {
+		label: "shape",
+		cols: 2,
+		kind: Kind::Buttons,
+		buttons: &[b("square", Act::Run("brush-shape square")), b("circle", Act::Run("brush-shape circle"))],
+	},
 	Group {
 		label: "layer",
 		cols: 1,
+		kind: Kind::Buttons,
 		buttons: &[b("water", Act::Run("layer water")), b("ground", Act::Run("layer ground"))],
 	},
 	Group {
 		label: "transform",
 		cols: 2,
+		kind: Kind::Buttons,
 		buttons: &[
 			b("flip h", Act::Run("transform flip-h")),
 			b("flip v", Act::Run("transform flip-v")),
@@ -76,19 +110,9 @@ pub const GROUPS: &[Group] = &[
 		],
 	},
 	Group {
-		label: "auto paint",
-		cols: 1,
-		buttons: &[
-			b("land", Act::Todo("TOOL-3")),
-			b("shore", Act::Run("shore")),
-			b("shore alt", Act::Run("shore alt")),
-			b("shore fix", Act::Run("shore fix")),
-			b("water", Act::Todo("TOOL-3")),
-		],
-	},
-	Group {
 		label: "pass type",
 		cols: 2,
+		kind: Kind::Buttons,
 		buttons: &[
 			sw("land", Act::Run("pass-pick 0"), crate::state::PASS_COLORS[0]),
 			sw("water", Act::Run("pass-pick 1"), crate::state::PASS_COLORS[1]),
@@ -99,6 +123,7 @@ pub const GROUPS: &[Group] = &[
 	Group {
 		label: "selection",
 		cols: 2,
+		kind: Kind::Buttons,
 		buttons: &[
 			b("select", Act::Run("tool select")),
 			b("rect", Act::Run("tool select-rect")),
@@ -109,6 +134,7 @@ pub const GROUPS: &[Group] = &[
 	Group {
 		label: "advanced",
 		cols: 2,
+		kind: Kind::Buttons,
 		buttons: &[
 			b("replace", Act::Todo("TOOL-12")),
 			b("template", Act::Todo("TOOL-5")),
@@ -120,9 +146,16 @@ pub const GROUPS: &[Group] = &[
 	},
 ];
 
-/// The pixel size of group `g`'s button block (the label sits above it).
+/// Width of a [`Kind::Select`] group's closed value box.
+const SELECT_W: f32 = 76.0;
+
+/// The pixel size of group `g`'s block (the label sits above it). A select
+/// group reserves just its closed box; its option list floats on open.
 fn group_size(g: usize) -> (f32, f32) {
 	let group = &GROUPS[g];
+	if group.kind == Kind::Select {
+		return (SELECT_W, GROUP_LABEL_H + BTN_H);
+	}
 	let rows = group.buttons.len().div_ceil(group.cols);
 	let w = group.cols as f32 * BTN_W + (group.cols as f32 - 1.0) * GAP;
 	let h = GROUP_LABEL_H + rows as f32 * BTN_H + rows.saturating_sub(1) as f32 * GAP;
@@ -131,7 +164,7 @@ fn group_size(g: usize) -> (f32, f32) {
 
 /// The flowed toolbox layout: the tile-preview box, then each group's
 /// top-left block origin. Blocks flow left-to-right and **wrap to a new line
-/// when the next one won't fit** — so a wide bottom dock keeps everything on
+/// when the next one won't fit** - so a wide bottom dock keeps everything on
 /// one row, while a narrow dock stacks the sections vertically. Drawing and
 /// hit-testing share this, so the keys you click are the keys drawn.
 pub struct Layout {
@@ -139,7 +172,7 @@ pub struct Layout {
 	pub preview: Rect,
 	/// Each group's block origin (top-left of its label); size = [`group_size`].
 	pub groups: Vec<Rect>,
-	/// Total flowed content height (scroll-independent) — drives the scrollbar.
+	/// Total flowed content height (scroll-independent) - drives the scrollbar.
 	pub content_h: f32,
 }
 
@@ -192,19 +225,76 @@ fn button_in(origin: Rect, g: usize, i: usize) -> Rect {
 	)
 }
 
-/// A button's rect in `body` (computes the flow) — the test API.
+/// A select group's closed value box within its placed origin.
+fn select_box_in(origin: Rect) -> Rect {
+	Rect::new(origin.x, origin.y + GROUP_LABEL_H, SELECT_W, BTN_H)
+}
+
+/// A button's rect in `body` (computes the flow) - the test API.
 #[cfg(test)]
 fn button_rect(body: Rect, g: usize, i: usize) -> Rect {
 	button_in(layout(body, 0.0).groups[g], g, i)
 }
 
-/// The button under a click (at the current scroll offset).
-pub fn click(body: Rect, x: f32, y: f32, scroll: f32) -> Option<&'static Button> {
+/// The (single) select group's index, if any.
+fn select_group() -> Option<usize> {
+	GROUPS.iter().position(|g| g.kind == Kind::Select)
+}
+
+/// Look up a button by its (unique) label - the release handler re-resolves a
+/// hit label to run its command.
+pub fn button(label: &str) -> Option<&'static Button> {
+	GROUPS.iter().flat_map(|g| g.buttons.iter()).find(|b| b.label == label)
+}
+
+/// Should the select group's option list open *upward*? It does when the list
+/// wouldn't fit below the box within the panel body.
+fn popup_up(body: Rect, box_r: Rect, n: usize) -> bool {
+	let below = box_r.y + box_r.h + n as f32 * crate::select::ROW_H;
+	below > body.y + body.h && box_r.y - n as f32 * crate::select::ROW_H >= body.y
+}
+
+/// What a toolbox click resolved to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolboxHit {
+	/// A normal group key, identified by its (unique) label.
+	Button(&'static str),
+	/// The brush-size select box - toggle the dropdown.
+	SelectBox,
+	/// A brush-size option's command line (always an [`Act::Run`]).
+	SelectOption(&'static str),
+	/// A click off an open dropdown - close it (eats the click).
+	SelectClose,
+}
+
+/// The toolbox hit under a click (at the current scroll offset). `brush_open`
+/// is the brush-size dropdown's open state - while open its floating list
+/// takes priority and an outside click closes it.
+pub fn click(body: Rect, x: f32, y: f32, scroll: f32, brush_open: bool) -> Option<ToolboxHit> {
 	let l = layout(body, scroll);
+	// The brush-size select floats over the panel when open - resolve it first.
+	if let Some(g) = select_group() {
+		let box_r = select_box_in(l.groups[g]);
+		let n = GROUPS[g].buttons.len();
+		let up = popup_up(body, box_r, n);
+		match crate::select::hit(box_r, brush_open, n, up, x, y) {
+			Some(crate::select::Hit::Box) => return Some(ToolboxHit::SelectBox),
+			Some(crate::select::Hit::Option(i)) => {
+				if let Act::Run(cmd) = GROUPS[g].buttons[i].act {
+					return Some(ToolboxHit::SelectOption(cmd));
+				}
+			}
+			None if brush_open => return Some(ToolboxHit::SelectClose),
+			None => {}
+		}
+	}
 	for (g, group) in GROUPS.iter().enumerate() {
+		if group.kind == Kind::Select {
+			continue;
+		}
 		for (i, button) in group.buttons.iter().enumerate() {
 			if button_in(l.groups[g], g, i).contains(x, y) {
-				return Some(button);
+				return Some(ToolboxHit::Button(button.label));
 			}
 		}
 	}
@@ -248,9 +338,18 @@ pub fn view(editor: &EditorState, body: Rect, scroll: f32, w: f32, h: f32, map: 
 		// Section header: a label with a hairline rule beneath it.
 		q.label(group.label, origin.x, origin.y, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
 		q.rect(Rect::new(origin.x, origin.y + GROUP_LABEL_H - 3.0, origin.w, 1.0), w, h, theme::BEVEL.bottom);
+		// A select group draws its closed box here; the option list floats later.
+		if group.kind == Kind::Select {
+			let box_r = select_box_in(origin);
+			let label = select_active(group, editor)
+				.map(|i| group.buttons[i].label.to_string())
+				.unwrap_or_else(|| format!("{} px", editor.brush_size));
+			crate::select::draw_box(&mut q, box_r, &label, editor.brush_dropdown_open, w, h, hot);
+			continue;
+		}
 		for (i, button) in group.buttons.iter().enumerate() {
 			let r = button_in(origin, g, i);
-			// A button is "active" when its command reflects current state —
+			// A button is "active" when its command reflects current state -
 			// the tool, the editor mode, or the picked pass value.
 			let active = match &button.act {
 				Act::Run(cmd) => {
@@ -261,6 +360,9 @@ pub fn view(editor: &EditorState, body: Rect, scroll: f32, w: f32, h: f32, map: 
 						|| (*cmd == "tool select" && editor.tool == Tool::Select)
 						|| (*cmd == "tool select-rect" && editor.tool == Tool::SelectRect)
 						|| (*cmd == "randomize toggle" && editor.randomize)
+						|| (cmd.strip_prefix("brush-size ").is_some_and(|n| n.parse() == Ok(editor.brush_size)))
+						|| (*cmd == "brush-shape square" && editor.brush_shape == crate::state::BrushShape::Square)
+						|| (*cmd == "brush-shape circle" && editor.brush_shape == crate::state::BrushShape::Circle)
 						|| (*cmd == "layer water" && editor.active_layer_name() == "water")
 						|| (*cmd == "layer ground" && editor.active_layer_name() == "ground")
 						|| (*cmd == "pass-pick 0" && editor.active_pass == 0)
@@ -306,7 +408,27 @@ pub fn view(editor: &EditorState, body: Rect, scroll: f32, w: f32, h: f32, map: 
 
 	// Visible scrollbar when the flow is taller than the panel.
 	q.scrollbar(body, l.content_h, scroll, w, h, hot);
+
+	// The brush-size option list floats over the panel - drawn last, on top.
+	if editor.brush_dropdown_open {
+		if let Some(g) = select_group() {
+			let group = &GROUPS[g];
+			let box_r = select_box_in(l.groups[g]);
+			let labels: Vec<&str> = group.buttons.iter().map(|b| b.label).collect();
+			let up = popup_up(body, box_r, labels.len());
+			crate::select::draw_popup(&mut q, box_r, &labels, select_active(group, editor), up, w, h, hot);
+		}
+	}
 	ToolboxView { chrome: q, preview }
+}
+
+/// The select group's active option index - the one whose `brush-size N`
+/// matches the current brush size.
+fn select_active(group: &Group, editor: &EditorState) -> Option<usize> {
+	group.buttons.iter().position(|b| match &b.act {
+		Act::Run(cmd) => cmd.strip_prefix("brush-size ").and_then(|n| n.parse::<u16>().ok()) == Some(editor.brush_size),
+		Act::Todo(_) => false,
+	})
 }
 
 #[cfg(test)]
@@ -330,20 +452,41 @@ mod tests {
 	#[test]
 	fn buttons_hit_and_groups_dont_overlap() {
 		let body = Rect::new(0.0, 600.0, 1280.0, 124.0);
-		// Every button is clickable at its own center.
+		// Every button key (the non-select groups) is clickable at its center.
 		for (g, group) in GROUPS.iter().enumerate() {
+			if group.kind == Kind::Select {
+				continue;
+			}
 			for (i, button) in group.buttons.iter().enumerate() {
 				let r = button_rect(body, g, i);
-				let hit = click(body, r.x + r.w / 2.0, r.y + r.h / 2.0, 0.0)
+				let hit = click(body, r.x + r.w / 2.0, r.y + r.h / 2.0, 0.0, false)
 					.unwrap_or_else(|| panic!("{} unclickable", button.label));
-				assert_eq!(hit.label, button.label);
+				assert_eq!(hit, ToolboxHit::Button(button.label));
 			}
 		}
 		// The preview area hits nothing.
-		assert!(click(body, body.x + 30.0, body.y + 40.0, 0.0).is_none());
+		assert!(click(body, body.x + 30.0, body.y + 40.0, 0.0, false).is_none());
 		// Groups stay inside a 1280-wide dock.
 		let last = GROUPS.len() - 1;
 		let r = button_rect(body, last, GROUPS[last].buttons.len() - 1);
 		assert!(r.x + r.w <= body.x + body.w, "toolbox overflows: {}", r.x + r.w);
+	}
+
+	#[test]
+	fn brush_select_toggles_then_picks() {
+		let body = Rect::new(0.0, 600.0, 1280.0, 124.0);
+		let g = select_group().expect("a brush select group");
+		let box_r = select_box_in(layout(body, 0.0).groups[g]);
+		// Closed: the box toggles; its (hidden) options are inert.
+		assert_eq!(click(body, box_r.x + 2.0, box_r.y + 2.0, 0.0, false), Some(ToolboxHit::SelectBox));
+		// Open: each option resolves to its `brush-size N` command line.
+		let up = popup_up(body, box_r, GROUPS[g].buttons.len());
+		for (i, button) in GROUPS[g].buttons.iter().enumerate() {
+			let o = crate::select::option_rect(box_r, i, GROUPS[g].buttons.len(), up);
+			let Act::Run(cmd) = button.act else { panic!("brush option must Run") };
+			assert_eq!(click(body, o.x + 2.0, o.y + 2.0, 0.0, true), Some(ToolboxHit::SelectOption(cmd)));
+		}
+		// Open + click elsewhere → close (eats the click).
+		assert_eq!(click(body, body.x + 30.0, body.y + 40.0, 0.0, true), Some(ToolboxHit::SelectClose));
 	}
 }

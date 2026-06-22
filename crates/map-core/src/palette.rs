@@ -1,6 +1,6 @@
 //! Palette file IO: read/write a 256-colour palette as JSON.
 //!
-//! Two read forms are accepted — the bare `["#rrggbb", …×256]` array (the
+//! Two read forms are accepted - the bare `["#rrggbb", …×256]` array (the
 //! tileset `palette.json` format, see [`crate::TilePack`]) and the richer
 //! `{ "name", "version", "date", "author", "colors": ["#rrggbb", …×256] }`
 //! object. Writing always emits the object form (carrying a name + version);
@@ -21,12 +21,9 @@ pub fn parse_palette(text: &str) -> Result<Vec<u8>, String> {
 	for color in colors {
 		let hex =
 			color.as_str().and_then(|s| s.strip_prefix('#')).ok_or("palette: bad colour entry (want \"#rrggbb\")")?;
-		if hex.len() != 6 && hex.len() != 8 {
-			return Err(format!("palette: bad colour '#{hex}' (want 6 or 8 hex digits)"));
-		}
-		for i in 0..3 {
-			rgb.push(u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|_| format!("palette: bad hex '#{hex}'"))?);
-		}
+		let parsed = crate::color::parse_hex_rgb(hex)
+			.ok_or_else(|| format!("palette: bad colour '#{hex}' (want 6 or 8 hex digits)"))?;
+		rgb.extend_from_slice(&parsed);
 	}
 	Ok(rgb)
 }
@@ -43,10 +40,24 @@ pub fn write_palette(palette: &[u8], name: &str) -> String {
 		let at = i * 3;
 		let (r, g, b) = (palette[at], palette[at + 1], palette[at + 2]);
 		let comma = if i < 255 { "," } else { "" };
-		s.push_str(&format!("\t\t\"#{r:02x}{g:02x}{b:02x}\"{comma}\n"));
+		s.push_str(&format!("\t\t\"{}\"{comma}\n", crate::color::rgb_to_hex([r, g, b])));
 	}
 	s.push_str("\t]\n}\n");
 	s
+}
+
+/// Read slot `slot`'s RGB triple from a 768-byte (256 × RGB) palette.
+#[inline]
+pub fn slot_rgb(palette: &[u8], slot: u8) -> [u8; 3] {
+	let at = slot as usize * 3;
+	[palette[at], palette[at + 1], palette[at + 2]]
+}
+
+/// Overwrite slot `slot`'s RGB triple in a 768-byte (256 × RGB) palette.
+#[inline]
+pub fn set_slot_rgb(palette: &mut [u8], slot: u8, rgb: [u8; 3]) {
+	let at = slot as usize * 3;
+	palette[at..at + 3].copy_from_slice(&rgb);
 }
 
 #[cfg(test)]

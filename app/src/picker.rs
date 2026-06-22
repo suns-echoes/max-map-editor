@@ -1,6 +1,6 @@
 //! Tile Explorer content: the pickable-tile list (filters),
 //! grid layout/hit-testing, and the per-frame view (tile quads for the GPU
-//! pass + chrome overlay). Pure logic — the GPU half lives in
+//! pass + chrome overlay). Pure logic - the GPU half lives in
 //! `project_render::draw_picker`, input routing in `main.rs`.
 
 use std::collections::HashSet;
@@ -10,9 +10,13 @@ use map_core::Project;
 use crate::theme;
 use crate::ui::{Hot, Rect, SteelMap, UiQuads};
 
-/// Display sizes the size button cycles through (design: 16–64 px).
-pub const SIZES: [f32; 5] = [16.0, 24.0, 32.0, 48.0, 64.0];
-const HEADER_H: f32 = 22.0;
+/// Display sizes the size dropdown offers (the larger ones suit a wide panel
+/// or close inspection of a single tile).
+pub const SIZES: [f32; 7] = [16.0, 24.0, 32.0, 48.0, 64.0, 128.0, 256.0];
+/// Two header rows: filter + size on top, the new/clone/edit actions below.
+const HEADER_H: f32 = 44.0;
+/// Height of one header row (filter row, action row).
+const ROW_H: f32 = 20.0;
 const PAD: f32 = 4.0;
 const GAP: f32 = 2.0;
 /// Wheel scroll per notch (px).
@@ -55,7 +59,7 @@ impl Filter {
 	}
 
 	/// The pass value this filter selects (0 land / 1 water / 2 shore /
-	/// 3 blocked) — `None` for the non-pass filters.
+	/// 3 blocked) - `None` for the non-pass filters.
 	fn pass(self) -> Option<u8> {
 		match self {
 			Filter::Land => Some(0),
@@ -71,11 +75,15 @@ pub struct PickerState {
 	pub tile_px: f32,
 	pub scroll: f32,
 	pub filter: Filter,
+	/// The filter dropdown's open state.
+	pub filter_open: bool,
+	/// The size dropdown's open state.
+	pub size_open: bool,
 }
 
 impl Default for PickerState {
 	fn default() -> Self {
-		Self { tile_px: 32.0, scroll: 0.0, filter: Filter::All }
+		Self { tile_px: 32.0, scroll: 0.0, filter: Filter::All, filter_open: false, size_open: false }
 	}
 }
 
@@ -88,14 +96,14 @@ impl PickerState {
 
 /// One pickable tile.
 pub struct Item<'a> {
-	/// Pack/tile coordinates — tests pin the contract; the eyedropper and
+	/// Pack/tile coordinates - tests pin the contract; the eyedropper and
 	/// group filters (the custom group filter) are the future readers.
 	#[allow(dead_code)]
 	pub pack: usize,
 	#[allow(dead_code)]
 	pub tile: u16,
 	pub id: &'a str,
-	/// Global atlas index (`sum of preceding packs' tile counts + tile`) —
+	/// Global atlas index (`sum of preceding packs' tile counts + tile`) -
 	/// the same contract `project_render::build_cell_data` uses.
 	pub index: u32,
 }
@@ -128,63 +136,98 @@ pub fn items(project: &Project, filter: Filter) -> Vec<Item<'_>> {
 	out
 }
 
-/// Grid geometry for a panel body (header row on top, tiles below).
-pub struct Grid {
-	pub cols: usize,
-	pub cell: f32,
-	pub x0: f32,
-	/// Unscrolled top of the first row.
-	pub y0: f32,
-}
-
-pub fn grid(body: Rect, tile_px: f32) -> Grid {
-	let cell = tile_px + GAP;
-	// Reserve the scrollbar gutter so tiles never sit under the bar.
-	let cols = (((body.w - crate::ui::SCROLLBAR_W - 2.0 * PAD + GAP) / cell).floor() as usize).max(1);
-	Grid { cols, cell, x0: body.x + PAD, y0: body.y + HEADER_H + PAD }
+/// Grid geometry for the picker body (header row on top, `tile_px` cells below).
+pub fn grid(body: Rect, tile_px: f32) -> crate::cellgrid::Grid {
+	crate::cellgrid::Grid { body, cell: tile_px, gap: GAP, pad: PAD, header: HEADER_H, row_extra: 0.0 }
 }
 
 /// Screen rect of item `i` at a given scroll.
-pub fn item_rect(g: &Grid, tile_px: f32, scroll: f32, i: usize) -> Rect {
-	let (row, col) = (i / g.cols, i % g.cols);
-	Rect::new(g.x0 + col as f32 * g.cell, g.y0 + row as f32 * g.cell - scroll, tile_px, tile_px)
+pub fn item_rect(g: &crate::cellgrid::Grid, _tile_px: f32, scroll: f32, i: usize) -> Rect {
+	g.item_rect(i, scroll)
 }
 
 /// Scroll range so the last row can reach the body bottom.
 pub fn max_scroll(count: usize, body: Rect, tile_px: f32) -> f32 {
-	let g = grid(body, tile_px);
-	let rows = count.div_ceil(g.cols);
-	let content = rows as f32 * g.cell + HEADER_H + 2.0 * PAD - GAP;
-	crate::ui::scroll_max(content, body.h)
+	grid(body, tile_px).max_scroll(count)
 }
 
 /// The grid's clip area (body minus the header row).
 pub fn scissor(body: Rect) -> Rect {
-	Rect::new(body.x, body.y + HEADER_H, body.w, (body.h - HEADER_H).max(0.0))
+	crate::cellgrid::scissor(body, HEADER_H)
 }
 
-/// Header buttons: `[filter: …]` `[size: …]`.
+/// Header controls (top row): the `filter` dropdown box and the size dropdown.
 fn header_buttons(body: Rect) -> (Rect, Rect) {
-	let h = HEADER_H - 4.0;
-	(Rect::new(body.x + 2.0, body.y + 2.0, 110.0, h), Rect::new(body.x + 116.0, body.y + 2.0, 64.0, h))
+	let h = ROW_H - 2.0;
+	(Rect::new(body.x + 2.0, body.y + 2.0, 128.0, h), Rect::new(body.x + 134.0, body.y + 2.0, 56.0, h))
+}
+
+/// Action row (below the filter row): `new` / `clone` / `edit` / `del`, sharing
+/// the width evenly so they fit even a narrow panel.
+fn action_buttons(body: Rect) -> [Rect; 4] {
+	let y = body.y + ROW_H + 2.0;
+	let h = ROW_H - 2.0;
+	let avail = body.w - 2.0 * PAD;
+	let bw = ((avail - 3.0 * GAP) / 4.0).max(22.0);
+	let x0 = body.x + PAD;
+	std::array::from_fn(|i| Rect::new(x0 + i as f32 * (bw + GAP), y, bw, h))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
 	/// Make this tile id the active brush.
 	Pick(String),
-	CycleFilter,
-	CycleSize,
+	/// Pick a filter from the open dropdown (closes it).
+	SetFilter(Filter),
+	/// Toggle the filter dropdown open/closed.
+	ToggleFilter,
+	/// A click off an open dropdown closes it (eats the click).
+	CloseFilter,
+	/// Toggle the size dropdown open/closed.
+	ToggleSize,
+	/// Pick size option `i` (index into [`SIZES`]); closes the dropdown.
+	SetSize(usize),
+	/// A click off the open size dropdown closes it.
+	CloseSize,
+	/// Open the Tile Painter on a blank new tile.
+	NewTile,
+	/// Open the Tile Painter cloning the selected tile.
+	CloneTile,
+	/// Open the Tile Painter editing the selected tile.
+	EditTile,
+	/// Delete the selected tile from its pack.
+	DeleteTile,
 }
 
 /// What a click at `(x, y)` in the panel body does.
 pub fn click(project: &Project, state: &PickerState, body: Rect, x: f32, y: f32) -> Option<Action> {
 	let (filter_btn, size_btn) = header_buttons(body);
-	if filter_btn.contains(x, y) {
-		return Some(Action::CycleFilter);
+	// The filter dropdown takes priority while open - its list floats over the
+	// grid below the header.
+	match crate::select::hit(filter_btn, state.filter_open, Filter::ALL.len(), false, x, y) {
+		Some(crate::select::Hit::Box) => return Some(Action::ToggleFilter),
+		Some(crate::select::Hit::Option(i)) => return Some(Action::SetFilter(Filter::ALL[i])),
+		None if state.filter_open => return Some(Action::CloseFilter),
+		None => {}
 	}
-	if size_btn.contains(x, y) {
-		return Some(Action::CycleSize);
+	match crate::select::hit(size_btn, state.size_open, SIZES.len(), false, x, y) {
+		Some(crate::select::Hit::Box) => return Some(Action::ToggleSize),
+		Some(crate::select::Hit::Option(i)) => return Some(Action::SetSize(i)),
+		None if state.size_open => return Some(Action::CloseSize),
+		None => {}
+	}
+	let [new_b, clone_b, edit_b, del_b] = action_buttons(body);
+	if new_b.contains(x, y) {
+		return Some(Action::NewTile);
+	}
+	if clone_b.contains(x, y) {
+		return Some(Action::CloneTile);
+	}
+	if edit_b.contains(x, y) {
+		return Some(Action::EditTile);
+	}
+	if del_b.contains(x, y) {
+		return Some(Action::DeleteTile);
 	}
 	if y < body.y + HEADER_H {
 		return None;
@@ -192,12 +235,7 @@ pub fn click(project: &Project, state: &PickerState, body: Rect, x: f32, y: f32)
 	let list = items(project, state.filter);
 	let g = grid(body, state.tile_px);
 	let scroll = state.scroll.clamp(0.0, max_scroll(list.len(), body, state.tile_px));
-	let col = ((x - g.x0) / g.cell).floor();
-	let row = ((y - g.y0 + scroll) / g.cell).floor();
-	if col < 0.0 || row < 0.0 || col as usize >= g.cols {
-		return None;
-	}
-	let i = row as usize * g.cols + col as usize;
+	let i = g.index_at(x, y, scroll)?;
 	let r = item_rect(&g, state.tile_px, scroll, i);
 	// Inside the tile proper (not the gap), and a real item.
 	(r.contains(x, y) && i < list.len()).then(|| Action::Pick(list[i].id.to_string()))
@@ -211,7 +249,7 @@ pub struct TileQuad {
 	pub rect: Rect,
 }
 
-/// The global atlas index of a tile ref — the same cumulative-pack-base
+/// The global atlas index of a tile ref - the same cumulative-pack-base
 /// contract `project_render::build_cell_data` uses.
 pub fn global_index(project: &Project, t: map_core::TileRef) -> u32 {
 	let base: u32 = project.packs[..t.pack as usize].iter().map(|p| p.tile_count() as u32).sum();
@@ -263,29 +301,56 @@ pub fn view(
 		}
 	}
 
-	// Header: filter + size buttons and the count, over a steel sub-toolbar.
+	// Header: filter dropdown + size button and the count, over a steel
+	// sub-toolbar.
 	overlay.material(body.strip_top(HEADER_H), w, h, theme::TITLE);
 	let (filter_btn, size_btn) = header_buttons(body);
-	overlay.button(filter_btn, w, h, hot);
-	overlay.label_fit(
-		&format!("filter: {}", state.filter.name()),
+	crate::select::draw_box(
+		&mut overlay,
 		filter_btn,
-		6.0,
-		crate::ui::FONT_SMALL,
+		&format!("filter: {}", state.filter.name()),
+		state.filter_open,
 		w,
 		h,
-		theme::INK,
+		hot,
 	);
-	overlay.button(size_btn, w, h, hot);
-	overlay.label_in(&format!("{} px", state.tile_px as u32), size_btn, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
+	// Closed box shows just the number (the popup spells out "N px").
+	crate::select::draw_box(&mut overlay, size_btn, &format!("{}", state.tile_px as u32), state.size_open, w, h, hot);
+	// Action row: new (always), clone/edit/del (need a selected tile - greyed
+	// otherwise; the command still reports why if clicked).
+	let [new_b, clone_b, edit_b, del_b] = action_buttons(body);
+	let has = active.is_some();
+	overlay.button(new_b, w, h, hot);
+	overlay.label_in("new", new_b, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
+	for (r, label) in [(clone_b, "clone"), (edit_b, "edit"), (del_b, "delete")] {
+		if has {
+			overlay.button(r, w, h, hot);
+			overlay.label_in(label, r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
+		} else {
+			overlay.button_disabled(r, w, h);
+			overlay.label_in(label, r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
+		}
+	}
 	let count = format!("{}", list.len());
 	let cx = body.x + body.w - 6.0 - crate::text::label_width(&count, crate::ui::FONT_SMALL);
 	overlay.label(&count, cx, body.y + 4.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
 
 	// Visible scrollbar over the tile grid. Content height within the clip
 	// window mirrors `max_scroll` (which measures against the full body).
-	let rows = list.len().div_ceil(g.cols);
-	overlay.scrollbar(clip, rows as f32 * g.cell + 2.0 * PAD - GAP, scroll, w, h, hot);
+	overlay.scrollbar(clip, g.content_height(list.len()), scroll, w, h, hot);
+
+	// The dropdown lists float over the grid - drawn last so they sit on top
+	// (only one is open at a time).
+	if state.filter_open {
+		let labels: Vec<&str> = Filter::ALL.iter().map(|f| f.name()).collect();
+		let selected = Filter::ALL.iter().position(|&f| f == state.filter);
+		crate::select::draw_popup(&mut overlay, filter_btn, &labels, selected, false, w, h, hot);
+	}
+	if state.size_open {
+		let labels: Vec<String> = SIZES.iter().map(|s| format!("{} px", *s as u32)).collect();
+		let selected = SIZES.iter().position(|&s| s == state.tile_px);
+		crate::select::draw_popup(&mut overlay, size_btn, &labels, selected, false, w, h, hot);
+	}
 
 	View { tiles, overlay, scissor: clip }
 }
@@ -296,7 +361,7 @@ mod tests {
 	use std::path::Path;
 
 	fn project() -> Project {
-		let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/assets");
+		let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/assets/tilepacks");
 		Project::new(8, 6, &["GREEN".to_string()], &root, 42).unwrap()
 	}
 
@@ -328,7 +393,7 @@ mod tests {
 	#[test]
 	fn grid_hit_round_trips() {
 		let p = project();
-		let state = PickerState { tile_px: 32.0, scroll: 100.0, filter: Filter::All };
+		let state = PickerState { tile_px: 32.0, scroll: 100.0, ..Default::default() };
 		let body = Rect::new(1000.0, 50.0, 278.0, 500.0);
 		let list = items(&p, state.filter);
 		let g = grid(body, state.tile_px);
@@ -336,7 +401,7 @@ mod tests {
 		for &i in &[0usize, 7, 8, 100, list.len() - 1] {
 			let r = item_rect(&g, state.tile_px, scroll, i);
 			if r.y < body.y + HEADER_H || r.y + r.h > body.y + body.h {
-				continue; // scrolled out of view — not clickable
+				continue; // scrolled out of view - not clickable
 			}
 			match click(&p, &state, body, r.x + 5.0, r.y + 5.0) {
 				Some(Action::Pick(id)) => assert_eq!(id, list[i].id, "item {i}"),
@@ -344,17 +409,35 @@ mod tests {
 			}
 		}
 		// The gap between tiles picks nothing.
-		let r = item_rect(&g, state.tile_px, scroll, g.cols + 1);
+		let r = item_rect(&g, state.tile_px, scroll, g.cols() + 1);
 		assert!(click(&p, &state, body, r.x - 1.0, r.y + 5.0).is_none());
 	}
 
 	#[test]
-	fn header_buttons_cycle() {
+	fn header_controls_and_filter_dropdown() {
 		let p = project();
-		let state = PickerState::default();
 		let body = Rect::new(1000.0, 50.0, 278.0, 500.0);
-		assert!(matches!(click(&p, &state, body, body.x + 10.0, body.y + 10.0), Some(Action::CycleFilter)));
-		assert!(matches!(click(&p, &state, body, body.x + 120.0, body.y + 10.0), Some(Action::CycleSize)));
+		// Closed: the filter box and the size box each toggle their dropdown.
+		let closed = PickerState::default();
+		assert_eq!(click(&p, &closed, body, body.x + 10.0, body.y + 10.0), Some(Action::ToggleFilter));
+		assert_eq!(click(&p, &closed, body, body.x + 150.0, body.y + 10.0), Some(Action::ToggleSize));
+		// Size dropdown open: each row picks its size; a miss closes it.
+		let sized = PickerState { size_open: true, ..PickerState::default() };
+		let (_, size_btn) = header_buttons(body);
+		for i in 0..SIZES.len() {
+			let o = crate::select::option_rect(size_btn, i, SIZES.len(), false);
+			assert_eq!(click(&p, &sized, body, o.x + 2.0, o.y + 2.0), Some(Action::SetSize(i)));
+		}
+
+		// Open: each option row picks its filter; a click off the list closes it.
+		let open = PickerState { filter_open: true, ..PickerState::default() };
+		let (filter_btn, _) = header_buttons(body);
+		for (i, &f) in Filter::ALL.iter().enumerate() {
+			let o = crate::select::option_rect(filter_btn, i, Filter::ALL.len(), false);
+			assert_eq!(click(&p, &open, body, o.x + 2.0, o.y + 2.0), Some(Action::SetFilter(f)));
+		}
+		// A click on a tile while open just closes the dropdown (eats the click).
+		assert_eq!(click(&p, &open, body, body.x + 20.0, body.y + 300.0), Some(Action::CloseFilter));
 
 		assert_eq!(Filter::All.next(), Filter::Used);
 		assert_eq!(Filter::Blocked.next(), Filter::All);

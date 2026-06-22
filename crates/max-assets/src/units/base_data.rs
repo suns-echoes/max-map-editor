@@ -1,7 +1,7 @@
-/// `D_*` file payload — indexes into the unit's sprite strip for each
+/// `D_*` file payload - indexes into the unit's sprite strip for each
 /// category (body, turret, firing, connector). Original MAX reads 8 bytes
 /// plus 8 angle offsets (16 bytes signed `i8` pairs). For now only the
-/// base/count section is decoded — angle offsets TODO.
+/// base/count section is decoded - angle offsets TODO.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BaseUnitData {
 	pub image_base: u8,

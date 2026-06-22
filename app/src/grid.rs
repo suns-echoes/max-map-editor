@@ -1,7 +1,7 @@
 //! Grid overlay pass: one fullscreen, alpha-blended pass
 //! that draws a cell-bevel grid (light top/left, dark bottom/right inner
 //! edges, >= 1 screen px so it can't vanish at any zoom) on top of whatever
-//! map the active renderer drew. Path-agnostic — the same pass serves the
+//! map the active renderer drew. Path-agnostic - the same pass serves the
 //! project and flat-WRL renderers (it reads only pan/zoom/map-size).
 
 use crate::render::Uniforms;
@@ -99,18 +99,7 @@ impl GridPass {
 	) {
 		let gu = GridUniforms { screen_size: u.screen_size, pan: u.pan, map_size: u.map_size, zoom: u.zoom, strength };
 		queue.write_buffer(&self.uniforms_buffer, 0, bytemuck::bytes_of(&gu));
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("grid.pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: target,
-				resolve_target: None,
-				ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-		});
+		let mut pass = crate::render::load_pass(encoder, target, "grid.pass");
 		pass.set_pipeline(&self.pipeline);
 		pass.set_bind_group(0, &self.bind_group, &[]);
 		pass.draw(0..3, 0..1);

@@ -1,0 +1,38 @@
+{
+	"version": "1",
+	"name": "Mountain 4",
+	"width": 3,
+	"height": 4,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "CRATER",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"WATR08,CMb052",
+			"WATR02,CMb053"
+		],
+		[
+			"WATR10,CMb054",
+			"WATR02,CMb055",
+			"WATR03,CMb056"
+		],
+		[
+			"WATR04,CMb057",
+			"WATR03,CMb058",
+			"WATR08,CMb059"
+		],
+		[
+			"WATR11,CMb060",
+			"",
+			""
+		]
+	]
+}

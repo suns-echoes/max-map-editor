@@ -1,6 +1,6 @@
 //! Headless capture: render one frame offscreen and write it as a PNG. The
-//! caller paints via the same `render_frame` composite as the live window —
-//! only the target differs — so a `screenshot` command is always a faithful
+//! caller paints via the same `render_frame` composite as the live window -
+//! only the target differs - so a `screenshot` command is always a faithful
 //! sample of the current view. (Pattern lifted from world-editor.)
 
 use std::path::Path;
@@ -9,7 +9,7 @@ pub const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 /// Create a `width`×`height` offscreen target, let `draw` paint it, read it
 /// back, then optionally **crop** (a render-resolution sub-rect) and **resize**
-/// (nearest-neighbour, crisp) before writing `path` — so one `screenshot` can
+/// (nearest-neighbour, crisp) before writing `path` - so one `screenshot` can
 /// frame + magnify a region (e.g. small UI). Crop is applied before resize.
 #[allow(clippy::too_many_arguments)]
 pub fn render_to_png(
@@ -77,7 +77,7 @@ pub fn render_to_png(
 	drop(data);
 	buffer.unmap();
 
-	// Crop (render-res px) then nearest-neighbour resize — both operate on the
+	// Crop (render-res px) then nearest-neighbour resize - both operate on the
 	// readback RGBA, so a single screenshot can frame + magnify a region.
 	let (mut rgba, mut fw, mut fh) = (rgba, width, height);
 	if let Some((cx, cy, cw, ch)) = crop {
@@ -105,7 +105,7 @@ fn crop_rgba(src: &[u8], w: u32, h: u32, cx: u32, cy: u32, cw: u32, ch: u32) -> 
 	(out, cw, ch)
 }
 
-/// Nearest-neighbour resize of `src` (RGBA8, `w`×`h`) to `ow`×`oh` — crisp
+/// Nearest-neighbour resize of `src` (RGBA8, `w`×`h`) to `ow`×`oh` - crisp
 /// pixels for inspecting small UI, no blur.
 fn resize_nearest(src: &[u8], w: u32, h: u32, ow: u32, oh: u32) -> Vec<u8> {
 	let mut out = vec![0u8; (ow * oh * 4) as usize];

@@ -1,0 +1,46 @@
+{
+	"version": "1",
+	"name": "Trees 1",
+	"width": 5,
+	"height": 4,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "GREEN",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR00,GTa058",
+			"WATR08,GTa053",
+			"WATR08,GTa004",
+			"WATR02,GTa005",
+			""
+		],
+		[
+			"WATR09,GTa006",
+			"WATR08,GTa007",
+			"WATR06,GTa008",
+			"WATR02,GTa009",
+			""
+		],
+		[
+			"",
+			"WATR07,GTa010",
+			"WATR03,GTa011",
+			"WATR09,GTa012",
+			"WATR06,GTa013"
+		],
+		[
+			"",
+			"",
+			"WATR07,GTa014",
+			"WATR09,GTa015",
+			"WATR03,GTa016"
+		]
+	]
+}

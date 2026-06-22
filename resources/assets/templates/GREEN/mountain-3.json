@@ -1,0 +1,53 @@
+{
+	"version": "1",
+	"name": "Mountain 3",
+	"width": 5,
+	"height": 5,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "GREEN",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR07,GMa008",
+			"WATR08,GMa009",
+			"WATR04,GMa010",
+			"WATR00,GMa011",
+			"WATR01,GMa012"
+		],
+		[
+			"WATR02,GMa013",
+			"WATR03,GMa014",
+			"WATR11,GMa015",
+			"WATR09,GMa016",
+			""
+		],
+		[
+			"WATR01,GMa017",
+			"WATR06,GMa018",
+			"WATR00,GMa019",
+			"WATR01,GMa020",
+			""
+		],
+		[
+			"WATR07,GMa021",
+			"WATR04,GMa022",
+			"WATR09,GMa023",
+			"WATR08,GMa024",
+			""
+		],
+		[
+			"",
+			"WATR06,GMa025",
+			"WATR06,GMa026",
+			"WATR07,GMa035",
+			""
+		]
+	]
+}

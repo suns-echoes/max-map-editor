@@ -1,4 +1,4 @@
-//! WRL writer — exact inverse of `file::read_wrl_file` (map-editor addition;
+//! WRL writer - exact inverse of `file::read_wrl_file` (map-editor addition;
 //! the upstream re-MAX copy of this crate is read-only).
 
 use std::fs;

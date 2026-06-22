@@ -1,6 +1,6 @@
 # Grid overlay: 1px-on-screen lines at every cell edge, drawn as a
 # separate pass on top of the map (so it works for the project and the
-# flat-WRL paths alike). A pure view toggle — it never touches the document.
+# flat-WRL paths alike). A pure view toggle - it never touches the document.
 # Run: cargo run -- --script scripts/grid.script --headless
 
 new 16 16 GREEN 3

@@ -53,7 +53,7 @@ fn input_top(h: u32) -> f32 {
 	panel_height(h) - PAD - glyph_px().1
 }
 
-/// How many log rows fit above the input line — feed to
+/// How many log rows fit above the input line - feed to
 /// [`Console::set_view_rows`] so scrolling clamps correctly.
 pub fn rows_for(h: u32) -> usize {
 	let avail = input_top(h) - GAP - PAD;
@@ -70,7 +70,7 @@ pub fn console_quads(c: &Console, w: u32, h: u32) -> Vec<TextVertex> {
 	push_rect(&mut v, 0.0, 0.0, wf, ph, wf, hf, PANEL_COLOR);
 	push_rect(&mut v, 0.0, ph - 2.0, wf, ph, wf, hf, BORDER_COLOR);
 
-	// Monospace columns that fit the panel — over-long lines clip instead of
+	// Monospace columns that fit the panel - over-long lines clip instead of
 	// running off the window edge.
 	let max_chars = (((wf - 2.0 * PAD) / gw).floor() as usize).max(1);
 
@@ -107,47 +107,62 @@ pub fn console_quads(c: &Console, w: u32, h: u32) -> Vec<TextVertex> {
 }
 
 /// Proportional **label** text in the MAX font, drawn 1:1 from the prerendered
-/// atlas for `size` (see [`crate::font`]) — these vertices must go in a
+/// atlas for `size` (see [`crate::font`]) - these vertices must go in a
 /// `Batch::Label(size)` run (the matching bind group), never mixed with the
-/// console/Hack quads. Pixel-snapped (integer origin + integer advances) so
-/// nothing drifts. Returns the advance width (px).
+/// console/Hack quads. Returns the advance width (logical px).
+///
+/// `size` is the **render-atlas** size (already scaled for the UI scale, see
+/// [`crate::font::render_px`]); the layout position `x`/`y` and the projection
+/// `w`/`h` are in **logical** px. The atlas is Nearest-sampled, so for crisp
+/// glyphs (no half-texel doubling at fractional UI scales) we lay each glyph out
+/// in **physical** px - logical × scale, snapped to the physical pixel grid,
+/// sized to the atlas - and project with the physical screen size. At scale 1.0
+/// physical == logical and this is the original integer-origin/advance path.
 #[allow(clippy::too_many_arguments)]
 pub fn push_label(v: &mut Vec<TextVertex>, s: &str, x: f32, y: f32, size: u32, w: f32, h: f32, color: [f32; 4]) -> f32 {
 	use crate::max_font::{COUNT, FIRST};
+	let scale = crate::font::ui_scale();
 	let f = crate::font::sized(size);
-	let (gh, aw) = (f.px as f32, f.atlas_w as f32);
-	let (x0, y0) = (x.round(), y.round());
+	let aw = f.atlas_w as f32;
+	let gh = f.px as f32; // physical glyph height = atlas height
+	let (pw, ph) = (w * scale, h * scale); // physical projection size
+	let (x0, y0) = ((x * scale).round(), (y * scale).round());
 	let mut cx = x0;
 	for ch in s.chars() {
 		let code = ch as u32;
 		if code >= FIRST as u32 && code < FIRST as u32 + COUNT {
 			let g = (code - FIRST as u32) as usize;
-			let adv = f.advance[g] as f32;
+			let adv = f.advance[g] as f32; // physical atlas advance
 			let ox = f.offset[g] as f32;
 			let (u0, u1) = (ox / aw, (ox + adv) / aw);
-			push_quad(v, cx, y0, cx + adv, y0 + gh, u0, 0.0, u1, 1.0, w, h, color);
+			push_quad(v, cx, y0, cx + adv, y0 + gh, u0, 0.0, u1, 1.0, pw, ph, color);
 			cx += adv;
 		}
 	}
-	cx - x0
+	(cx - x0) / scale // logical advance for layout
 }
 
 /// Advance width (px) of a MAX-font label rendered at `px` (snapped to a baked
-/// size) — for right-alignment / fit-to-content layout.
+/// size) - for right-alignment / fit-to-content layout.
 pub fn label_width(s: &str, px: f32) -> f32 {
 	use crate::max_font::{COUNT, FIRST};
-	let f = crate::font::sized(crate::font::snap(px));
+	// Measure off the render atlas, then divide back to logical px (the units
+	// layout works in). At scale 1.0 the atlas is the logical size and `inv` is
+	// 1.0, so this is the original integer sum.
+	let f = crate::font::sized(crate::font::render_px(px));
+	let inv = 1.0 / crate::font::ui_scale();
 	s.chars()
 		.filter_map(|c| {
 			let code = c as u32;
 			(code >= FIRST as u32 && code < FIRST as u32 + COUNT)
 				.then(|| f.advance[(code - FIRST as u32) as usize] as f32)
 		})
-		.sum()
+		.sum::<f32>()
+		* inv
 }
 
 /// Truncate `s` with a trailing `...` so it renders no wider than `max_w` px
-/// at `px` (snapped). Returns the input unchanged when it already fits — so
+/// at `px` (snapped). Returns the input unchanged when it already fits - so
 /// fixed containers can take dynamic text (file names, status lines) without
 /// it escaping the box.
 pub fn fit_label(s: &str, px: f32, max_w: f32) -> String {
@@ -241,7 +256,7 @@ pub fn push_rect(v: &mut Vec<TextVertex>, x0: f32, y0: f32, x1: f32, y1: f32, w:
 	push_quad(v, x0, y0, x1, y1, -1.0, -1.0, -1.0, -1.0, w, h, color);
 }
 
-/// A textured quad with explicit uv corners — the steel pass maps screen
+/// A textured quad with explicit uv corners - the steel pass maps screen
 /// pixels to the (REPEAT-sampled) sheet, `color` is the per-vertex tint.
 #[allow(clippy::too_many_arguments)]
 pub fn push_textured(
@@ -292,7 +307,7 @@ fn push_quad(
 	color: [f32; 4],
 ) {
 	// Snap quad edges to the pixel grid (no font/chrome drift); uv is left
-	// unsnapped — the sub-pixel sheet/atlas offset is invisible.
+	// unsnapped - the sub-pixel sheet/atlas offset is invisible.
 	let nx = |x: f32| x.round() / w * 2.0 - 1.0;
 	let ny = |y: f32| 1.0 - y.round() / h * 2.0;
 	let tl = TextVertex { pos: [nx(x0), ny(y0)], uv: [u0, v0], color };
@@ -350,7 +365,7 @@ fn make_atlas_bind_group(
 	})
 }
 
-/// Upload the brushed-steel sheet (RGBA, sRGB) with a REPEAT/linear sampler —
+/// Upload the brushed-steel sheet (RGBA, sRGB) with a REPEAT/linear sampler -
 /// chrome quads tile it by screen position, so the whole UI is one metal sheet.
 fn make_steel_bind_group(
 	device: &wgpu::Device,
@@ -459,7 +474,7 @@ impl TextPass {
 			bind_group_layouts: &[&bgl],
 			push_constant_ranges: &[],
 		});
-		// Two pipelines, identical but for the fragment entry point — coverage
+		// Two pipelines, identical but for the fragment entry point - coverage
 		// (fonts/shapes) vs. steel (chrome fills). Same vertex layout + blend.
 		let pipeline = |label: &str, fs: &str| {
 			device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -517,7 +532,7 @@ impl TextPass {
 	}
 
 	/// Draw a UI frame: one vertex buffer, one pass, replaying the quads'
-	/// runs **in push order** — switching between the Hack atlas (shapes)
+	/// runs **in push order** - switching between the Hack atlas (shapes)
 	/// and the MAX atlas (labels) per run, so later panels cover earlier
 	/// panels' labels (z-order by draw order).
 	pub fn draw_ui(
@@ -531,7 +546,7 @@ impl TextPass {
 	}
 
 	/// `draw_ui` clipped to a screen-space rect (scrollable panel content).
-	/// `screen` bounds the scissor — panels can hang off the window.
+	/// `screen` bounds the scissor - panels can hang off the window.
 	pub fn draw_ui_clipped(
 		&self,
 		device: &wgpu::Device,
@@ -540,8 +555,9 @@ impl TextPass {
 		quads: &UiQuads,
 		scissor: crate::ui::Rect,
 		screen: (u32, u32),
+		scale: f32,
 	) {
-		self.draw_ui_inner(device, encoder, target, quads, Some((scissor, screen)));
+		self.draw_ui_inner(device, encoder, target, quads, Some((scissor, screen, scale)));
 	}
 
 	fn draw_ui_inner(
@@ -550,7 +566,7 @@ impl TextPass {
 		encoder: &mut wgpu::CommandEncoder,
 		target: &wgpu::TextureView,
 		quads: &UiQuads,
-		scissor: Option<(crate::ui::Rect, (u32, u32))>,
+		scissor: Option<(crate::ui::Rect, (u32, u32), f32)>,
 	) {
 		if quads.verts.is_empty() {
 			return;
@@ -560,24 +576,16 @@ impl TextPass {
 			contents: bytemuck::cast_slice(&quads.verts),
 			usage: wgpu::BufferUsages::VERTEX,
 		});
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("text.pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: target,
-				resolve_target: None,
-				ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-		});
-		if let Some((s, (sw, sh))) = scissor {
-			// Clamp to the target; skip the draw when nothing remains.
-			let x0 = (s.x.max(0.0) as u32).min(sw);
-			let y0 = (s.y.max(0.0) as u32).min(sh);
-			let x1 = ((s.x + s.w).max(0.0) as u32).min(sw);
-			let y1 = ((s.y + s.h).max(0.0) as u32).min(sh);
+		let mut pass = crate::render::load_pass(encoder, target, "text.pass");
+		if let Some((s, (sw, sh), scale)) = scissor {
+			// The scissor rect is in **logical** px; the GPU needs **physical**, so
+			// scale it up. Clamp to the target; skip the draw when nothing remains.
+			// (The quad vertices are already projected in logical space at build
+			// time.) At scale 1.0 this is the original physical clamp.
+			let x0 = ((s.x * scale).max(0.0) as u32).min(sw);
+			let y0 = ((s.y * scale).max(0.0) as u32).min(sh);
+			let x1 = (((s.x + s.w) * scale).max(0.0) as u32).min(sw);
+			let y1 = (((s.y + s.h) * scale).max(0.0) as u32).min(sh);
 			if x1 <= x0 || y1 <= y0 {
 				return;
 			}
@@ -589,7 +597,7 @@ impl TextPass {
 		for &(kind, end) in &quads.runs {
 			if bound != Some(kind) {
 				// Steel chrome samples the metal sheet; shapes/labels the
-				// coverage atlases — each run picks its pipeline + bind group.
+				// coverage atlases - each run picks its pipeline + bind group.
 				let (pipeline, bg) = match kind {
 					crate::ui::Batch::Shape => (&self.cover_pipeline, &self.bind_group),
 					crate::ui::Batch::Label(px) => (&self.cover_pipeline, self.label_bg(px)),

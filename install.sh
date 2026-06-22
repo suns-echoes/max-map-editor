@@ -1,18 +1,18 @@
 #!/bin/sh
-# M.A.X. Map Editor — optional Linux installer.
+# M.A.X. Map Editor - optional Linux installer.
 #
 # Installs the portable directory into a fixed location and adds a desktop
 # entry + icons, so the editor shows up in your application menu. The editor
-# itself does NOT need installing — the unzipped folder runs as-is; this
+# itself does NOT need installing - the unzipped folder runs as-is; this
 # script is purely for desktop integration.
 #
 # Usage:  ./install.sh [DEST]
 #         DEST defaults to ~/.local/share/max-map-editor
 #
 # What it does:
-#   1. copies the app (binary, config/, resources/, MANUAL.md, LICENSE) to DEST
+#   1. copies the app (binary, resources/, MANUAL.md, LICENSE) to DEST
 #   2. asks for your M.A.X. game directory and writes it into
-#      DEST/config/mme.ini ([Paths] MaxPath)
+#      DEST/resources/config/mme.ini ([Paths] MaxPath)
 #   3. installs the .desktop file and icons into ~/.local/share
 
 set -eu
@@ -26,33 +26,34 @@ if [ ! -x "$here/max-map-editor" ]; then
 	exit 1
 fi
 
-# 1 — copy the app ----------------------------------------------------------
+# 1 - copy the app ----------------------------------------------------------
 echo "Installing to: $dest"
 mkdir -p "$dest"
 cp -p "$here/max-map-editor" "$dest/"
-cp -pR "$here/config" "$here/resources" "$dest/"
+cp -pR "$here/resources" "$dest/"
 [ -f "$here/MANUAL.md" ] && cp -p "$here/MANUAL.md" "$dest/"
 [ -f "$here/LICENSE" ] && cp -p "$here/LICENSE" "$dest/"
 [ -f "$here/THIRD-PARTY-LICENSES.md" ] && cp -p "$here/THIRD-PARTY-LICENSES.md" "$dest/"
 
-# 2 — MaxPath ----------------------------------------------------------------
+# 2 - MaxPath ----------------------------------------------------------------
 printf "Path to your M.A.X. game directory (Enter to skip): "
 read -r max_path
 if [ -n "$max_path" ]; then
 	if [ -d "$max_path" ]; then
 		# Replace the MaxPath= line in place; the key always exists in the
-		# shipped mme.ini.
-		sed -i "s|^MaxPath=.*|MaxPath=$max_path|" "$dest/config/mme.ini"
+		# shipped mme.ini. (This is the freshly-copied install, not your
+		# accumulated overrides under resources/user/config.)
+		sed -i "s|^MaxPath=.*|MaxPath=$max_path|" "$dest/resources/config/mme.ini"
 		echo "MaxPath set to: $max_path"
 	else
-		echo "warning: '$max_path' is not a directory — skipped." >&2
-		echo "         Set it later in $dest/config/mme.ini" >&2
+		echo "warning: '$max_path' is not a directory - skipped." >&2
+		echo "         Set it later in $dest/resources/config/mme.ini" >&2
 	fi
 else
-	echo "Skipped. Set it later in $dest/config/mme.ini ([Paths] MaxPath)."
+	echo "Skipped. Set it later in $dest/resources/config/mme.ini ([Paths] MaxPath)."
 fi
 
-# 3 — desktop entry + icons ---------------------------------------------------
+# 3 - desktop entry + icons ---------------------------------------------------
 apps="$HOME/.local/share/applications"
 mkdir -p "$apps"
 sed "s|^Exec=.*|Exec=$dest/max-map-editor|; s|^Path=.*|Path=$dest|" \

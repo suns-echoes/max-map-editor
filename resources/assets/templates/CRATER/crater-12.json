@@ -1,0 +1,26 @@
+{
+	"version": "1",
+	"name": "Crater 12",
+	"width": 2,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "CRATER",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR04,CMa080",
+			"WATR07,CMa081"
+		],
+		[
+			"WATR06,CMa082",
+			"WATR02,CMa083"
+		]
+	]
+}

@@ -27,9 +27,84 @@
 					LATEST RELEASE
 				</div>
 				<div>
-					<a href="https://github.com/suns-echoes/max-map-editor/releases/tag/v0.5.0">
-						<h3 class="no-margin">v0.5.0</h3>
+					<a href="https://github.com/suns-echoes/max-map-editor/releases/tag/v0.6.0">
+						<h3 class="no-margin">v0.6.0</h3>
 					</a>
+				</div>
+			</div>
+		</section>
+
+		<section class="log">
+			<div class="log-bg log-header">Current progress report #9
+				<div class="log-date">log date: distant future from 2026-06-22</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Fixes and updates</h2>
+				<p>
+					Commanders, I'm pleased to present a new release packed with
+					improvements and bug fixes. All known terrain patterns
+					(templates) are now shipped for every classic tileset. The
+					classic map projects have been updated, and all asset passage
+					tables have been unified.
+					Consult the embedded User Manual for more information on how
+					to use the latest "Utility" features.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Foreign worlds, native tiles</h2>
+				<p>
+					The "Utility" learned to <strong>re-projectify</strong>
+					maps. Aim <strong>File → Import WRL…</strong> at a world built
+					from the standard tiles.
+					Choose the tile packs to rebuild it with, and the editor
+					matches every tile back onto your tilesets. Rotations and mirrors
+					are recognized, so a tile laid down four ways still resolves to
+					one pack tile with a transform; animated coastal water and shore
+					masks are looked straight through, so a coastline matches no
+					matter which frame it was frozen on. On the original 24 worlds it
+					re-finds <strong>97-100%</strong> of every tile.
+				</p>
+				<p>
+					What doesn't match isn't lost. The unmatched tiles are listed for
+					review and you rule on them: <strong>abort</strong>, leave them
+					behind (<strong>ignore</strong>), or <strong>import</strong> them
+					- either bundled into the project itself or folded into your user
+					tileset, deduplicated so re-imports never stack the same tile
+					twice. A flat WRL becomes a layered, fully-editable project:
+					auto-shore, variants, and repaints all apply again.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>The field manual</h2>
+				<p>
+					Every cockpit needs a manual, and now there is one.
+					<strong>Help → User Manual</strong> opens the full handbook in
+					your browser - screenshots and all - generated straight from the
+					source, so it never drifts from the editor it documents. The same
+					menu runs you out to the project's <strong>website</strong> and
+					its <strong>source on GitHub</strong>, with an
+					<strong>About</strong> panel to keep the credits.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Quick Load bay</h2>
+				<p>
+					Small comforts for a long campaign. The File menu now keeps a
+					<strong>Quick Load</strong> list of your last ten opened maps,
+					while the shipped starter worlds moved to their own
+					<strong>Template Maps</strong> shelf - each labelled with its name
+					and, right-aligned, its file. And the Tile Explorer and Templates
+					Explorer finally <strong>remember their preview size</strong>
+					between sessions, so the cockpit comes up the way you left it.
+				</p>
+				<p>
+					Let's make some maps!
+				</p>
+			</div>
+			<div class="log-bg log-panel">
+				<div class="label">From the bridge:</div>
+				<div class="grid">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0029.png" data-preview="true" title="Import WRL - matching a standard-tile map onto the editor's own tilesets" /></div>
 				</div>
 			</div>
 		</section>
@@ -65,16 +140,16 @@
 				<p>
 					Commanders, big news: the Map Editor has been rewritten
 					from scratch as a <strong>native Rust application</strong>
-					(wgpu + winit). No browser, no web stack — just one small
+					(wgpu + winit). No browser, no web stack - just one small
 					binary that talks straight to the GPU.
 				</p>
 				<p>
 					The Tauri prototype that carried this project for two years
 					is honorably discharged. It taught us everything about WRL
-					files, palettes, and shores — and the new editor inherited
+					files, palettes, and shores - and the new editor inherited
 					all of it. The first native release, <strong>v0.4.0</strong>,
 					is around the corner: portable zips for <strong>Linux and
-					Windows</strong>. Unzip, run, draw planets — settings live
+					Windows</strong>. Unzip, run, draw planets - settings live
 					right next to the binary, no installation, no registry,
 					no traces.
 				</p>
@@ -82,14 +157,14 @@
 			<div class="log-bg log-message">
 				<h2>What the editor does today</h2>
 				<p>
-					This is no longer an announcement — the editor edits:
+					This is no longer an announcement - the editor edits:
 				</p>
 				<ul>
 					<li>- opening original .WRL maps and exporting game-ready ones
 						(byte-exact round-trips, verified against all 24 originals);</li>
 					<li>- layered map projects with tile packs for all five terrains;</li>
 					<li>- tile painting with variant randomization and flood fill;</li>
-					<li>- the auto-shore solver — water/land transitions draw themselves;</li>
+					<li>- the auto-shore solver - water/land transitions draw themselves;</li>
 					<li>- selection tools, copy/cut/paste, and reusable map templates
 						(more below);</li>
 					<li>- passability editor with overlay;</li>
@@ -97,21 +172,21 @@
 					<li>- in-game preview: palette cycling + 6-bit color + CRT effect
 						for the full 1996 experience;</li>
 					<li>- unit previews: stamp real units and buildings from your own
-						game data on the map — team colors, turrets, shadows — and
+						game data on the map - team colors, turrets, shadows - and
 						tune the palette against them;</li>
 					<li>- dockable workspace, tabs, minimap, tile explorer;</li>
 					<li>- new map from any image (quantization + dithering);</li>
 					<li>- full undo/redo, and a console where every action is a
-						command — bindable, scriptable, replayable.</li>
+						command - bindable, scriptable, replayable.</li>
 				</ul>
 			</div>
 			<div class="log-bg log-message">
 				<h2>The terrain synthesizer is online</h2>
 				<p>
 					The long-promised toy has landed: the
-					<strong>Random Terrain Generator</strong>. Pick a pattern —
+					<strong>Random Terrain Generator</strong>. Pick a pattern -
 					<strong>Islands</strong>, <strong>Continent</strong>,
-					<strong>Land Mass</strong>, or <strong>River Raid</strong> —
+					<strong>Land Mass</strong>, or <strong>River Raid</strong> -
 					set the water / obstruction / decoration balance, and let it
 					roll. Every world comes from a seed, and the seed is printed
 					with the result: like a planet? Write the number down and
@@ -119,7 +194,7 @@
 				</p>
 				<p>
 					Mountains and forests stamp as <strong>whole formations</strong>
-					mined from the original maps — not single-tile confetti — and
+					mined from the original maps - not single-tile confetti - and
 					the coastlines run through the auto-shore solver (pick the
 					method you prefer). A progress bar tracks the run, the editor
 					stays responsive throughout, and Abort rolls the map back as
@@ -131,16 +206,16 @@
 				<p>
 					Terrain editing grew a whole construction division. Drag the
 					<strong>select tools</strong> over your map (freehand or
-					rectangles — Shift adds, Ctrl subtracts) and a thick green
+					rectangles - Shift adds, Ctrl subtracts) and a thick green
 					survey line traces whatever you marked. From there:
-					copy, cut, paste — pasted tiles ride under the cursor as a
+					copy, cut, paste - pasted tiles ride under the cursor as a
 					translucent <strong>ghost</strong>, click to deploy, keep
 					clicking to deploy again. Forests in five clicks.
 				</p>
 				<p>
 					Better yet: save a selection as a <strong>template</strong>.
 					The Templates Explorer shows every template as a live
-					thumbnail — the editor ships with formations mined from the
+					thumbnail - the editor ships with formations mined from the
 					original maps, and your own creations are plain JSON files
 					you can share with other Commanders. Templates know which
 					tile packs they need, so they only offer themselves on maps
@@ -153,14 +228,14 @@
 					The cockpit itself got a full refit, and it shows:
 				</p>
 				<ul>
-					<li>- every control answers the cursor — buttons light up under
+					<li>- every control answers the cursor - buttons light up under
 						it and visibly sink while pressed (drag off before releasing
 						and nothing fires);</li>
 					<li>- the right mouse button now serves a <strong>context
 						menu</strong>: what it offers depends on where you are and
-						what you hold — a selection, a full clipboard, an armed
+						what you hold - a selection, a full clipboard, an armed
 						template ghost;</li>
-					<li>- keyboard shortcuts everywhere, shown right in the menus —
+					<li>- keyboard shortcuts everywhere, shown right in the menus -
 						and every single one is rebindable in <code>mme.ini</code>,
 						where any console command can be given a key;</li>
 					<li>- shortcuts are context-smart: the digit keys pick pass
@@ -173,7 +248,7 @@
 				<h2>Hull integrity</h2>
 				<p>
 					The file loaders (WRL, projects, images) went through a
-					security review and now refuse corrupt data politely — with
+					security review and now refuse corrupt data politely - with
 					an error dialog that tells you what's wrong. Paranoia is a
 					virtue when you open files from the extranet.
 				</p>
@@ -194,7 +269,7 @@
 				<p>
 					About that first screenshot: every click in this editor is a
 					console command, which means a map can be a script. So we let
-					the editor's resident machine intelligence write one — it chose
+					the editor's resident machine intelligence write one - it chose
 					a green world, painted an archipelago that spells its favorite
 					three letters, ran the shore solver over the coastlines, and
 					saved the letter A as a template for good measure. Seed 1996,

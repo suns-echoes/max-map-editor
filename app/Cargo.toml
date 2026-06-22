@@ -12,6 +12,7 @@ json       = { workspace = true }
 map-core   = { workspace = true }
 max-assets = { workspace = true }
 
+arboard  = { workspace = true }
 bytemuck = { workspace = true }
 log      = { workspace = true }
 png      = { workspace = true }

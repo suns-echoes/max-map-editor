@@ -4,8 +4,13 @@
 //! tile of the original `.WRL`. This pins the transform convention, the
 //! layer fall-through rule, and the pack data in one sweep.
 //!
+//! Two principled exceptions are tolerated: phase-free animated palette classes
+//! (sea/effects sparkle, see [`animated_class`]) and tiles the shipped packs
+//! have deliberately re-authored away from the 1996 art (see [`REAUTHORED`]).
+//! Every other cell must match, so accidental regressions are still caught.
+//!
 //! Reads the original WRLs from the gitignored `testdata/originals/` (they
-//! are copyrighted game data and not in the repo — run
+//! are copyrighted game data and not in the repo - run
 //! `tools/fetch-testdata.sh` or set the `MAX_DIR` env var); skips **loudly**
 //! if that directory is absent.
 
@@ -22,7 +27,7 @@ fn wrl_dir() -> PathBuf {
 		.unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/originals"))
 }
 
-/// Palette indices the game color-cycles (water shimmer + effects) — see
+/// Palette indices the game color-cycles (water shimmer + effects) - see
 /// `docs/design/tileset-contract.md` §1. Pixels here are *phase-free*: the
 /// conversion to packs canonicalized interchangeable sparkle/sea-phase
 /// variants, so composed output may legally differ from the original in
@@ -36,18 +41,46 @@ fn phase_equal(a: &[u8], b: &[u8]) -> bool {
 	a.iter().zip(b).all(|(&c, &o)| c == o || (animated_class(c) && animated_class(o)))
 }
 
+/// Tiles the shipped packs **intentionally re-author** away from the original
+/// 1996 art (hand-edited in the Tile Painter, then Baked into `resources/assets`).
+/// A cell whose top tile is one of these legally differs from the original WRL;
+/// every other cell must still match, so accidental regressions in the transform
+/// convention, the fall-through rule, or any *unedited* tile are still caught.
+/// Keyed by `(pack name, tile id)`.
+const REAUTHORED: &[(&str, &str)] = &[
+	("CRATER", "CMa060"),
+	("CRATER", "CMa064"),
+	("CRATER", "CMa094"),
+	("CRATER", "CMa095"),
+	("CRATER", "CMa096"),
+	("CRATER", "CMa097"),
+	("GREEN", "GMa151"),
+	("GREEN", "GMa152"),
+	("GREEN", "GMa167"),
+	("GREEN", "GMa168"),
+];
+
+/// Does cell `(x, y)`'s stack rest on a deliberately re-authored tile?
+fn cell_reauthored(project: &Project, x: u16, y: u16) -> bool {
+	let Some(stack) = project.cell(x, y) else { return false };
+	stack.iter().rev().flatten().any(|t| {
+		let pack = &project.packs[t.pack as usize];
+		REAUTHORED.contains(&(pack.name.as_str(), pack.ids[t.tile as usize].as_str()))
+	})
+}
+
 #[test]
 fn projects_compose_identical_to_original_wrls() {
 	let max_dir = wrl_dir();
 	if !max_dir.is_dir() {
-		eprintln!("SKIPPED: original-map proof — no fixtures at {}", max_dir.display());
+		eprintln!("SKIPPED: original-map proof - no fixtures at {}", max_dir.display());
 		eprintln!("         run tools/fetch-testdata.sh (or set MAX_DIR) to restore this coverage");
 		return;
 	}
 
 	let resources = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources");
-	let assets = resources.join("assets");
-	let maps = resources.join("templates");
+	let assets = resources.join("assets/tilepacks");
+	let maps = resources.join("assets/maps");
 
 	let mut checked_maps = 0;
 	let mut failed_maps = Vec::new();
@@ -64,7 +97,7 @@ fn projects_compose_identical_to_original_wrls() {
 		let stem = project_path.file_stem().unwrap().to_string_lossy().to_string();
 		let wrl_path = max_dir.join(format!("{stem}.WRL"));
 		if !wrl_path.is_file() {
-			eprintln!("{stem}: no original WRL — skipped");
+			eprintln!("{stem}: no original WRL - skipped");
 			continue;
 		}
 
@@ -75,6 +108,7 @@ fn projects_compose_identical_to_original_wrls() {
 
 		let mut bad_cells = 0;
 		let mut phase_cells = 0;
+		let mut edited_cells = 0;
 		let mut first_bad = None;
 		for y in 0..project.height {
 			for x in 0..project.width {
@@ -84,9 +118,10 @@ fn projects_compose_identical_to_original_wrls() {
 				if composed == *original {
 					continue;
 				}
-				let acceptable = phase_equal(&composed, original);
-				if acceptable {
+				if phase_equal(&composed, original) {
 					phase_cells += 1;
+				} else if cell_reauthored(&project, x, y) {
+					edited_cells += 1; // a deliberately re-authored tile (Baked over the original)
 				} else {
 					bad_cells += 1;
 					if first_bad.is_none() {
@@ -98,13 +133,15 @@ fn projects_compose_identical_to_original_wrls() {
 		}
 
 		let total = project.width as u32 * project.height as u32;
+		let extra = match (phase_cells, edited_cells) {
+			(0, 0) => String::new(),
+			(p, e) => format!(" ({p} animated-phase, {e} re-authored cells)"),
+		};
 		if bad_cells > 0 {
-			eprintln!("{stem}: {bad_cells}/{total} cells differ — {}", first_bad.unwrap());
+			eprintln!("{stem}: {bad_cells}/{total} cells differ - {}", first_bad.unwrap());
 			failed_maps.push(stem.clone());
-		} else if phase_cells > 0 {
-			eprintln!("{stem}: {total}/{total} ok ({phase_cells} animated-phase cells)");
 		} else {
-			eprintln!("{stem}: {total}/{total} cells identical");
+			eprintln!("{stem}: {total}/{total} ok{extra}");
 		}
 		checked_maps += 1;
 
@@ -119,7 +156,7 @@ fn projects_compose_identical_to_original_wrls() {
 	assert!(failed_maps.is_empty(), "{} of {checked_maps} maps mismatch: {failed_maps:?}", failed_maps.len(),);
 }
 
-/// Bake: projects bake to valid WRLs — dedup at least as tight as
+/// Bake: projects bake to valid WRLs - dedup at least as tight as
 /// the originals, byte round-trip through the writer/reader, and pass
 /// values matching the original passtabs per cell (majority-rule pass data
 /// deviates on ~0.1% of cells where Interplay assigned the same tile
@@ -128,14 +165,14 @@ fn projects_compose_identical_to_original_wrls() {
 fn projects_bake_to_valid_wrls() {
 	let max_dir = wrl_dir();
 	if !max_dir.is_dir() {
-		eprintln!("SKIPPED: original-map proof — no fixtures at {}", max_dir.display());
+		eprintln!("SKIPPED: original-map proof - no fixtures at {}", max_dir.display());
 		eprintln!("         run tools/fetch-testdata.sh (or set MAX_DIR) to restore this coverage");
 		return;
 	}
 	let resources = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources");
-	let assets = resources.join("assets");
+	let assets = resources.join("assets/tilepacks");
 
-	let mut entries: Vec<_> = std::fs::read_dir(resources.join("templates"))
+	let mut entries: Vec<_> = std::fs::read_dir(resources.join("assets/maps"))
 		.expect("read resources/templates")
 		.filter_map(|e| e.ok())
 		.map(|e| e.path())
@@ -180,7 +217,7 @@ fn projects_bake_to_valid_wrls() {
 				let i = y as usize * project.width as usize + x as usize;
 				let bi = baked.bigmap[i] as usize;
 				let baked_tile = &baked.tiles[bi * 4096..(bi + 1) * 4096];
-				// Equal modulo animated classes — the bake canonicalizes
+				// Equal modulo animated classes - the bake canonicalizes
 				// the sea phase under ground cut-outs.
 				assert!(phase_equal(baked_tile, &project.compose_cell(x, y)), "{stem}: cell ({x},{y}) bake != compose",);
 				let oi = original.bigmap[i] as usize;
@@ -201,20 +238,73 @@ fn projects_bake_to_valid_wrls() {
 	assert!(total_pass_deviation <= 300, "pass deviation {total_pass_deviation} exceeds the known majority-rule bound",);
 }
 
+/// `WrlImport` (Import WRL onto existing tilesets) matches nearly every tile of
+/// an original standard-tile map back to its native pack: the packs were
+/// derived from these very WRLs, so coastal-water (96..=116) + shore-mask
+/// wildcarding should re-find almost all of them. A high match rate proves the
+/// matcher copes with the WRL's composited shore/water vs the pack's masked
+/// overlays - the whole point of the feature. (A handful of re-authored or
+/// effect-phase tiles legitimately won't match, hence a floor, not 100%.)
+#[test]
+fn import_matches_real_wrls_to_their_pack() {
+	let max_dir = wrl_dir();
+	if !max_dir.is_dir() {
+		eprintln!("SKIPPED: original-map proof - no fixtures at {}", max_dir.display());
+		eprintln!("         run tools/fetch-testdata.sh (or set MAX_DIR) to restore this coverage");
+		return;
+	}
+	let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks");
+
+	let mut entries: Vec<_> = std::fs::read_dir(&max_dir)
+		.expect("read testdata/originals")
+		.filter_map(|e| e.ok())
+		.map(|e| e.path())
+		.filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("wrl")))
+		.collect();
+	entries.sort();
+
+	let mut checked = 0;
+	let mut worst = 1.0_f32;
+	for wrl_path in entries {
+		let stem = wrl_path.file_stem().unwrap().to_string_lossy().to_string();
+		// The map's native land pack is its name prefix (GREEN_1 → GREEN); snow
+		// maps split between the SNOW and SNOW_DARK packs, so offer both.
+		let prefix = stem.split('_').next().unwrap_or(&stem).to_string();
+		let packs: Vec<String> =
+			if prefix == "SNOW" { vec!["SNOW".into(), "SNOW_DARK".into()] } else { vec![prefix.clone()] };
+		if !assets.join(&packs[0]).is_dir() {
+			continue;
+		}
+		let wrl = read_wrl_file(&wrl_path).unwrap();
+		let import = map_core::WrlImport::new(wrl, &stem, &packs[0], &packs, &assets, 0)
+			.unwrap_or_else(|e| panic!("{stem}: {e}"));
+		let (used, matched) = (import.used_tiles(), import.matched_tiles());
+		let rate = matched as f32 / used.max(1) as f32;
+		eprintln!("{stem}: {matched}/{used} tiles matched against {} ({:.0}%)", packs.join("+"), rate * 100.0);
+		worst = worst.min(rate);
+		checked += 1;
+	}
+	assert!(checked > 0, "found a M.A.X. dir but matched nothing");
+	// Transform-aware matching re-finds ~97-100% of each map's tiles in its pack
+	// (only deliberately re-authored tiles miss); a regression below this floor
+	// means the matcher stopped reusing existing tiles.
+	assert!(worst >= 0.95, "worst match rate {:.0}% below the 95% floor", worst * 100.0);
+}
+
 /// `Project::from_wrl` (the document-model convergence: a `.WRL` opens as a
-/// `Project`) is lossless — importing a WRL and composing every cell
+/// `Project`) is lossless - importing a WRL and composing every cell
 /// reproduces the original tile **byte-for-byte**. No phase tolerance: the
 /// import copies pixels verbatim, unlike the pack conversion above.
 #[test]
 fn from_wrl_imports_losslessly() {
 	let max_dir = wrl_dir();
 	if !max_dir.is_dir() {
-		eprintln!("SKIPPED: original-map proof — no fixtures at {}", max_dir.display());
+		eprintln!("SKIPPED: original-map proof - no fixtures at {}", max_dir.display());
 		eprintln!("         run tools/fetch-testdata.sh (or set MAX_DIR) to restore this coverage");
 		return;
 	}
 
-	let maps = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/templates");
+	let maps = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/maps");
 	let mut entries: Vec<_> = std::fs::read_dir(&maps)
 		.expect("read resources/templates")
 		.filter_map(|e| e.ok())

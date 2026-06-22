@@ -1,0 +1,26 @@
+{
+	"version": "1",
+	"name": "Rough 5",
+	"width": 2,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "DESERT",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR06,DLc015",
+			"WATR07,DLc016"
+		],
+		[
+			"WATR03,DLc018",
+			"WATR04,DLc019"
+		]
+	]
+}

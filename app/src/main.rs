@@ -1,24 +1,30 @@
-//! M.A.X. Map Editor — Rust + WGPU.
+//! M.A.X. Map Editor - Rust + WGPU.
 //!
 //! All mutation flows through `Command`s (see `command.rs`) executed by
-//! `EditorState::execute` — interactive input, `--script` files, and the
+//! `EditorState::execute` - interactive input, `--script` files, and the
 //! future console all share that one path.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod about;
 mod autofix;
 mod blit;
+mod browser;
 mod capture;
+mod cellgrid;
 mod command;
 mod confirm;
 mod console;
 mod console_font;
 mod convertpalette;
 mod crt;
+mod dedupetemplates;
+mod deletetemplate;
 mod errormodal;
 mod font;
 mod generator;
 mod gpu;
 mod grid;
+mod importwrl;
 mod input;
 mod max_font;
 mod menu;
@@ -26,25 +32,37 @@ mod minimap;
 mod modal;
 mod newfromimage;
 mod newmap;
+mod packlist;
 mod palette;
+mod palette_io;
 mod palette_panel;
+mod palettedelete;
+mod palettename;
 mod picker;
+mod preferences;
 mod project_render;
+mod renametemplate;
 mod render;
 mod resize;
+mod select;
+mod settings_io;
 mod skin;
 mod state;
+mod statusbar;
 mod tabs;
 mod templates_panel;
 mod text;
+mod textinput;
 mod theme;
+mod tilepainter;
 mod toolbox;
+mod ttf;
 mod ui;
 mod units;
 mod units_render;
 mod workspace;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use winit::application::ApplicationHandler;
@@ -75,7 +93,7 @@ struct Passes {
 	/// CRT post-process + its offscreen scene target (lazily sized).
 	crt: crt::CrtPass,
 	scene: Option<crt::SceneTarget>,
-	/// Unit-preview pass — built lazily on the first frame after the unit
+	/// Unit-preview pass - built lazily on the first frame after the unit
 	/// library loads (needs the sprite data for its atlas).
 	units: Option<units_render::UnitsGpu>,
 	format: wgpu::TextureFormat,
@@ -100,10 +118,10 @@ impl Passes {
 	}
 }
 
-/// The document opened when none is passed — the GREEN starter project,
+/// The document opened when none is passed - the GREEN starter project,
 /// resolved relative to `resources/` (see [`resources_dir`]).
 fn default_map() -> PathBuf {
-	resources_dir().join("templates/GREEN_1.json")
+	resources_dir().join("assets/maps/GREEN_1.json")
 }
 
 struct Args {
@@ -113,12 +131,22 @@ struct Args {
 	size: (u32, u32),
 	/// `--settings PATH`: load/persist all settings from this file.
 	settings: Option<PathBuf>,
+	/// `--dev`: unlock editing shipped assets + the Bake menu.
+	dev: bool,
 }
 
-/// Default settings file: `mme.ini` in the config directory (beside the
-/// portable binary, or `config/` at the workspace root during development).
-fn default_settings_path() -> Option<PathBuf> {
-	input::config_dir().map(|dir| dir.join("mme.ini"))
+/// Load an INI file, tolerating absence (`None`) but reporting the parse error
+/// of a file that does exist.
+fn read_ini(path: &Path) -> Option<INI> {
+	match INI::from_file(path) {
+		Ok(ini) => Some(ini),
+		Err(e) => {
+			if path.exists() {
+				eprintln!("settings: {e}");
+			}
+			None
+		}
+	}
 }
 
 fn die(message: &str) -> ! {
@@ -134,6 +162,7 @@ fn die(message: &str) -> ! {
 	eprintln!("  --headless          run the script without a window, then exit");
 	eprintln!("  --size WxH          render-target size (default 1280x800)");
 	eprintln!("  --settings FILE     load/persist all settings from FILE (an alternate mme.ini)");
+	eprintln!("  --dev               developer mode: edit shipped tiles + enable Bake");
 	std::process::exit(2);
 }
 
@@ -146,6 +175,7 @@ fn parse_args() -> Args {
 	let mut headless = false;
 	let mut size = (1280u32, 800u32);
 	let mut settings = None;
+	let mut dev = false;
 
 	let mut args = std::env::args().skip(1);
 	while let Some(arg) = args.next() {
@@ -176,6 +206,7 @@ fn parse_args() -> Args {
 				let Some(path) = args.next() else { die("--settings needs a path") };
 				settings = Some(PathBuf::from(path));
 			}
+			"--dev" => dev = true,
 			"-h" | "--help" => die("help"),
 			_ if map.is_none() => map = Some(PathBuf::from(arg)),
 			_ => die(&format!("unknown argument: {arg}")),
@@ -187,11 +218,11 @@ fn parse_args() -> Args {
 		headless = true;
 	}
 
-	Args { map: map.unwrap_or_else(default_map), script, headless, size, settings }
+	Args { map: map.unwrap_or_else(default_map), script, headless, size, settings, dev }
 }
 
 /// Locate `resources/`, in order: `./resources` (cargo-run from the
-/// workspace root — cwd wins so a stray copy under `target/` can't shadow
+/// workspace root - cwd wins so a stray copy under `target/` can't shadow
 /// the live data), exe-adjacent (the portable zip layout), or exe-relative
 /// `../../../resources` (a `target/…` build launched from elsewhere).
 fn resources_dir() -> PathBuf {
@@ -227,7 +258,7 @@ fn make_renderer(
 }
 
 /// A map cell's rect in screen px for the current view (pan in world px,
-/// then zoom) — the same math the unit previews use.
+/// then zoom) - the same math the unit previews use.
 fn map_cell_rect(editor: &EditorState, x: u16, y: u16) -> ui::Rect {
 	let zoom = editor.view.zoom;
 	let ts = render::TILE_PX as f32;
@@ -246,7 +277,7 @@ fn selection_overlay(editor: &EditorState, w: f32, h: f32) -> ui::UiQuads {
 	let zoom = editor.view.zoom;
 	let ts = render::TILE_PX as f32;
 	if !editor.selection.is_empty() && zoom > 0.0 {
-		// The visible cell window — the boundary walk never touches
+		// The visible cell window - the boundary walk never touches
 		// off-screen cells, however large the map or selection.
 		let (mw, mh) = (editor.project.width, editor.project.height);
 		let x0 = (editor.view.pan[0] / ts).floor().max(0.0) as u16;
@@ -278,16 +309,46 @@ fn selection_overlay(editor: &EditorState, w: f32, h: f32) -> ui::UiQuads {
 	q
 }
 
+/// A green outline around the brush footprint under the cursor (pencil/eraser
+/// in Map mode, multi-cell brush only) so a wide brush shows where it lands.
+/// `None` when not applicable, or the cursor is off the map / over UI chrome.
+fn brush_overlay(editor: &EditorState, w: f32, h: f32) -> Option<ui::UiQuads> {
+	if editor.brush_size <= 1 || editor.mode != state::EditorMode::Map {
+		return None;
+	}
+	if !matches!(editor.tool, state::Tool::Pencil | state::Tool::Eraser) {
+		return None;
+	}
+	// `hot.cursor` is logical (UI space): gate against the logical UI rects, but
+	// read the map cell in physical screen px (the map renders native, so
+	// `cell_at` expects physical = logical × scale).
+	let (cx, cy) = editor.hot.cursor?;
+	let (lw, lh) = editor.ui_screen();
+	if cy < menu::BAR_H + tabs::BAR_H || editor.workspace.over_ui(cx, cy, lw, lh) || editor.context_menu.is_some() {
+		return None;
+	}
+	let (x, y) = editor.cell_at(cx * editor.ui_scale, cy * editor.ui_scale)?;
+	// Tint each footprint cell so the brush shape (square or circle) reads.
+	let tint = [theme::ACCENT[0], theme::ACCENT[1], theme::ACCENT[2], 0.22];
+	let mut q = ui::UiQuads::default();
+	for (bx, by) in editor.brush_cells(x, y) {
+		q.rect(map_cell_rect(editor, bx, by), w, h, tint);
+	}
+	Some(q)
+}
+
 /// The armed ghost stamp's tile quads at the cell under the cursor, plus
-/// its footprint rect — `None` when nothing is armed, the cursor is off
+/// its footprint rect - `None` when nothing is armed, the cursor is off
 /// the map, or it hovers UI chrome (panels, menu, tabs).
 fn ghost_quads(editor: &EditorState, w: f32, h: f32) -> Option<(ui::Rect, Vec<picker::TileQuad>)> {
 	let stamp = editor.stamp.as_ref()?;
+	// See `brush_overlay`: logical cursor for the UI gate, physical for `cell_at`.
 	let (cx, cy) = editor.hot.cursor?;
-	if cy < menu::BAR_H + tabs::BAR_H || editor.workspace.over_ui(cx, cy, w, h) || editor.context_menu.is_some() {
+	let (lw, lh) = editor.ui_screen();
+	if cy < menu::BAR_H + tabs::BAR_H || editor.workspace.over_ui(cx, cy, lw, lh) || editor.context_menu.is_some() {
 		return None;
 	}
-	let (ox, oy) = editor.cell_at(cx, cy)?;
+	let (ox, oy) = editor.cell_at(cx * editor.ui_scale, cy * editor.ui_scale)?;
 	let mut entries = stamp.resolve(&editor.project).ok()?;
 	// Water under ground, exactly like the map composes.
 	entries.sort_by_key(|&(.., layer, _)| layer);
@@ -322,10 +383,17 @@ fn render_frame(
 	passes: &mut Passes,
 ) {
 	let (w, h) = editor.screen;
-	let (wf, hf) = (w as f32, h as f32);
+	let (pw, ph) = (w as f32, h as f32); // physical framebuffer: the map scene + GPU scissors
+	// UI scale: the chrome + fonts lay out in **logical** px (physical / scale) and
+	// the projection scales them up to fill the framebuffer; the map itself stays
+	// native. Mirror the scale into the font global so labels pick the matching
+	// atlas. At scale 1.0, logical == physical and every draw below is unchanged.
+	let scale = editor.ui_scale;
+	crate::font::set_ui_scale(scale);
+	let (wf, hf) = editor.ui_screen(); // logical UI size (chrome + panels + modals)
 	// Pointer state for hover/pressed widget rendering. Covered surfaces get
 	// an inert pointer: panels/tabs don't highlight under an open modal or
-	// menu dropdown, and only the topmost modal (the one input routes to —
+	// menu dropdown, and only the topmost modal (the one input routes to -
 	// the error modal beats whatever raised it) reacts to the cursor.
 	// Headless runs leave `editor.hot` at `Hot::NONE`, so captures are stable.
 	let hot = editor.hot;
@@ -333,7 +401,7 @@ fn render_frame(
 	let covered = modal_open || editor.menu.open.is_some() || editor.context_menu.is_some();
 	let shell_hot = if covered { ui::Hot::NONE } else { hot };
 	let menu_hot = if modal_open { ui::Hot::NONE } else { hot };
-	let modal_hot = if editor.error.is_some() { ui::Hot::NONE } else { hot };
+	let modal_hot = if editor.modal_as::<crate::errormodal::ErrorModal>().is_some() { ui::Hot::NONE } else { hot };
 	// CRT: when on, render the whole frame into an offscreen scene (sized
 	// to the viewport) and post-process it onto `target` at the end; otherwise
 	// draw straight to `target`.
@@ -346,12 +414,14 @@ fn render_frame(
 		if crt_on { &passes.scene.as_ref().expect("scene built when crt_on").view } else { final_target };
 	let text_pass = &passes.text;
 	// App background: the raw steel sheet stretched across the viewport,
-	// drawn first (covering every pixel) so the map's out-of-bounds fragments —
-	// which now discard — reveal it instead of a flat void colour.
+	// drawn first (covering every pixel) so the map's out-of-bounds fragments -
+	// which now discard - reveal it instead of a flat void colour. Dimmed to
+	// 50% exposure so it recedes behind the map and the chrome (panels, windows,
+	// and modals draw their own opaque steel on top, so they stay full bright).
 	let mut bg = ui::UiQuads::default();
-	bg.steel(ui::Rect::new(0.0, 0.0, wf, hf), wf, hf, [1.0, 1.0, 1.0, 1.0]);
+	bg.steel(ui::Rect::new(0.0, 0.0, pw, ph), pw, ph, [0.5, 0.5, 0.5, 1.0]);
 	text_pass.draw_ui(device, encoder, target, &bg);
-	renderer.draw(queue, encoder, target, editor.uniforms(0), editor.show_pass_overlay);
+	renderer.draw(queue, encoder, target, editor.uniforms(0), editor.show_pass_overlay, editor.layer_mask());
 	// Grid overlay sits on the map, beneath the panels.
 	if editor.show_grid {
 		passes.grid.draw(queue, encoder, target, editor.uniforms(0), grid::GRID_STRENGTH);
@@ -364,21 +434,27 @@ fn render_frame(
 		if editor.show_units {
 			let ugpu = passes.units.as_ref().expect("units pass built above");
 			let quads = units::map_quads(&editor.project.units, lib, &ugpu.slots, editor.view.pan, editor.view.zoom);
-			ugpu.draw(device, encoder, target, &quads, None, (w, h));
+			ugpu.draw(device, encoder, target, &quads, None, (w, h), 1.0);
 		}
 	}
 	// Selection chrome rides on the map, beneath the panels: the thick
-	// outline around selected regions and a live rect-drag preview.
-	let sel_overlay = selection_overlay(editor, wf, hf);
+	// outline around selected regions and a live rect-drag preview. These ride
+	// the physical map (they're positioned via `editor.view`), so they project
+	// at native size (`pw`/`ph`), not the logical UI size.
+	let sel_overlay = selection_overlay(editor, pw, ph);
 	if !sel_overlay.verts.is_empty() {
 		text_pass.draw_ui(device, encoder, target, &sel_overlay);
 	}
+	// Brush footprint outline (wide pencil/eraser).
+	if let Some(bo) = brush_overlay(editor, pw, ph) {
+		text_pass.draw_ui(device, encoder, target, &bo);
+	}
 	// The armed ghost stamp under the cursor: half-transparent tiles snapped
 	// to the cell grid, framed so the footprint reads (hidden over UI).
-	if let Some((origin, quads)) = ghost_quads(editor, wf, hf) {
-		renderer.draw_picker(device, encoder, target, &quads, ui::Rect::new(0.0, 0.0, wf, hf), (w, h), 0.55);
+	if let Some((origin, quads)) = ghost_quads(editor, pw, ph) {
+		renderer.draw_picker(device, encoder, target, &quads, ui::Rect::new(0.0, 0.0, pw, ph), (w, h), 1.0, 0.55);
 		let mut frame = ui::UiQuads::default();
-		frame.border(origin, wf, hf, theme::ACCENT);
+		frame.border(origin, pw, ph, theme::ACCENT);
 		text_pass.draw_ui(device, encoder, target, &frame);
 	}
 	text_pass.draw_ui(device, encoder, target, &editor.workspace.draw_background(wf, hf));
@@ -403,24 +479,24 @@ fn render_frame(
 		if id == "toolbox" {
 			let view = toolbox::view(editor, body, editor.toolbox_scroll, wf, hf, map, shell_hot);
 			// Clip the (scrolling) toolbox content to its body so it crops.
-			text_pass.draw_ui_clipped(device, encoder, target, &view.chrome, body, (w, h));
+			text_pass.draw_ui_clipped(device, encoder, target, &view.chrome, body, (w, h), scale);
 			if let Some(quad) = view.preview {
 				let r = quad.rect;
 				let (x0, y0) = (r.x.max(body.x), r.y.max(body.y));
 				let (x1, y1) = ((r.x + r.w).min(body.x + body.w), (r.y + r.h).min(body.y + body.h));
 				let clip = ui::Rect::new(x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0));
 				if clip.w > 0.0 && clip.h > 0.0 {
-					renderer.draw_picker(device, encoder, target, &[quad], clip, (w, h), 1.0);
+					renderer.draw_picker(device, encoder, target, &[quad], clip, (w, h), scale, 1.0);
 				}
 			}
 		} else if id == "tiles" {
 			let pr = renderer;
 			let view =
 				picker::view(&editor.project, &editor.picker, editor.active_tile(), body, wf, hf, map, shell_hot);
-			pr.draw_picker(device, encoder, target, &view.tiles, view.scissor, (w, h), 1.0);
+			pr.draw_picker(device, encoder, target, &view.tiles, view.scissor, (w, h), scale, 1.0);
 			text_pass.draw_ui(device, encoder, target, &view.overlay);
 		} else if id == "minimap" {
-			passes.minimap.draw(device, queue, encoder, target, &passes.blit, editor, body, (w, h));
+			passes.minimap.draw(device, queue, encoder, target, &passes.blit, editor, body, (w, h), scale);
 			text_pass.draw_ui(device, encoder, target, &minimap::overlay(editor, body, wf, hf, map, shell_hot));
 		} else if id == "palette" {
 			let base: Vec<u8> = editor.project.palette.clone();
@@ -431,26 +507,30 @@ fn render_frame(
 				base.clone()
 			};
 			let names = editor.palette_file_names();
+			let multi: Vec<u16> = editor.palettes.multi.iter().map(|&s| s as u16).collect();
 			let view = palette_panel::view(
 				&display,
 				&base,
 				editor.active_color.map(u16::from),
-				editor.palette_sel_end.map(u16::from),
-				editor.palette_scroll,
+				editor.palettes.sel_end.map(u16::from),
+				&multi,
+				editor.palettes.scroll,
 				editor.animate,
 				true,
-				editor.palette_show_saved,
+				editor.palettes.show_saved,
 				&names,
+				editor.palettes.sel,
+				editor.selected_palette_is_user(),
 				body,
 				wf,
 				hf,
 				map,
 				shell_hot,
 			);
-			text_pass.draw_ui_clipped(device, encoder, target, &view.grid, view.scissor, (w, h));
+			text_pass.draw_ui_clipped(device, encoder, target, &view.grid, view.scissor, (w, h), scale);
 			text_pass.draw_ui(device, encoder, target, &view.chrome);
 		} else if id == "wrlpalette" {
-			// The document's internal palette — the file's bytes, not the
+			// The document's internal palette - the file's bytes, not the
 			// game-resolved working palette. Cycled swatches only when the
 			// cycler is actually seeded from it (the Debug ▸ map-palette mode).
 			let base: Vec<u8> = editor.project.internal_palette();
@@ -463,8 +543,9 @@ fn render_frame(
 				&display,
 				&base,
 				editor.active_color.map(u16::from),
-				editor.palette_sel_end.map(u16::from),
-				editor.wrlpalette_scroll,
+				editor.palettes.sel_end.map(u16::from),
+				&[],
+				editor.palettes.wrl_scroll,
 				editor.animate,
 				body,
 				wf,
@@ -472,7 +553,7 @@ fn render_frame(
 				map,
 				shell_hot,
 			);
-			text_pass.draw_ui_clipped(device, encoder, target, &view.grid, view.scissor, (w, h));
+			text_pass.draw_ui_clipped(device, encoder, target, &view.grid, view.scissor, (w, h), scale);
 			text_pass.draw_ui(device, encoder, target, &view.chrome);
 		} else if id == "units" {
 			let view = units::view(
@@ -489,33 +570,53 @@ fn render_frame(
 				shell_hot,
 			);
 			if let Some(g) = &passes.units {
-				g.draw(device, encoder, target, &view.quads, Some(view.scissor), (w, h));
+				g.draw(device, encoder, target, &view.quads, Some(view.scissor), (w, h), scale);
 			}
 			text_pass.draw_ui(device, encoder, target, &view.overlay);
 		} else if id == "templates" {
 			let visible = editor.visible_templates();
-			let entries: Vec<&state::TemplateEntry> = visible.iter().map(|&g| &editor.templates[g]).collect();
+			let entries: Vec<&state::TemplateEntry> = visible.iter().map(|&g| &editor.templates.entries[g]).collect();
 			// The explorer's selection, mapped into the visible list.
-			let selected = editor.template_sel.and_then(|g| visible.iter().position(|&v| v == g));
+			let selected = editor.templates.sel.and_then(|g| visible.iter().position(|&v| v == g));
 			let view = templates_panel::view(
 				&editor.project,
 				&entries,
 				selected,
-				editor.templates_scroll,
+				editor.templates.cell,
+				editor.templates.dropdown_open,
+				editor.templates.scroll,
 				body,
 				wf,
 				hf,
 				map,
 				shell_hot,
 			);
-			text_pass.draw_ui(device, encoder, target, &view.underlay);
-			renderer.draw_picker(device, encoder, target, &view.tiles, view.scissor, (w, h), 1.0);
-			text_pass.draw_ui(device, encoder, target, &view.overlay);
+			// Header floats; the thumbnail wells, tiles, and labels all clip to
+			// the grid scissor so nothing spills past the panel; the size
+			// dropdown's option list floats on top.
+			text_pass.draw_ui(device, encoder, target, &view.header);
+			text_pass.draw_ui_clipped(device, encoder, target, &view.wells, view.scissor, (w, h), scale);
+			renderer.draw_picker(device, encoder, target, &view.tiles, view.scissor, (w, h), scale, 1.0);
+			text_pass.draw_ui_clipped(device, encoder, target, &view.labels, view.scissor, (w, h), scale);
+			text_pass.draw_ui(device, encoder, target, &view.popup);
 		}
 	}
 	// Project tab strip below the menu bar; the menu (with its dropdowns) draws
 	// last so it stays topmost.
 	let tab_infos = editor.tab_infos();
+	// Bottom status bar (View ▸ Status Bar): drawn over the docks, under the
+	// menus / modals / console chrome that follows.
+	if editor.status_bar {
+		let cursor_cell = editor.hot.cursor.and_then(|(cx, cy)| {
+			// Logical cursor for the UI gate; physical (× scale) for the map cell.
+			if cy < menu::BAR_H + tabs::BAR_H || editor.workspace.over_ui(cx, cy, wf, hf) {
+				None
+			} else {
+				editor.cell_at(cx * scale, cy * scale)
+			}
+		});
+		text_pass.draw_ui(device, encoder, target, &statusbar::draw(editor, cursor_cell, wf, hf));
+	}
 	let tabs_closable = editor.tabs_closable();
 	text_pass.draw_ui(
 		device,
@@ -527,52 +628,139 @@ fn render_frame(
 	let checked = |key: &str| -> bool {
 		match key {
 			"grid" => editor.show_grid,
+			"status-bar" => editor.status_bar,
 			"pass-overlay" => editor.show_pass_overlay,
 			"show-units" => editor.show_units,
 			"mode:map" => editor.mode == state::EditorMode::Map,
 			"mode:pass" => editor.mode == state::EditorMode::Pass,
+			"mode:localpass" => editor.mode == state::EditorMode::LocalPass,
 			"layer:water" => editor.active_layer == map_core::LAYER_WATER,
 			"layer:ground" => editor.active_layer == map_core::LAYER_GROUND,
+			"layer:only-selected" => editor.show_only_layer,
 			"anim:off" => !editor.animate && !editor.ingame,
 			"anim:on" => editor.animate && !editor.ingame,
 			"anim:ingame" => editor.ingame,
 			"crt" => editor.crt,
+			"ui-scale:small" => (editor.ui_scale - 1.0).abs() < 0.01,
+			"ui-scale:medium" => (editor.ui_scale - 1.25).abs() < 0.01,
+			"ui-scale:large" => (editor.ui_scale - 1.5).abs() < 0.01,
 			"debug:map-palette" => editor.debug_map_palette,
 			_ => key.strip_prefix("win:").is_some_and(|id| editor.workspace.is_visible(id)),
 		}
 	};
 	text_pass.draw_ui(device, encoder, target, &editor.menu.draw(wf, hf, &checked, menu_hot));
-	// The right-click context menu floats over panels and the menu bar.
-	if let Some(cm) = &editor.context_menu {
-		text_pass.draw_ui(device, encoder, target, &cm.draw(wf, hf, &checked));
-	}
-	if let Some(modal) = &editor.newmap {
-		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
-		if modal.picking {
-			passes.previews.draw(device, queue, encoder, target, &passes.blit, modal, &editor.assets_root, (w, h));
+	if let Some(boxed) = &editor.modal {
+		let any = boxed.as_any();
+		if let Some(modal) = any.downcast_ref::<crate::newmap::NewMap>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			for (quads, scissor) in modal.field_contents(wf, hf) {
+				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+			// The size dropdown floats above the field text (drawn after it).
+			if let Some(popup) = modal.popup(wf, hf, modal_hot) {
+				text_pass.draw_ui(device, encoder, target, &popup);
+			}
+			if modal.picking {
+				passes.previews.draw(
+					device,
+					queue,
+					encoder,
+					target,
+					&passes.blit,
+					modal,
+					&editor.assets_root,
+					(w, h),
+					scale,
+				);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::resize::Resize>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			for (quads, scissor) in modal.field_contents(wf, hf) {
+				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+			// The size dropdown floats above the field text (drawn after it).
+			if let Some(popup) = modal.popup(wf, hf, modal_hot) {
+				text_pass.draw_ui(device, encoder, target, &popup);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::autofix::AutoFix>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+		} else if let Some(modal) = any.downcast_ref::<crate::generator::Generator>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			for (quads, scissor) in modal.field_contents(wf, hf) {
+				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::convertpalette::ConvertPalette>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			for (quads, scissor) in modal.field_contents(wf, hf) {
+				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::preferences::Preferences>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			// Each editable field's text is clipped to its well so long values scroll.
+			for (quads, scissor) in modal.field_contents(wf, hf) {
+				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::confirm::ConfirmClose>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+		} else if let Some(modal) = any.downcast_ref::<crate::newfromimage::NewFromImage>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			for (quads, scissor) in modal.field_contents(wf, hf) {
+				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::renametemplate::RenameTemplate>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			// The live thumbnail, drawn through the tile pass and clipped to its well.
+			let (tiles, well) = modal.preview_tiles(&editor.project, wf, hf);
+			if !tiles.is_empty() {
+				renderer.draw_picker(device, encoder, target, &tiles, well, (w, h), scale, 1.0);
+			}
+			// The editable name, clipped to its field so long names scroll.
+			let (quads, scissor) = modal.field_content(wf, hf);
+			text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+		} else if let Some(modal) = any.downcast_ref::<crate::deletetemplate::DeleteTemplate>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			// The thumbnail of the template being deleted, clipped to its well.
+			let (tiles, well) = modal.preview_tiles(&editor.project, wf, hf);
+			if !tiles.is_empty() {
+				renderer.draw_picker(device, encoder, target, &tiles, well, (w, h), scale, 1.0);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::dedupetemplates::DedupeTemplates>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			// The scrolling list of duplicate names, clipped to its well.
+			let (quads, scissor) = modal.list_content(wf, hf);
+			text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+		} else if let Some(modal) = any.downcast_ref::<crate::importwrl::ImportWrl>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			// The scrolling list of unmapped tiles (empty in the picker stage),
+			// clipped to its well.
+			let (quads, scissor) = modal.list_content(wf, hf);
+			text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+		} else if let Some(modal) = any.downcast_ref::<crate::tilepainter::TilePainter>() {
+			// Chrome first, then the palette swatches + canvas pixels (colored from
+			// the live, possibly-cycling palette), then the rings/popups on top.
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			text_pass.draw_ui(device, encoder, target, &modal.art(editor.cycler.rgba(), wf, hf));
+			text_pass.draw_ui(device, encoder, target, &modal.overlay(wf, hf, modal_hot));
+			// The editable id field text/caret, clipped to its well.
+			for (quads, scissor) in modal.field_contents(wf, hf) {
+				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::palettename::PaletteName>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			let (quads, scissor) = modal.field_content(wf, hf);
+			text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+		} else if let Some(modal) = any.downcast_ref::<crate::palettedelete::PaletteDelete>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+		} else if let Some(modal) = any.downcast_ref::<crate::about::About>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+		} else if let Some(modal) = any.downcast_ref::<crate::errormodal::ErrorModal>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, hot));
 		}
 	}
-	if let Some(modal) = &editor.resize {
-		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
-	}
-	if let Some(modal) = &editor.autofix {
-		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
-	}
-	if let Some(modal) = &editor.generator {
-		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
-	}
-	if let Some(modal) = &editor.convertpalette {
-		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
-	}
-	if let Some(modal) = &editor.confirm {
-		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
-	}
-	if let Some(modal) = &editor.newfromimage {
-		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
-	}
-	// The error modal draws last so it sits on top of whatever raised it.
-	if let Some(modal) = &editor.error {
-		text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, hot));
+	// The right-click context / text-field edit menu floats over panels, the menu
+	// bar, and any open modal - drawn last.
+	if let Some(cm) = &editor.context_menu {
+		text_pass.draw_ui(device, encoder, target, &cm.draw(wf, hf, &checked));
 	}
 	if editor.console.is_open() {
 		editor.console.set_view_rows(text::rows_for(h));
@@ -586,7 +774,7 @@ fn render_frame(
 	}
 }
 
-/// Sink for the `log` facade — the copied decoders in `max-assets` report
+/// Sink for the `log` facade - the copied decoders in `max-assets` report
 /// real failures (RLE decode, malformed res.ini) through `log::error!`/
 /// `warn!`; without an installed logger those messages vanish.
 struct StderrLogger;
@@ -611,33 +799,83 @@ fn main() {
 	let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Warn));
 	let args = parse_args();
 
-	// Initial load goes through the same `open` path as the command —
+	// Initial load goes through the same `open` path as the command -
 	// it sniffs .json (project) vs .WRL and sets up view/palette/cycler.
-	let mut editor = EditorState::new(Project::empty(), args.size, None, resources_dir().join("assets"));
-	if let Outcome::Failed(message) = editor.execute(Command::Open { path: args.map.clone(), force: true }) {
+	let mut editor = EditorState::new(Project::empty(), args.size, None, resources_dir());
+	if let Outcome::Failed(message) = editor.execute(Command::Open { path: args.map.clone() }) {
 		eprintln!("{message}");
 		std::process::exit(1);
 	}
 
-	// Settings: one `mme.ini` carries everything — paths, bindings,
+	// Settings: one `mme.ini` carries everything - paths, bindings,
 	// mouse, UI layout. `--settings` always wins; a windowed run falls back
 	// to the config default; headless without the flag stays off (keeps the
 	// script suite from touching any file). Restore now if present.
 	editor.headless = args.headless;
-	editor.settings_path = args.settings.clone().or_else(|| (!args.headless).then(default_settings_path).flatten());
-	let settings = editor.settings_path.as_deref().and_then(|path| match INI::from_file(path) {
-		Ok(ini) => Some(ini),
-		Err(e) => {
-			if path.exists() {
-				eprintln!("settings: {e}");
+	editor.dev_mode = args.dev;
+	editor.menu.set_dev(args.dev);
+	// Settings layering: `--settings PATH` is a single self-contained file (load
+	// + save there). Otherwise the shipped defaults (`resources/config/mme.ini`)
+	// are overlaid by the user's overrides (`resources/user/config/mme.ini`, where
+	// the app saves). Headless without `--settings` keeps persistence off.
+	let (settings, save_path) = if let Some(path) = args.settings.clone() {
+		(read_ini(&path), Some(path))
+	} else if args.headless {
+		(None, None)
+	} else {
+		let resources = resources_dir();
+		let shipped = read_ini(&resources.join("config/mme.ini"));
+		let user_path = resources.join("user/config/mme.ini");
+		let merged = match (shipped, read_ini(&user_path)) {
+			(Some(mut base), user) => {
+				if let Some(over) = user {
+					base.overlay(over);
+				}
+				Some(base)
 			}
-			None
-		}
-	});
+			(None, user) => user,
+		};
+		(merged, Some(user_path))
+	};
+	editor.settings_path = save_path;
 	if let Some(ini) = &settings {
 		if let Some(section) = ini.get_section("Workspace") {
 			let (w, h) = editor.screen;
 			editor.workspace.apply_ini(section, w as f32, h as f32);
+			// The INI parser types bare numbers, so read numerics as Integer or
+			// Float (a `String` fetch would miss `UiScale=1.25`, `TilesPreview=64`).
+			let num = |key: &str| -> Option<f32> {
+				section
+					.get_entry::<i64>(key)
+					.map(|n| n as f32)
+					.or_else(|| section.get_entry::<f64>(key).map(|f| f as f32))
+			};
+			// UI scale (View ▸ UI Scale): snap a (possibly hand-edited) value to the
+			// nearest supported level so the menu radio + render stay consistent.
+			if let Some(scale) = num("UiScale") {
+				let snapped = state::UI_SCALES
+					.into_iter()
+					.min_by(|a, b| (a - scale).abs().total_cmp(&(b - scale).abs()))
+					.unwrap_or(1.0);
+				editor.set_ui_scale(snapped);
+			}
+			// Explorer preview sizes (honoured only when they name a real option;
+			// a stray value just keeps the default).
+			if let Some(px) = num("TilesPreview").filter(|px| picker::SIZES.contains(px)) {
+				editor.picker.tile_px = px;
+			}
+			if let Some(px) =
+				num("TemplatesPreview").filter(|px| templates_panel::PREVIEW_SIZES.iter().any(|&(s, _)| s == *px))
+			{
+				editor.templates.cell = px;
+			}
+			// Recent maps (File ▸ Quick Load): Recent0.. is most-recent first, the
+			// paths are strings (slashes), so read them as String.
+			let recent: Vec<PathBuf> =
+				(0..10).map_while(|i| section.get_entry::<String>(&format!("Recent{i}"))).map(PathBuf::from).collect();
+			if !recent.is_empty() {
+				editor.load_recent(recent);
+			}
 		}
 		editor.max_path =
 			ini.get_entry::<String>("Paths", "MaxPath").filter(|p| !p.trim().is_empty()).map(PathBuf::from);
@@ -646,11 +884,13 @@ fn main() {
 		Some(path) if !path.is_dir() => {
 			editor.console.push_line(format!("MaxPath is set but not a directory: {}", path.display()));
 		}
-		None => editor.console.push_line("MaxPath not set — point it at your M.A.X. directory in config/mme.ini"),
+		None => editor
+			.console
+			.push_line("MaxPath not set - point it at your M.A.X. directory in resources/user/config/mme.ini"),
 		Some(_) => {}
 	}
 
-	// Load the unit library up front when MaxPath is set — the Units panel
+	// Load the unit library up front when MaxPath is set - the Units panel
 	// is then populated on first open, and headless screenshots render the
 	// project's unit previews. Without MaxPath this is a no-op.
 	if editor.max_path.is_some() {
@@ -734,15 +974,21 @@ struct App {
 	cursor: (f32, f32),
 	/// Cursor position at the last drag step, while a pan-drag is active.
 	drag: Option<(f32, f32)>,
-	/// A right press's origin, while held over the map — a release within a
+	/// A right press's origin, while held over the map - a release within a
 	/// few px is a *click* (context menu), farther away it was a pan-drag.
 	rclick: Option<(f32, f32)>,
+	/// A right press on a Templates Explorer thumbnail: the global template
+	/// index + press origin. A release within a few px opens that item's menu.
+	rclick_template: Option<(usize, (f32, f32))>,
 	/// Last painted cell, while a paint-drag (stroke) is active.
 	paint: Option<(u16, u16)>,
 	/// A freehand select-drag: the mode plus the last applied cell.
 	select_paint: Option<(map_core::SelectMode, (u16, u16))>,
 	/// A rect select-drag's anchor cell + mode (applied on release).
 	select_anchor: Option<(u16, u16, map_core::SelectMode)>,
+	/// An Alt+drag selection-move: the last cell the cursor passed over (the
+	/// marquee translates by each cell delta; terrain is untouched).
+	select_move: Option<(u16, u16)>,
 	/// The minimap body being drag-panned, while one is.
 	minipan: Option<crate::ui::Rect>,
 	/// An HSL bar drag in the palette panel, while one is active.
@@ -750,7 +996,7 @@ struct App {
 	/// A scrollbar thumb drag in a scrollable panel, while one is active.
 	scroll_drag: Option<ScrollDrag>,
 	/// A button press waiting for its release: the action
-	/// computed at press fires only if the release re-hits the same control —
+	/// computed at press fires only if the release re-hits the same control -
 	/// dragging off cancels. Selections, focus, and drag-starts stay
 	/// press-fired (modals arm their own buttons via `Modal::on_release`).
 	armed: Option<Armed>,
@@ -764,9 +1010,9 @@ struct App {
 	convert_clock: Option<std::time::Instant>,
 	/// Wall clock of the live rasterize palette conversion.
 	pconvert_clock: Option<std::time::Instant>,
-	/// False until the conversion's "Loading image…" state has been painted once
-	/// — so the heavy first-stage decode starts only *after* the user sees it
-	/// began; otherwise the decode blocks the very frame meant to show it.
+	/// False until the conversion's "Loading image…" state has been painted
+	/// once, so the heavy first-stage decode starts only *after* the user sees
+	/// it began; otherwise the decode blocks the very frame meant to show it.
 	convert_primed: bool,
 }
 
@@ -793,7 +1039,7 @@ struct ScrollDrag {
 }
 
 /// A deferred button click: the action resolved at press
-/// time, plus what's needed to re-hit-test at release — firing only when the
+/// time, plus what's needed to re-hit-test at release - firing only when the
 /// release lands on the same control.
 enum Armed {
 	/// A tab-strip hit (select / close).
@@ -804,8 +1050,8 @@ enum Armed {
 	Units { body: crate::ui::Rect, action: units::Action },
 	/// A minimap header radio within `body` (map pans stay press-fired).
 	MinimapMode { body: crate::ui::Rect, mode: minimap::Mode },
-	/// A toolbox key within `body`, identified by its (unique) label.
-	Toolbox { body: crate::ui::Rect, label: &'static str },
+	/// A toolbox hit within `body` (a key, or a brush-size dropdown action).
+	Toolbox { body: crate::ui::Rect, hit: toolbox::ToolboxHit },
 	/// A palette toolbar/header button within `body` (slot selection and
 	/// slider/bar drags stay press-fired).
 	Palette { body: crate::ui::Rect, action: palette_panel::Action },
@@ -827,9 +1073,11 @@ impl App {
 			cursor: (0.0, 0.0),
 			drag: None,
 			rclick: None,
+			rclick_template: None,
 			paint: None,
 			select_paint: None,
 			select_anchor: None,
+			select_move: None,
 			minipan: None,
 			modal_drag: false,
 			palette_drag: None,
@@ -844,12 +1092,18 @@ impl App {
 		}
 	}
 
-	/// The stroke command for a cell under the current mode + tool: pass-value
-	/// paint in Pass Table Editor mode; otherwise erase (Eraser tool) or tile
-	/// paint. Drives both the initial press and the drag continuation.
+	/// The stroke command for a cell under the current mode + tool: tile
+	/// passability in Pass Table Editor, a per-cell override (eraser clears) in
+	/// Local Pass Override Editor; otherwise erase (Eraser tool) or tile paint.
+	/// Drives both the initial press and the drag continuation.
 	fn paint_command(&self, x: u16, y: u16) -> Command {
 		match self.editor.mode {
-			state::EditorMode::Pass => Command::PassPaint { x, y, value: self.editor.active_pass },
+			state::EditorMode::Pass => Command::TilePass { x, y, value: self.editor.active_pass },
+			state::EditorMode::LocalPass => match self.editor.tool {
+				// The eraser lifts a local override back to the tile's value.
+				state::Tool::Eraser => Command::PassClear { x, y },
+				_ => Command::PassPaint { x, y, value: self.editor.active_pass },
+			},
 			state::EditorMode::Map => match self.editor.tool {
 				// Erase only the selected layer, not the topmost present.
 				state::Tool::Eraser => {
@@ -880,7 +1134,7 @@ impl App {
 		self.act_on(outcome, event_loop);
 	}
 
-	/// Act on an [`Outcome`] — from `execute`, or from a stepped job (autofix /
+	/// Act on an [`Outcome`] - from `execute`, or from a stepped job (autofix /
 	/// New-from-Image) that mutates outside the command path.
 	fn act_on(&mut self, outcome: Outcome, event_loop: &ActiveEventLoop) {
 		match outcome {
@@ -945,18 +1199,29 @@ impl App {
 		}
 	}
 
+	/// The cursor in **logical** UI px (physical / scale): the space the chrome
+	/// (menu, panels, modals, scrollbars) lays out + hit-tests in. Map-space
+	/// reads (`cell_at`, pan/zoom at the cursor) use the raw physical
+	/// [`cursor`](Self::cursor) instead, since the map renders at native size.
+	fn lcursor(&self) -> (f32, f32) {
+		let s = self.editor.ui_scale;
+		(self.cursor.0 / s, self.cursor.1 / s)
+	}
+
 	/// The bound command for a pressed key whose *context* applies:
 	/// context-specific matches (pass-value picks in the Pass Table Editor,
 	/// tool switches in the map editor) beat context-free ones sharing the
-	/// chord — table order never decides between contexts.
+	/// chord - table order never decides between contexts.
 	fn bound_command(&self, key: &Key) -> Option<Command> {
 		let (mut generic, mut specific) = (None, None);
 		for cmd in self.bindings.lookup_all(self.modifiers, key) {
 			let context = match &cmd {
 				Command::PassPick { .. } | Command::PassPaint { .. } => {
-					Some(self.editor.mode == state::EditorMode::Pass)
+					Some(matches!(self.editor.mode, state::EditorMode::Pass | state::EditorMode::LocalPass))
 				}
 				Command::ToolSelect { .. } => Some(self.editor.mode == state::EditorMode::Map),
+				// F2 renames only when a template is selected in the explorer.
+				Command::TemplateRenameModal => Some(self.editor.templates.sel.is_some()),
 				_ => None,
 			};
 			match context {
@@ -1026,7 +1291,7 @@ impl App {
 				let outcome = self.editor.convert_tick(self.convert_elapsed(), true);
 				self.act_on(outcome, event_loop);
 			}
-			// Rasterize palette conversion: same shape — the shell owns the
+			// Rasterize palette conversion: same shape - the shell owns the
 			// wall clock and steps the session per frame (see `redraw`).
 			ModalAction::StartPaletteConvert => {
 				let outcome = self.editor.palette_convert_start();
@@ -1037,27 +1302,131 @@ impl App {
 				let outcome = self.editor.palette_convert_tick(self.pconvert_elapsed(), true);
 				self.act_on(outcome, event_loop);
 			}
+			ModalAction::SavePreferences => {
+				self.editor.apply_preferences();
+				self.redraw_win();
+			}
+			// Commit the Tile Painter: the shell reads the painted canvas, which a
+			// command line can't carry. On success the commit closes the modal and
+			// reports DocReplaced (the atlas grows/changes → renderer rebuild).
+			ModalAction::CommitTile => {
+				let outcome = self.editor.tile_paint_commit();
+				self.act_on(outcome, event_loop);
+			}
+			// Copy/paste the painter canvas via the shell's tile clipboard (raw
+			// indices) - a command line can't carry 4 KiB of pixels.
+			ModalAction::CopyTile => {
+				if let Some(p) = self.editor.modal_as::<crate::tilepainter::TilePainter>() {
+					self.editor.tile_ops.clipboard = Some(p.pixels().to_vec());
+				}
+				self.redraw_win();
+			}
+			ModalAction::PasteTile => {
+				if let Some(pixels) = self.editor.tile_ops.clipboard.clone() {
+					if let Some(p) = self.editor.modal_as_mut::<crate::tilepainter::TilePainter>() {
+						p.set_pixels(&pixels);
+					}
+				}
+				self.redraw_win();
+			}
+			// PNG export/import open a native dialog, then read/write the painter.
+			ModalAction::ExportTilePng => {
+				self.run(Command::FileDialog { purpose: command::FilePurpose::ExportTilePng }, event_loop);
+			}
+			ModalAction::ImportTilePng => {
+				self.run(Command::FileDialog { purpose: command::FilePurpose::ImportTilePng }, event_loop);
+			}
+			// Import WRL: match against the picked packs (instant), then either
+			// open the converted map or surface the unmapped list in-modal.
+			ModalAction::StartWrlMatch => {
+				let outcome = self.editor.wrl_match();
+				self.act_on(outcome, event_loop);
+			}
+			ModalAction::FinishWrlImport => {
+				let outcome = self.editor.wrl_finish();
+				self.act_on(outcome, event_loop);
+			}
+		}
+	}
+
+	/// Hit-test the Color Palette panel at `(cx, cy)`. Bundles the editor/
+	/// cursor state both the press and the release (re-hit) sites feed to
+	/// [`palette_panel::click`], so the two call sites cannot drift.
+	fn palette_click(&self, body: ui::Rect, cx: f32, cy: f32) -> Option<palette_panel::Action> {
+		palette_panel::click(
+			body,
+			self.editor.active_color.map(u16::from),
+			self.editor.palettes.sel_end.map(u16::from),
+			true,
+			self.editor.palettes.scroll,
+			cx,
+			cy,
+			self.modifiers.shift_key(),
+			self.editor.palettes.show_saved,
+			self.editor.palettes.files.len(),
+		)
+	}
+
+	/// Hit-test the read-only WRL palette panel at `(cx, cy)` (the bare,
+	/// no-saved-list variant). See [`Self::palette_click`].
+	fn wrlpalette_click(&self, body: ui::Rect, cx: f32, cy: f32) -> Option<palette_panel::Action> {
+		palette_panel::click_bare(
+			body,
+			self.editor.active_color.map(u16::from),
+			self.editor.palettes.sel_end.map(u16::from),
+			self.editor.palettes.wrl_scroll,
+			cx,
+			cy,
+			self.modifiers.shift_key(),
+		)
+	}
+
+	/// Hit-test the Templates Explorer at `(cx, cy)` given its visible-row
+	/// `count`. See [`Self::palette_click`].
+	fn templates_click(&self, count: usize, body: ui::Rect, cx: f32, cy: f32) -> Option<templates_panel::Action> {
+		templates_panel::click(
+			count,
+			body,
+			self.editor.templates.cell,
+			self.editor.templates.dropdown_open,
+			self.editor.templates.scroll,
+			cx,
+			cy,
+		)
+	}
+
+	/// The global template index under a logical-space point, when it lands on a
+	/// thumbnail in the Templates Explorer (for the right-click item menu).
+	fn template_at(&self, lcx: f32, lcy: f32, sw: f32, sh: f32) -> Option<usize> {
+		let (id, body) = self.editor.workspace.body_at(lcx, lcy, sw, sh)?;
+		if id != "templates" {
+			return None;
+		}
+		let visible = self.editor.visible_templates();
+		match self.templates_click(visible.len(), body, lcx, lcy)? {
+			templates_panel::Action::Pick(i) => visible.get(i).copied(),
+			_ => None,
 		}
 	}
 
 	/// Fire a deferred button click: re-hit-test the
 	/// release position with the same pure `click` functions and run the
-	/// action only when it matches what was armed at press — a release on a
+	/// action only when it matches what was armed at press - a release on a
 	/// different control (or off every control) cancels the click.
 	fn fire_armed(&mut self, armed: Armed, event_loop: &ActiveEventLoop) {
-		let (cx, cy) = self.cursor;
+		let (cx, cy) = self.lcursor();
 		match armed {
 			Armed::Tab(hit) => {
 				let tab_infos = self.editor.tab_infos();
 				let closable = self.editor.tabs_closable();
-				let sw = self.editor.screen.0 as f32;
+				let sw = self.editor.ui_screen().0;
 				if tabs::hit(&tab_infos, closable, menu::BAR_H, cx, cy, sw) != hit {
 					return;
 				}
 				match hit {
 					tabs::Hit::Select(i) => self.run(Command::Tab { index: i }, event_loop),
 					tabs::Hit::Close(i) => {
-						// Close-x makes the tab active first, then closes — its
+						// Close-x makes the tab active first, then closes - its
 						// unsaved-changes guard applies.
 						self.run(Command::Tab { index: i }, event_loop);
 						self.run(Command::CloseProject { force: false }, event_loop);
@@ -1072,10 +1441,39 @@ impl App {
 				}
 				match action {
 					picker::Action::Pick(tile) => self.run(Command::Tile { spec: Some(tile) }, event_loop),
-					picker::Action::CycleFilter => {
-						self.run(Command::PickerFilter { name: "next".into() }, event_loop);
+					picker::Action::SetFilter(f) => {
+						self.editor.picker.filter_open = false;
+						self.run(Command::PickerFilter { name: f.name().into() }, event_loop);
 					}
-					picker::Action::CycleSize => self.run(Command::PickerSize { size: "next".into() }, event_loop),
+					picker::Action::ToggleFilter => {
+						let p = &mut self.editor.picker;
+						p.filter_open = !p.filter_open;
+						p.size_open = false; // one dropdown open at a time
+						self.redraw_win();
+					}
+					picker::Action::CloseFilter => {
+						self.editor.picker.filter_open = false;
+						self.redraw_win();
+					}
+					picker::Action::ToggleSize => {
+						let p = &mut self.editor.picker;
+						p.size_open = !p.size_open;
+						p.filter_open = false;
+						self.redraw_win();
+					}
+					picker::Action::SetSize(i) => {
+						self.editor.picker.size_open = false;
+						let px = picker::SIZES[i] as u32;
+						self.run(Command::PickerSize { size: px.to_string() }, event_loop);
+					}
+					picker::Action::CloseSize => {
+						self.editor.picker.size_open = false;
+						self.redraw_win();
+					}
+					picker::Action::NewTile => self.run(Command::TilePaintNew, event_loop),
+					picker::Action::CloneTile => self.run(Command::TilePaintClone, event_loop),
+					picker::Action::EditTile => self.run(Command::TilePaintEdit, event_loop),
+					picker::Action::DeleteTile => self.run(Command::TileDelete, event_loop),
 				}
 			}
 			Armed::Units { body, action } => {
@@ -1102,48 +1500,64 @@ impl App {
 				}
 				self.run(Command::MinimapMode { mode: mode.name().into() }, event_loop);
 			}
-			Armed::Toolbox { body, label } => {
-				let hit = toolbox::click(body, cx, cy, self.editor.toolbox_scroll);
-				let Some(button) = hit.filter(|b| b.label == label) else { return };
-				match &button.act {
-					toolbox::Act::Run(line) => {
+			Armed::Toolbox { body, hit } => {
+				let now = toolbox::click(body, cx, cy, self.editor.toolbox_scroll, self.editor.brush_dropdown_open);
+				if now != Some(hit) {
+					return;
+				}
+				match hit {
+					toolbox::ToolboxHit::Button(label) => {
+						let Some(button) = toolbox::button(label) else { return };
+						match &button.act {
+							toolbox::Act::Run(line) => {
+								if let Ok(Some(cmd)) = command::parse_line(line) {
+									self.run(cmd, event_loop);
+								}
+							}
+							toolbox::Act::Todo(ticket) => {
+								let msg = format!("{}: not implemented yet - backlog {ticket}", button.label);
+								eprintln!("{msg}");
+								self.editor.console.push_line(msg);
+							}
+						}
+					}
+					// The brush-size dropdown: toggle open, pick an option, or
+					// close on an outside click.
+					toolbox::ToolboxHit::SelectBox => {
+						self.editor.brush_dropdown_open = !self.editor.brush_dropdown_open;
+						self.redraw_win();
+					}
+					toolbox::ToolboxHit::SelectOption(line) => {
+						self.editor.brush_dropdown_open = false;
 						if let Ok(Some(cmd)) = command::parse_line(line) {
 							self.run(cmd, event_loop);
 						}
 					}
-					toolbox::Act::Todo(ticket) => {
-						let msg = format!("{}: not implemented yet — backlog {ticket}", button.label);
-						eprintln!("{msg}");
-						self.editor.console.push_line(msg);
+					toolbox::ToolboxHit::SelectClose => {
+						self.editor.brush_dropdown_open = false;
+						self.redraw_win();
 					}
 				}
 			}
 			Armed::Palette { body, action } => {
-				let hit = palette_panel::click(
-					body,
-					self.editor.active_color.map(u16::from),
-					self.editor.palette_sel_end.map(u16::from),
-					true,
-					self.editor.palette_scroll,
-					cx,
-					cy,
-					self.modifiers.shift_key(),
-					self.editor.palette_show_saved,
-					self.editor.palette_files.len(),
-				);
+				let hit = self.palette_click(body, cx, cy);
 				if hit != Some(action) {
 					return;
 				}
 				match action {
 					palette_panel::Action::ShowSaved(saved) => self.run(Command::PaletteTab { saved }, event_loop),
-					palette_panel::Action::Save => {
-						self.run(Command::FileDialog { purpose: command::FilePurpose::SavePalette }, event_loop);
+					palette_panel::Action::Save => self.run(Command::PaletteSaveModal, event_loop),
+					palette_panel::Action::Edit => self.run(Command::PaletteRenameModal, event_loop),
+					palette_panel::Action::Delete => self.run(Command::PaletteDeleteModal, event_loop),
+					palette_panel::Action::Import => {
+						self.run(Command::FileDialog { purpose: command::FilePurpose::ImportPalette }, event_loop);
 					}
-					palette_panel::Action::Load => {
-						self.run(Command::FileDialog { purpose: command::FilePurpose::LoadPalette }, event_loop);
+					palette_panel::Action::Export => {
+						self.run(Command::FileDialog { purpose: command::FilePurpose::ExportPalette }, event_loop);
 					}
 					palette_panel::Action::LoadSaved(i) => {
-						if let Some(path) = self.editor.palette_files.get(i).cloned() {
+						if let Some(path) = self.editor.palettes.files.get(i).cloned() {
+							self.editor.palettes.sel = Some(i);
 							self.run(Command::PaletteLoad { path }, event_loop);
 						}
 					}
@@ -1153,15 +1567,7 @@ impl App {
 				}
 			}
 			Armed::WrlPalette { body, action } => {
-				let hit = palette_panel::click_bare(
-					body,
-					self.editor.active_color.map(u16::from),
-					self.editor.palette_sel_end.map(u16::from),
-					self.editor.wrlpalette_scroll,
-					cx,
-					cy,
-					self.modifiers.shift_key(),
-				);
+				let hit = self.wrlpalette_click(body, cx, cy);
 				if hit != Some(action) {
 					return;
 				}
@@ -1173,13 +1579,18 @@ impl App {
 			}
 			Armed::Templates { body, action } => {
 				let visible = self.editor.visible_templates();
-				if templates_panel::click(visible.len(), body, self.editor.templates_scroll, cx, cy) != Some(action) {
+				let now = self.templates_click(visible.len(), body, cx, cy);
+				if now != Some(action) {
 					return;
 				}
 				match action {
 					templates_panel::Action::Pick(i) => {
 						if let Some(&g) = visible.get(i) {
-							let name = self.editor.templates[g].name.clone();
+							// Select the exact entry clicked before arming: names can repeat
+							// across tilesets, so `template-pick` resolves by selection (a bare
+							// name would grab the first match - maybe another tileset's).
+							self.editor.templates.sel = Some(g);
+							let name = self.editor.templates.entries[g].name.clone();
 							self.run(Command::TemplatePick { name }, event_loop);
 						}
 					}
@@ -1187,7 +1598,26 @@ impl App {
 					templates_panel::Action::Import => {
 						self.run(Command::FileDialog { purpose: command::FilePurpose::ImportTemplate }, event_loop);
 					}
-					templates_panel::Action::Delete => self.run(Command::TemplateDelete { name: None }, event_loop),
+					templates_panel::Action::Delete => self.run(Command::TemplateDeleteModal, event_loop),
+					templates_panel::Action::Dedupe => self.run(Command::TemplateDedupeModal, event_loop),
+					templates_panel::Action::Rename => self.run(Command::TemplateRenameModal, event_loop),
+					templates_panel::Action::Explore => self.run(Command::TemplateExplore, event_loop),
+					// The preview-size dropdown is view state, not a document edit.
+					templates_panel::Action::SizeBox => {
+						self.editor.templates.dropdown_open = !self.editor.templates.dropdown_open;
+						self.redraw_win();
+					}
+					templates_panel::Action::SizeOption(i) => {
+						if let Some(&(px, _)) = templates_panel::PREVIEW_SIZES.get(i) {
+							self.editor.templates.cell = px;
+						}
+						self.editor.templates.dropdown_open = false;
+						self.redraw_win();
+					}
+					templates_panel::Action::SizeClose => {
+						self.editor.templates.dropdown_open = false;
+						self.redraw_win();
+					}
 				}
 			}
 		}
@@ -1198,10 +1628,12 @@ impl App {
 	/// `content_h = max + region.h` matches what [`ui::UiQuads::scrollbar`] draws.
 	fn scrollbar_of(&self, id: &str, body: crate::ui::Rect) -> Option<(crate::ui::Rect, f32, f32, f32)> {
 		let (region, max, scroll) = match id {
-			"palette" => (palette_panel::grid_area(body), palette_panel::max_scroll(body), self.editor.palette_scroll),
-			"wrlpalette" => {
-				(palette_panel::grid_area_bare(body), palette_panel::max_scroll_bare(body), self.editor.wrlpalette_scroll)
-			}
+			"palette" => (palette_panel::grid_area(body), palette_panel::max_scroll(body), self.editor.palettes.scroll),
+			"wrlpalette" => (
+				palette_panel::grid_area_bare(body),
+				palette_panel::max_scroll_bare(body),
+				self.editor.palettes.wrl_scroll,
+			),
 			"tiles" => {
 				let count = picker::items(&self.editor.project, self.editor.picker.filter).len();
 				let max = picker::max_scroll(count, body, self.editor.picker.tile_px);
@@ -1214,7 +1646,11 @@ impl App {
 			}
 			"templates" => {
 				let count = self.editor.visible_templates().len();
-				(templates_panel::scissor(body), templates_panel::max_scroll(count, body), self.editor.templates_scroll)
+				(
+					templates_panel::scissor(body),
+					templates_panel::max_scroll(count, body, self.editor.templates.cell),
+					self.editor.templates.scroll,
+				)
 			}
 			_ => return None,
 		};
@@ -1231,29 +1667,92 @@ impl App {
 		let Some(d) = self.scroll_drag else { return };
 		let thumb_h = (d.track.h * d.track.h / d.content_h).clamp(16.0f32.min(d.track.h), d.track.h);
 		let span = (d.track.h - thumb_h).max(1.0);
-		let t = ((self.cursor.1 - d.grab - d.track.y) / span).clamp(0.0, 1.0);
+		let t = ((self.lcursor().1 - d.grab - d.track.y) / span).clamp(0.0, 1.0);
 		let scroll = t * d.max;
-		match d.id {
-			"palette" => self.editor.palette_scroll = scroll,
-			"wrlpalette" => self.editor.wrlpalette_scroll = scroll,
-			"tiles" => self.editor.picker.scroll = scroll,
-			"toolbox" => self.editor.toolbox_scroll = scroll,
-			"units" => self.editor.units_scroll = scroll,
-			"templates" => self.editor.templates_scroll = scroll,
-			_ => {}
-		}
+		self.set_panel_scroll(d.id, scroll);
 		if let Some(win) = self.win.as_ref() {
 			win.window.request_redraw();
 		}
 	}
 
+	/// Max scroll offset (px) for a scrollable docked panel, given its body rect.
+	fn panel_max(&self, id: &str, body: crate::ui::Rect) -> f32 {
+		match id {
+			"palette" => palette_panel::max_scroll(body),
+			"wrlpalette" => palette_panel::max_scroll_bare(body),
+			"tiles" => {
+				let count = picker::items(&self.editor.project, self.editor.picker.filter).len();
+				picker::max_scroll(count, body, self.editor.picker.tile_px)
+			}
+			"toolbox" => toolbox::max_scroll(body),
+			"units" => {
+				let count = self.editor.units.as_ref().map(|l| l.units.len()).unwrap_or(0);
+				units::max_scroll(count, body)
+			}
+			"templates" => {
+				let count = self.editor.visible_templates().len();
+				templates_panel::max_scroll(count, body, self.editor.templates.cell)
+			}
+			_ => 0.0,
+		}
+	}
+
+	/// Current scroll offset (px) of a scrollable docked panel.
+	fn panel_scroll(&self, id: &str) -> f32 {
+		match id {
+			"palette" => self.editor.palettes.scroll,
+			"wrlpalette" => self.editor.palettes.wrl_scroll,
+			"tiles" => self.editor.picker.scroll,
+			"toolbox" => self.editor.toolbox_scroll,
+			"units" => self.editor.units_scroll,
+			"templates" => self.editor.templates.scroll,
+			_ => 0.0,
+		}
+	}
+
+	/// Write a scrollable panel's offset (callers clamp).
+	fn set_panel_scroll(&mut self, id: &str, v: f32) {
+		match id {
+			"palette" => self.editor.palettes.scroll = v,
+			"wrlpalette" => self.editor.palettes.wrl_scroll = v,
+			"tiles" => self.editor.picker.scroll = v,
+			"toolbox" => self.editor.toolbox_scroll = v,
+			"units" => self.editor.units_scroll = v,
+			"templates" => self.editor.templates.scroll = v,
+			_ => {}
+		}
+	}
+
+	/// Scroll a panel by `delta` px (clamped). Returns false when `id` isn't a
+	/// scrollable panel, so callers can fall through (e.g. minimap zoom).
+	fn scroll_panel_by(&mut self, id: &str, body: crate::ui::Rect, delta: f32) -> bool {
+		if !matches!(id, "palette" | "wrlpalette" | "tiles" | "toolbox" | "units" | "templates") {
+			return false;
+		}
+		let max = self.panel_max(id, body);
+		let v = (self.panel_scroll(id) + delta).clamp(0.0, max);
+		self.set_panel_scroll(id, v);
+		true
+	}
+
+	/// Page a panel by ~90% of its viewport (`dir` -1 up / +1 down).
+	fn scroll_panel_page(&mut self, id: &str, body: crate::ui::Rect, dir: f32) -> bool {
+		self.scroll_panel_by(id, body, dir * (body.h * 0.9).max(1.0))
+	}
+
+	/// Jump a panel to the top (`home`) or the bottom.
+	fn scroll_panel_end(&mut self, id: &str, body: crate::ui::Rect, home: bool) {
+		let max = self.panel_max(id, body);
+		self.set_panel_scroll(id, if home { 0.0 } else { max });
+	}
+
 	/// Re-derive colors from the active palette drag's baseline + cursor and
-	/// apply them (absolute — repeated HSL round trips would drift).
+	/// apply them (absolute - repeated HSL round trips would drift).
 	fn apply_palette_drag(&mut self, event_loop: &ActiveEventLoop) {
 		let edits: Vec<Command> = match &self.palette_drag {
 			None => return,
 			Some(PaletteDrag::Slider { channel, track, baseline: (slot, rgb) }) => {
-				let t = ((self.cursor.0 - track.x) / track.w).clamp(0.0, 1.0);
+				let t = ((self.lcursor().0 - track.x) / track.w).clamp(0.0, 1.0);
 				let rgb = match channel {
 					0..=2 => {
 						let mut out = *rgb;
@@ -1269,10 +1768,16 @@ impl App {
 						}
 					}
 				};
-				vec![Command::SetColor { slot: *slot, rgb }]
+				// With a Ctrl-built multi-selection, the absolute slider sets every
+				// selected slot to the same color; otherwise just the active one.
+				if self.editor.palettes.multi.is_empty() {
+					vec![Command::SetColor { slot: *slot, rgb }]
+				} else {
+					self.editor.palettes.multi.iter().map(|&s| Command::SetColor { slot: s, rgb }).collect()
+				}
 			}
 			Some(PaletteDrag::Block { channel, start_x, baseline }) => {
-				let dx = self.cursor.0 - start_x;
+				let dx = self.lcursor().0 - start_x;
 				let (dh, ds, dl) = match channel {
 					0 => (dx * palette_panel::HUE_PER_PX, 0.0, 0.0),
 					1 => (0.0, dx * palette_panel::SL_PER_PX, 0.0),
@@ -1317,6 +1822,8 @@ impl App {
 			Key::Named(NamedKey::ArrowDown) => self.editor.console.history_next(),
 			Key::Named(NamedKey::PageUp) => self.editor.console.scroll_lines(5),
 			Key::Named(NamedKey::PageDown) => self.editor.console.scroll_lines(-5),
+			Key::Named(NamedKey::Home) => self.editor.console.scroll_lines(i32::MAX),
+			Key::Named(NamedKey::End) => self.editor.console.scroll_lines(i32::MIN),
 			_ => {
 				if let Some(text) = &event.text {
 					self.editor.console.insert(text);
@@ -1330,7 +1837,7 @@ impl App {
 
 	fn redraw(&mut self, event_loop: &ActiveEventLoop) {
 		// Animation: advance the working palette by real frame time.
-		if self.editor.animate {
+		if self.editor.animate || self.editor.painter_animating() {
 			let dt = self.last_frame.elapsed().as_secs_f32().min(0.25);
 			self.editor.tick(dt);
 		}
@@ -1342,7 +1849,7 @@ impl App {
 		}
 
 		// Generate Random Terrain: step the live run within a
-		// per-frame time budget — the progress bar fills, the UI stays live.
+		// per-frame time budget - the progress bar fills, the UI stays live.
 		if self.editor.generate_running() {
 			let frame = std::time::Instant::now();
 			let mut outcome = Outcome::Redraw;
@@ -1354,7 +1861,7 @@ impl App {
 
 		// New from Image: step the conversion within a per-frame time
 		// budget (keeps the frame responsive); completion opens a new tab. The
-		// first frame after Convert only *paints* the "Loading image…" state —
+		// first frame after Convert only *paints* the "Loading image…" state -
 		// the demanding decode begins next frame, so the user sees it started.
 		if self.editor.converting() {
 			if !self.convert_primed {
@@ -1432,6 +1939,7 @@ impl App {
 			|| self.editor.converting()
 			|| self.editor.palette_converting()
 			|| self.editor.generate_running()
+			|| self.editor.painter_animating()
 		{
 			win.window.request_redraw();
 		}
@@ -1474,7 +1982,9 @@ impl ApplicationHandler for App {
 
 	fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
 		match event {
-			WindowEvent::CloseRequested => event_loop.exit(),
+			// The OS close button is a quit request: clean exits, unsaved work
+			// raises the Save/Discard/Cancel guard instead of being lost.
+			WindowEvent::CloseRequested => self.run(Command::QuitRequest, event_loop),
 
 			WindowEvent::ModifiersChanged(modifiers) => {
 				self.modifiers = modifiers.state();
@@ -1488,19 +1998,37 @@ impl ApplicationHandler for App {
 				}
 				// An open text-field modal captures the keyboard next.
 				if self.editor.active_modal().is_some() {
+					let shift = self.modifiers.shift_key();
+					let ctrl = self.modifiers.control_key();
+					let (sw, sh) = self.editor.ui_screen();
 					let key = match &event.logical_key {
 						Key::Named(NamedKey::Enter) => Some(ModalKey::Enter),
 						Key::Named(NamedKey::Escape) => Some(ModalKey::Escape),
 						Key::Named(NamedKey::Backspace) => Some(ModalKey::Backspace),
+						Key::Named(NamedKey::Delete) => Some(ModalKey::Delete),
 						Key::Named(NamedKey::Tab) => Some(ModalKey::Tab),
+						Key::Named(NamedKey::ArrowLeft) => Some(ModalKey::Left { shift }),
+						Key::Named(NamedKey::ArrowRight) => Some(ModalKey::Right { shift }),
+						Key::Named(NamedKey::Home) => Some(ModalKey::Home { shift }),
+						Key::Named(NamedKey::End) => Some(ModalKey::End { shift }),
+						// Clipboard / select-all shortcuts (intercepted before text).
+						Key::Character(s) if ctrl => match s.as_str() {
+							"c" | "C" => Some(ModalKey::Copy),
+							"x" | "X" => Some(ModalKey::Cut),
+							"v" | "V" => Some(ModalKey::Paste),
+							"a" | "A" => Some(ModalKey::SelectAll),
+							_ => None,
+						},
 						_ => None,
 					};
 					if let Some(key) = key {
-						let action = self.editor.active_modal().unwrap().on_key(key);
+						let action = self.editor.active_modal().unwrap().on_key_at(key, sw, sh);
 						self.apply_modal_action(action, event_loop);
-					} else if let Some(text) = event.text.clone() {
-						for c in text.chars() {
-							self.editor.active_modal().unwrap().on_key(ModalKey::Char(c));
+					} else if !ctrl {
+						if let Some(text) = event.text.clone() {
+							for c in text.chars() {
+								self.editor.active_modal().unwrap().on_key_at(ModalKey::Char(c), sw, sh);
+							}
 						}
 					}
 					self.redraw_win();
@@ -1515,7 +2043,7 @@ impl ApplicationHandler for App {
 					return;
 				}
 				// Esc next closes the context menu, then disarms a ghost
-				// stamp, then drops the selection — only an idle Esc reaches
+				// stamp, then drops the selection - only an idle Esc reaches
 				// the bindings (where it can be quit).
 				if event.logical_key == Key::Named(NamedKey::Escape) {
 					if self.editor.context_menu.is_some() {
@@ -1528,6 +2056,29 @@ impl ApplicationHandler for App {
 					}
 					if !self.editor.selection.is_empty() {
 						self.run(Command::SelectOp { op: "clear".into() }, event_loop);
+						return;
+					}
+				}
+				// PageUp/Down/Home/End scroll the docked panel under the cursor
+				// (matching how the wheel targets the hovered panel).
+				let (sw, sh) = self.editor.ui_screen();
+				let (lcx, lcy) = self.lcursor();
+				if let Some((id, body)) = self.editor.workspace.body_at(lcx, lcy, sw, sh) {
+					let paged = match &event.logical_key {
+						Key::Named(NamedKey::PageUp) => self.scroll_panel_page(id, body, -1.0),
+						Key::Named(NamedKey::PageDown) => self.scroll_panel_page(id, body, 1.0),
+						Key::Named(NamedKey::Home) => {
+							self.scroll_panel_end(id, body, true);
+							self.panel_max(id, body) > 0.0
+						}
+						Key::Named(NamedKey::End) => {
+							self.scroll_panel_end(id, body, false);
+							self.panel_max(id, body) > 0.0
+						}
+						_ => false,
+					};
+					if paged {
+						self.redraw_win();
 						return;
 					}
 				}
@@ -1557,35 +2108,45 @@ impl ApplicationHandler for App {
 			WindowEvent::CursorMoved { position, .. } => {
 				let prev = self.cursor;
 				self.cursor = (position.x as f32, position.y as f32);
-				let (sw, sh) = (self.editor.screen.0 as f32, self.editor.screen.1 as f32);
+				// UI hit-tests use the **logical** cursor + logical screen (the chrome
+				// layout space); the map reads below keep the raw physical cursor.
+				let (sw, sh) = self.editor.ui_screen();
+				let (lcx, lcy) = self.lcursor();
 				// Feed the pointer snapshot for hover/pressed widget states; any
 				// move can change what's under the cursor, so always redraw.
-				self.editor.hot.cursor = Some(self.cursor);
+				self.editor.hot.cursor = Some((lcx, lcy));
 				if let Some(win) = self.win.as_ref() {
 					win.window.request_redraw();
 				}
 				// Dragging a modal by its titlebar takes the whole move.
 				if self.modal_drag {
-					let (dx, dy) = (self.cursor.0 - prev.0, self.cursor.1 - prev.1);
+					// The modal lives in logical space - scale the physical delta down.
+					let s = self.editor.ui_scale;
+					let (dx, dy) = ((self.cursor.0 - prev.0) / s, (self.cursor.1 - prev.1) / s);
 					if let Some(modal) = self.editor.active_modal() {
 						modal.drag(dx, dy);
 					}
 					self.redraw_win();
 					return;
 				}
-				if self.editor.menu.on_move(self.cursor.0, self.cursor.1, sw) {
+				// A modal's editable text field extends its selection on drag (a
+				// no-op unless a field press is in progress).
+				if let Some(modal) = self.editor.active_modal() {
+					modal.on_drag(lcx, lcy, sw, sh);
+				}
+				if self.editor.menu.on_move(lcx, lcy, sw) {
 					if let Some(win) = self.win.as_ref() {
 						win.window.request_redraw();
 					}
 				}
 				if let Some(cm) = &mut self.editor.context_menu {
-					if cm.on_move(self.cursor.0, self.cursor.1, sw, sh) {
+					if cm.on_move(lcx, lcy, sw, sh) {
 						if let Some(win) = self.win.as_ref() {
 							win.window.request_redraw();
 						}
 					}
 				}
-				if self.editor.workspace.on_move(self.cursor.0, self.cursor.1, sw, sh) {
+				if self.editor.workspace.on_move(lcx, lcy, sw, sh) {
 					if let Some(win) = self.win.as_ref() {
 						win.window.request_redraw();
 					}
@@ -1620,8 +2181,19 @@ impl ApplicationHandler for App {
 						self.editor.select_preview = Some((ax, ay, x, y));
 					}
 				}
+				// Alt+drag selection-move: translate the marquee by the cell delta.
+				if let Some(last) = self.select_move {
+					if let Some((x, y)) = self.editor.cell_at(self.cursor.0, self.cursor.1) {
+						if last != (x, y) {
+							let (dx, dy) = (x as i32 - last.0 as i32, y as i32 - last.1 as i32);
+							self.select_move = Some((x, y));
+							self.run(Command::SelectMove { dx, dy }, event_loop);
+						}
+					}
+				}
 				if let Some(body) = self.minipan {
-					let (x, y) = minimap::pan_target(self.editor.map_size(), body, self.cursor.0, self.cursor.1);
+					// `body` is a logical panel rect → hit it with the logical cursor.
+					let (x, y) = minimap::pan_target(self.editor.map_size(), body, lcx, lcy);
 					self.run(Command::PanTo { x, y }, event_loop);
 				}
 				if self.palette_drag.is_some() {
@@ -1633,19 +2205,22 @@ impl ApplicationHandler for App {
 			}
 
 			WindowEvent::MouseInput { state, button, .. } if self.bindings.is_paint_button(button) => {
-				let (sw, sh) = (self.editor.screen.0 as f32, self.editor.screen.1 as f32);
+				// UI hit-tests below use the logical cursor + logical screen (chrome
+				// space); map paints (`cell_at`) keep the raw physical cursor.
+				let (sw, sh) = self.editor.ui_screen();
+				let (lcx, lcy) = self.lcursor();
 				match state {
 					ElementState::Pressed => {
 						// Arm the pressed-widget visual: the press origin lives until
 						// release, so buttons render sunken while held.
-						self.editor.hot.down = Some(self.cursor);
-						// A stale deferred click (its release never arrived — e.g.
+						self.editor.hot.down = Some((lcx, lcy));
+						// A stale deferred click (its release never arrived - e.g.
 						// it landed outside the window) must not fire later.
 						self.armed = None;
 						// An open context menu is topmost: an item press runs
 						// its command; any other press just closes it.
 						if let Some(cm) = self.editor.context_menu.take() {
-							let press = cm.on_press(self.cursor.0, self.cursor.1, sw, sh);
+							let press = cm.on_press(lcx, lcy, sw, sh);
 							match press {
 								menu::Press::Run(line) => match command::parse_line(&line) {
 									Ok(Some(cmd)) => self.run(cmd, event_loop),
@@ -1653,7 +2228,7 @@ impl ApplicationHandler for App {
 									Err(e) => eprintln!("context menu: {e}"),
 								},
 								menu::Press::Todo(label, ticket) => {
-									let msg = format!("{label}: not implemented yet — backlog {ticket}");
+									let msg = format!("{label}: not implemented yet - backlog {ticket}");
 									eprintln!("{msg}");
 									self.editor.console.push_line(msg);
 								}
@@ -1665,7 +2240,7 @@ impl ApplicationHandler for App {
 						// An open text-field modal swallows every press; a press on
 						// its titlebar starts a drag, otherwise it routes in.
 						if self.editor.active_modal().is_some() {
-							let (cx, cy) = self.cursor;
+							let (cx, cy) = (lcx, lcy);
 							if self.editor.active_modal().unwrap().titlebar(sw, sh).contains(cx, cy) {
 								self.modal_drag = true;
 							} else {
@@ -1676,7 +2251,7 @@ impl ApplicationHandler for App {
 							return;
 						}
 						// The menu bar is next: it sees the press first.
-						match self.editor.menu.on_press(self.cursor.0, self.cursor.1, sw) {
+						match self.editor.menu.on_press(lcx, lcy, sw) {
 							menu::Press::None => {}
 							press => {
 								match press {
@@ -1686,7 +2261,7 @@ impl ApplicationHandler for App {
 										Err(e) => eprintln!("menu: {e}"),
 									},
 									menu::Press::Todo(label, ticket) => {
-										let msg = format!("{label}: not implemented yet — backlog {ticket}",);
+										let msg = format!("{label}: not implemented yet - backlog {ticket}",);
 										eprintln!("{msg}");
 										self.editor.console.push_line(msg);
 									}
@@ -1702,7 +2277,7 @@ impl ApplicationHandler for App {
 						// release-inside.
 						let tab_infos = self.editor.tab_infos();
 						let closable = self.editor.tabs_closable();
-						match tabs::hit(&tab_infos, closable, menu::BAR_H, self.cursor.0, self.cursor.1, sw) {
+						match tabs::hit(&tab_infos, closable, menu::BAR_H, lcx, lcy, sw) {
 							tabs::Hit::None => {}
 							hit => {
 								self.armed = Some(Armed::Tab(hit));
@@ -1711,16 +2286,16 @@ impl ApplicationHandler for App {
 							}
 						}
 						// Workspace next (panels swallow clicks); otherwise
-						// paint — silently inert without a project + active
+						// paint - silently inert without a project + active
 						// tile, so bare map clicks don't spam errors.
-						match self.editor.workspace.on_press(self.cursor.0, self.cursor.1, sw, sh) {
+						match self.editor.workspace.on_press(lcx, lcy, sw, sh) {
 							workspace::Press::Chrome => {
 								if let Some(win) = self.win.as_ref() {
 									win.window.request_redraw();
 								}
 							}
 							workspace::Press::Body { id, body } => {
-								let (cx, cy) = self.cursor;
+								let (cx, cy) = (lcx, lcy);
 								// A press in the scrollbar gutter starts a thumb drag (jumping
 								// the page when the track, not the thumb, is hit).
 								let on_bar = self.scrollbar_of(id, body).filter(|(track, ..)| track.contains(cx, cy));
@@ -1737,77 +2312,65 @@ impl ApplicationHandler for App {
 								} else if id == "tiles" {
 									// Tile picks + header buttons arm; they fire on
 									// release-inside.
-									if let Some(action) = picker::click(
-										&self.editor.project,
-										&self.editor.picker,
-										body,
-										self.cursor.0,
-										self.cursor.1,
-									) {
+									if let Some(action) =
+										picker::click(&self.editor.project, &self.editor.picker, body, cx, cy)
+									{
 										self.armed = Some(Armed::Picker { body, action });
 									}
 								} else if id == "units" {
-									if let Some(action) = units::click(
-										self.editor.units.as_ref(),
-										body,
-										self.editor.units_scroll,
-										self.cursor.0,
-										self.cursor.1,
-									) {
+									if let Some(action) =
+										units::click(self.editor.units.as_ref(), body, self.editor.units_scroll, cx, cy)
+									{
 										self.armed = Some(Armed::Units { body, action });
 									}
 								} else if id == "minimap" {
-									match minimap::click(self.editor.map_size(), body, self.cursor.0, self.cursor.1) {
+									match minimap::click(self.editor.map_size(), body, cx, cy) {
 										Some(minimap::Click::Mode(m)) => {
 											self.armed = Some(Armed::MinimapMode { body, mode: m });
 										}
 										Some(minimap::Click::Pan(x, y)) => {
 											// Click pans; holding drags the view (a drag
-											// start — stays press-fired).
+											// start - stays press-fired).
 											self.minipan = Some(body);
 											self.run(Command::PanTo { x, y }, event_loop);
 										}
 										None => {}
 									}
 								} else if id == "toolbox" {
-									if let Some(button) =
-										toolbox::click(body, self.cursor.0, self.cursor.1, self.editor.toolbox_scroll)
-									{
-										self.armed = Some(Armed::Toolbox { body, label: button.label });
+									if let Some(hit) = toolbox::click(
+										body,
+										cx,
+										cy,
+										self.editor.toolbox_scroll,
+										self.editor.brush_dropdown_open,
+									) {
+										self.armed = Some(Armed::Toolbox { body, hit });
 									}
 								} else if id == "templates" {
 									let count = self.editor.visible_templates().len();
-									if let Some(action) = templates_panel::click(
-										count,
-										body,
-										self.editor.templates_scroll,
-										self.cursor.0,
-										self.cursor.1,
-									) {
+									if let Some(action) = self.templates_click(count, body, cx, cy) {
 										self.armed = Some(Armed::Templates { body, action });
 									}
 								} else if id == "palette" {
-									match palette_panel::click(
-										body,
-										self.editor.active_color.map(u16::from),
-										self.editor.palette_sel_end.map(u16::from),
-										true,
-										self.editor.palette_scroll,
-										self.cursor.0,
-										self.cursor.1,
-										self.modifiers.shift_key(),
-										self.editor.palette_show_saved,
-										self.editor.palette_files.len(),
-									) {
+									match self.palette_click(body, cx, cy) {
 										// Selections are immediate; toolbar/header buttons
 										// arm and fire on release.
 										Some(palette_panel::Action::Select(slot)) => {
-											self.run(Command::Color { index: slot as u8 }, event_loop);
+											// Ctrl-click toggles the slot into the multi-selection;
+											// a plain click selects it (clearing the multi set).
+											if self.modifiers.control_key() {
+												self.run(Command::ColorToggle { index: slot as u8 }, event_loop);
+											} else {
+												self.run(Command::Color { index: slot as u8 }, event_loop);
+											}
 										}
 										Some(
 											action @ (palette_panel::Action::ShowSaved(_)
 											| palette_panel::Action::Save
-											| palette_panel::Action::Load
+											| palette_panel::Action::Edit
+											| palette_panel::Action::Delete
+											| palette_panel::Action::Import
+											| palette_panel::Action::Export
 											| palette_panel::Action::LoadSaved(_)
 											| palette_panel::Action::Cycle(_)),
 										) => {
@@ -1837,7 +2400,7 @@ impl ApplicationHandler for App {
 											// editable slots; a single water slot shifts its block.
 											let sel = palette_panel::selection(
 												self.editor.active_color.map(u16::from),
-												self.editor.palette_sel_end.map(u16::from),
+												self.editor.palettes.sel_end.map(u16::from),
 											);
 											let slots: Vec<u8> = match sel {
 												Some((lo, hi)) if lo != hi => palette_panel::editable_in(lo, hi)
@@ -1858,26 +2421,15 @@ impl ApplicationHandler for App {
 														(s, [p[at], p[at + 1], p[at + 2]])
 													})
 													.collect();
-												self.palette_drag = Some(PaletteDrag::Block {
-													channel,
-													start_x: self.cursor.0,
-													baseline,
-												});
+												self.palette_drag =
+													Some(PaletteDrag::Block { channel, start_x: cx, baseline });
 												self.run(Command::Stroke { begin: true }, event_loop);
 											}
 										}
 										None => {}
 									}
 								} else if id == "wrlpalette" {
-									match palette_panel::click_bare(
-										body,
-										self.editor.active_color.map(u16::from),
-										self.editor.palette_sel_end.map(u16::from),
-										self.editor.wrlpalette_scroll,
-										self.cursor.0,
-										self.cursor.1,
-										self.modifiers.shift_key(),
-									) {
+									match self.wrlpalette_click(body, cx, cy) {
 										// Selections are immediate; the cycle/static
 										// buttons arm and fire on release.
 										Some(palette_panel::Action::Select(slot)) => {
@@ -1896,9 +2448,14 @@ impl ApplicationHandler for App {
 									win.window.request_redraw();
 								}
 							}
-							workspace::Press::None if self.editor.mode == state::EditorMode::Pass => {
-								// Pass Table Editor: LMB paints the active pass
-								// value (drag = one undo stroke).
+							workspace::Press::None
+								if matches!(
+									self.editor.mode,
+									state::EditorMode::Pass | state::EditorMode::LocalPass
+								) =>
+							{
+								// Pass editors: LMB paints (tile passability, or a
+								// per-cell override), drag = one undo stroke.
 								if let Some((x, y)) = self.editor.cell_at(self.cursor.0, self.cursor.1) {
 									self.paint = Some((x, y));
 									self.run(Command::Stroke { begin: true }, event_loop);
@@ -1915,6 +2472,16 @@ impl ApplicationHandler for App {
 									}
 									return;
 								}
+								// Alt+drag with a select tool moves the selection
+								// marquee (not the terrain); the drag translates it
+								// cell by cell. Falls through to the tool otherwise.
+								if self.modifiers.alt_key()
+									&& matches!(self.editor.tool, state::Tool::Select | state::Tool::SelectRect)
+									&& !self.editor.selection.is_empty()
+								{
+									self.select_move = self.editor.cell_at(self.cursor.0, self.cursor.1);
+									return;
+								}
 								// LMB on the map: the active tool decides.
 								match self.editor.tool {
 									state::Tool::Picker => {
@@ -1922,7 +2489,7 @@ impl ApplicationHandler for App {
 											self.run(Command::Pick { x, y }, event_loop);
 										}
 									}
-									// Pencil paints, Eraser erases — both stroke
+									// Pencil paints, Eraser erases - both stroke
 									// (press + drag = one undo unit).
 									state::Tool::Pencil | state::Tool::Eraser => {
 										let erasing = self.editor.tool == state::Tool::Eraser;
@@ -1935,7 +2502,7 @@ impl ApplicationHandler for App {
 										}
 									}
 									// Flood fill: a single click fills the region
-									// (its own undo unit — no drag).
+									// (its own undo unit - no drag).
 									state::Tool::Fill => {
 										if self.editor.can_paint() {
 											if let Some((x, y)) = self.editor.cell_at(self.cursor.0, self.cursor.1) {
@@ -1999,7 +2566,7 @@ impl ApplicationHandler for App {
 						// A modal's armed command button fires on release-inside;
 						// a titlebar drag just ends.
 						if self.editor.active_modal().is_some() && !self.modal_drag {
-							let (cx, cy) = self.cursor;
+							let (cx, cy) = (lcx, lcy);
 							let action = self.editor.active_modal().unwrap().on_release(cx, cy, sw, sh);
 							self.apply_modal_action(action, event_loop);
 						}
@@ -2010,6 +2577,7 @@ impl ApplicationHandler for App {
 						// A select drag ends: freehand just stops; the rect
 						// applies anchor → release cell in one command.
 						self.select_paint = None;
+						self.select_move = None;
 						if let Some((ax, ay, mode)) = self.select_anchor.take() {
 							self.editor.select_preview = None;
 							let (x, y) = self.editor.cell_at(self.cursor.0, self.cursor.1).unwrap_or((ax, ay));
@@ -2021,7 +2589,7 @@ impl ApplicationHandler for App {
 						if self.palette_drag.take().is_some() {
 							self.run(Command::Stroke { begin: false }, event_loop);
 						}
-						if self.editor.workspace.on_release(self.cursor.0, self.cursor.1, sw, sh) {
+						if self.editor.workspace.on_release(lcx, lcy, sw, sh) {
 							if let Some(win) = self.win.as_ref() {
 								win.window.request_redraw();
 							}
@@ -2036,24 +2604,45 @@ impl ApplicationHandler for App {
 			WindowEvent::MouseInput { state, button, .. }
 				if self.bindings.is_pan_button(button) || button == MouseButton::Right =>
 			{
-				let (sw, sh) = (self.editor.screen.0 as f32, self.editor.screen.1 as f32);
-				// Not from the menu bar, tab strip, panels, or under a modal.
-				let over_map = self.cursor.1 >= menu::BAR_H + tabs::BAR_H
+				let (sw, sh) = self.editor.ui_screen();
+				let (lcx, lcy) = self.lcursor();
+				// Not from the menu bar, tab strip, panels, or under a modal. The
+				// "is it over the map" test is a UI question (logical space); the
+				// pan/context-menu points captured below stay physical (the map).
+				let over_map = lcy >= menu::BAR_H + tabs::BAR_H
 					&& self.editor.menu.open.is_none()
 					&& self.editor.active_modal().is_none()
-					&& !self.editor.workspace.over_ui(self.cursor.0, self.cursor.1, sw, sh);
+					&& !self.editor.workspace.over_ui(lcx, lcy, sw, sh);
 				match state {
 					ElementState::Pressed => {
 						self.drag = (over_map && self.bindings.is_pan_button(button)).then_some(self.cursor);
 						// A right press might be a click (context menu) or a
-						// pan-drag — decided by how far the release lands.
-						self.rclick = (button == MouseButton::Right && over_map && self.editor.context_menu.is_none())
-							.then_some(self.cursor);
+						// pan-drag - decided by how far the release lands. A modal
+						// with a focused text field opens that field's edit menu.
+						let right = button == MouseButton::Right && self.editor.context_menu.is_none();
+						// A right press on a Templates Explorer thumbnail opens that
+						// item's menu (resolved on release-inside) - takes precedence
+						// over the map menu, which only fires over the map.
+						let on_template = right.then(|| self.template_at(lcx, lcy, sw, sh)).flatten();
+						self.rclick_template = on_template.map(|g| (g, self.cursor));
+						let over_field = self.editor.active_modal_ref().and_then(|m| m.edit_context()).is_some();
+						self.rclick =
+							(right && on_template.is_none() && (over_map || over_field)).then_some(self.cursor);
 					}
 					ElementState::Released => {
 						self.drag = None;
 						if button == MouseButton::Right {
-							if let Some((px, py)) = self.rclick.take() {
+							if let Some((g, (px, py))) = self.rclick_template.take() {
+								let moved = (self.cursor.0 - px).abs().max((self.cursor.1 - py).abs());
+								if moved < 4.0 {
+									// Select the right-clicked entry, then open its menu in
+									// logical (chrome) space under the cursor.
+									self.editor.templates.sel = Some(g);
+									let (lcx, lcy) = self.lcursor();
+									self.editor.open_template_context_menu((lcx, lcy));
+									self.redraw_win();
+								}
+							} else if let Some((px, py)) = self.rclick.take() {
 								let moved = (self.cursor.0 - px).abs().max((self.cursor.1 - py).abs());
 								if moved < 4.0 {
 									self.run(Command::ContextMenu { at: Some(self.cursor) }, event_loop);
@@ -2065,7 +2654,7 @@ impl ApplicationHandler for App {
 			}
 
 			WindowEvent::MouseWheel { delta, .. } => {
-				// The context menu baked the clicked cell into its items —
+				// The context menu baked the clicked cell into its items -
 				// close it rather than let the view scroll out from under it.
 				if self.editor.context_menu.is_some() {
 					self.run(Command::ContextMenu { at: None }, event_loop);
@@ -2074,67 +2663,29 @@ impl ApplicationHandler for App {
 					MouseScrollDelta::LineDelta(_, y) => y,
 					MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 60.0,
 				};
-				// An open modal takes the wheel — the file dialog scrolls its
-				// list; the others just swallow it.
-				if let Some(modal) = self.editor.active_modal() {
-					modal.on_wheel(steps);
+				// The open console takes the wheel for its scrollback (no visible bar).
+				if self.editor.console.is_open() {
+					self.editor.console.scroll_lines((steps * 3.0).round() as i32);
 					self.redraw_win();
 					return;
 				}
-				let (sw, sh) = (self.editor.screen.0 as f32, self.editor.screen.1 as f32);
+				// An open modal takes the wheel - the file dialog scrolls its
+				// list; the others just swallow it.
+				let (sw, sh) = self.editor.ui_screen();
+				if let Some(modal) = self.editor.active_modal() {
+					modal.on_wheel(steps, sw, sh);
+					self.redraw_win();
+					return;
+				}
 				// Wheel over a panel belongs to the panel (picker scroll,
-				// minimap zoom); over the map it zooms at the cursor.
-				if let Some((id, body)) = self.editor.workspace.body_at(self.cursor.0, self.cursor.1, sw, sh) {
-					if id == "tiles" {
-						{
-							let project = &self.editor.project;
-							let count = picker::items(project, self.editor.picker.filter).len();
-							let max = picker::max_scroll(count, body, self.editor.picker.tile_px);
-							self.editor.picker.scroll =
-								(self.editor.picker.scroll - steps * picker::WHEEL_STEP).clamp(0.0, max);
-							if let Some(win) = self.win.as_ref() {
-								win.window.request_redraw();
-							}
-						}
-					} else if id == "minimap" {
+				// minimap zoom); over the map it zooms at the cursor. The panel
+				// hit-test is logical; `ZoomAt` below uses the physical cursor (map).
+				let (lcx, lcy) = self.lcursor();
+				if let Some((id, body)) = self.editor.workspace.body_at(lcx, lcy, sw, sh) {
+					if id == "minimap" {
 						self.run(Command::Zoom { factor: self.bindings.zoom_step().powf(steps) }, event_loop);
-					} else if id == "palette" {
-						let max = palette_panel::max_scroll(body);
-						self.editor.palette_scroll =
-							(self.editor.palette_scroll - steps * picker::WHEEL_STEP).clamp(0.0, max);
-						if let Some(win) = self.win.as_ref() {
-							win.window.request_redraw();
-						}
-					} else if id == "wrlpalette" {
-						let max = palette_panel::max_scroll_bare(body);
-						self.editor.wrlpalette_scroll =
-							(self.editor.wrlpalette_scroll - steps * picker::WHEEL_STEP).clamp(0.0, max);
-						if let Some(win) = self.win.as_ref() {
-							win.window.request_redraw();
-						}
-					} else if id == "toolbox" {
-						let max = toolbox::max_scroll(body);
-						self.editor.toolbox_scroll =
-							(self.editor.toolbox_scroll - steps * picker::WHEEL_STEP).clamp(0.0, max);
-						if let Some(win) = self.win.as_ref() {
-							win.window.request_redraw();
-						}
-					} else if id == "units" {
-						let count = self.editor.units.as_ref().map(|l| l.units.len()).unwrap_or(0);
-						let max = units::max_scroll(count, body);
-						self.editor.units_scroll =
-							(self.editor.units_scroll - steps * units::WHEEL_STEP).clamp(0.0, max);
-						if let Some(win) = self.win.as_ref() {
-							win.window.request_redraw();
-						}
-					} else if id == "templates" {
-						let count = self.editor.visible_templates().len();
-						let max = templates_panel::max_scroll(count, body);
-						self.editor.templates_scroll =
-							(self.editor.templates_scroll - steps * templates_panel::WHEEL_STEP).clamp(0.0, max);
-						if let Some(win) = self.win.as_ref() {
-							win.window.request_redraw();
-						}
+					} else if self.scroll_panel_by(id, body, -steps * picker::WHEEL_STEP) {
+						self.redraw_win();
 					}
 				} else {
 					self.run(
@@ -2162,7 +2713,7 @@ impl ApplicationHandler for App {
 		// Drop the surface/device/window while the display connection is
 		// still alive. `run_app` consumes the event loop, so anything left
 		// in `self.win` would otherwise be destroyed *after* the Wayland/X11
-		// connection closes — vkDestroySurfaceKHR then segfaults.
+		// connection closes - vkDestroySurfaceKHR then segfaults.
 		self.win = None;
 	}
 }

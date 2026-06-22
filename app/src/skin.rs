@@ -1,6 +1,6 @@
 //! UI skin assets: decode the brushed-steel sheet (`resources/images/steel.png`)
 //! that every chrome element samples (see [`theme`](crate::theme) for the
-//! tints + bevels layered over it). Pure CPU decode — the GPU upload lives in
+//! tints + bevels layered over it). Pure CPU decode - the GPU upload lives in
 //! [`TextPass`](crate::text::TextPass), beside the font atlases.
 //!
 //! Loading is best-effort: a missing/garbled PNG falls back to a flat neutral
@@ -16,7 +16,7 @@ pub struct Image {
 }
 
 impl Image {
-	/// A 2×2 mid-gray fallback — keeps the steel pass valid when the sheet is
+	/// A 2×2 mid-gray fallback - keeps the steel pass valid when the sheet is
 	/// absent (the tints/bevels still read as flat gunmetal panels).
 	fn flat() -> Self {
 		Self { rgba: [128u8, 130, 134, 255].repeat(4), size: (2, 2) }

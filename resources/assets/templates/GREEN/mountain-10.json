@@ -1,0 +1,28 @@
+{
+	"version": "1",
+	"name": "Mountain 10",
+	"width": 3,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "GREEN",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR08,GMa116",
+			"WATR02,GMa117",
+			""
+		],
+		[
+			"",
+			"WATR09,GMa118",
+			"WATR04,GMa119"
+		]
+	]
+}

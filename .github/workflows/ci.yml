@@ -8,7 +8,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   # The script regression suite (app/tests/scripts.rs) needs a GPU, which the
-  # runners don't have — it self-skips when CI is set. Everything else runs.
+  # runners don't have - it self-skips when CI is set. Everything else runs.
   CI: "true"
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # winit + wgpu need these to *build* on Linux (X11/Wayland dev libs).
-      # Adjust here if a future dep pulls in more — this is a starting set.
+      # Adjust here if a future dep pulls in more - this is a starting set.
       - name: Install build deps
         run: |
           sudo apt-get update
@@ -29,7 +29,7 @@ jobs:
       - name: Add rustfmt + clippy
         run: rustup component add rustfmt clippy
 
-      # Formatting is the source of truth (rustfmt.toml) — fail on drift.
+      # Formatting is the source of truth (rustfmt.toml) - fail on drift.
       - name: Format check
         run: cargo fmt --check
 

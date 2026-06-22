@@ -1,0 +1,53 @@
+{
+	"version": "1",
+	"name": "Crater 1",
+	"width": 5,
+	"height": 5,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "CRATER",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"WATR02,CMa053",
+			"WATR06,CMa054",
+			"WATR10,CMa055",
+			"WATR09,CMa056"
+		],
+		[
+			"WATR01,CMa057",
+			"WATR06,CMa058",
+			"WATR01,CMa059",
+			"WATR11,CMa060",
+			"WATR02,CMa061"
+		],
+		[
+			"WATR04,CMa062",
+			"WATR05,CMa063",
+			"WATR08,CMa064",
+			"WATR11,CMa065",
+			"WATR04,CMa066"
+		],
+		[
+			"WATR04,CMa067",
+			"WATR08,CMa068",
+			"WATR07,CMa069",
+			"WATR02,CMa070",
+			"WATR00,CMa071"
+		],
+		[
+			"",
+			"WATR10,CMa072",
+			"WATR01,CMa073",
+			"WATR09,CMa074",
+			""
+		]
+	]
+}

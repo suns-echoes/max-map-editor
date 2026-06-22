@@ -1,0 +1,26 @@
+{
+	"version": "1",
+	"name": "Rough 3",
+	"width": 2,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "GREEN",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR04,GLb032",
+			"WATR06,GLb033"
+		],
+		[
+			"WATR05,GLb031",
+			"WATR02,GLb030"
+		]
+	]
+}

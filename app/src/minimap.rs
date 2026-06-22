@@ -1,5 +1,5 @@
 //! Interactive minimap dockable: the whole map fitted into
-//! the panel body with the current view as a draggable rectangle — click or
+//! the panel body with the current view as a draggable rectangle - click or
 //! drag pans, wheel over it zooms. Three sources (header radios):
 //! **overworld** (the composed map, sampled per panel pixel), **pass**
 //! (passability colors), **minimap** (the in-game minimap bytes).
@@ -56,7 +56,7 @@ pub fn map_area(map: (u16, u16), body: Rect) -> (Rect, f32) {
 	(Rect::new(avail.x + (avail.w - mw) / 2.0, avail.y + (avail.h - mh) / 2.0, mw, mh), scale)
 }
 
-/// Cursor → map cell coords (fractional), clamped to the map — drag-pans
+/// Cursor → map cell coords (fractional), clamped to the map - drag-pans
 /// keep tracking even when the cursor leaves the fitted rect.
 pub fn pan_target(map: (u16, u16), body: Rect, x: f32, y: f32) -> (f32, f32) {
 	let (area, scale) = map_area(map, body);
@@ -215,6 +215,7 @@ impl MinimapPass {
 		editor: &EditorState,
 		body: Rect,
 		screen: (u32, u32),
+		scale: f32,
 	) {
 		let mode = editor.minimap_mode;
 		let (area, _) = map_area(editor.map_size(), body);
@@ -241,6 +242,7 @@ impl MinimapPass {
 			[0.0, 0.0, 1.0, 1.0],
 			body,
 			screen,
+			scale,
 		);
 	}
 }
@@ -251,13 +253,14 @@ mod tests {
 	use map_core::Project;
 	use std::path::{Path, PathBuf};
 
-	fn assets_root() -> PathBuf {
-		Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/assets")
+	fn resources() -> PathBuf {
+		Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources")
 	}
 
 	fn editor() -> EditorState {
-		let project = Project::new(8, 6, &["GREEN".to_string()], &assets_root(), 42).unwrap();
-		EditorState::new(project, (800, 600), None, assets_root())
+		let resources = resources();
+		let project = Project::new(8, 6, &["GREEN".to_string()], &resources.join("assets/tilepacks"), 42).unwrap();
+		EditorState::new(project, (800, 600), None, resources)
 	}
 
 	#[test]

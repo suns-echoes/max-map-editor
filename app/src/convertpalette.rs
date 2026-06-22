@@ -1,12 +1,13 @@
-//! Convert to Compatible Palette modal (Tools ▸ Palette). Picks the method —
+//! Convert to Compatible Palette modal (Tools ▸ Palette). Picks the method -
 //! **best match** (remap each used color to its nearest compatible slot) or
 //! **rasterize** (render the map through its internal palette and re-import
-//! it like New-from-Image) — plus the water-preservation and dedupe options,
+//! it like New-from-Image) - plus the water-preservation and dedupe options,
 //! then resolves to a `convert-palette …` command line (the same path
 //! scripts use).
 //!
 //! Pure state/geometry, drawn through the shared [`UiQuads`].
 
+use crate::textinput::{Charset, TextInput};
 use crate::theme;
 use crate::ui::{self, Hot, Rect, UiQuads};
 
@@ -34,12 +35,14 @@ pub struct ConvertPalette {
 	/// Rasterize-only: relaxed tile dedupe (else strict).
 	pub relaxed: bool,
 	/// Relaxed similarity threshold, percent (text field, like New-from-Image).
-	pub threshold: String,
+	threshold: TextInput,
 	threshold_focus: bool,
+	/// True between a press inside the threshold field and the release (mouse-select).
+	dragging_threshold: bool,
 	armed: Option<ArmedBtn>,
 	/// Drag offset from centered (draggable by the titlebar).
 	pub(crate) drag_offset: (f32, f32),
-	/// A rasterize run is in flight — the shell steps `session` per frame;
+	/// A rasterize run is in flight - the shell steps `session` per frame;
 	/// the options freeze and the dialog shows stage/progress/Abort.
 	pub running: bool,
 	pub session: Option<map_core::PaletteReimport>,
@@ -60,10 +63,10 @@ enum ArmedBtn {
 pub enum Press {
 	Consumed,
 	Close,
-	/// Validated `convert-palette …` command line (the best-match method —
+	/// Validated `convert-palette …` command line (the best-match method -
 	/// instant, runs straight through the command path).
 	Convert(String),
-	/// Begin the stepped rasterize run — the shell drives it per frame.
+	/// Begin the stepped rasterize run - the shell drives it per frame.
 	StartRasterize,
 	/// Abort the running rasterize run (back to the options).
 	Abort,
@@ -76,8 +79,9 @@ impl ConvertPalette {
 			method: Method::Match,
 			water: true,
 			relaxed: false,
-			threshold: "5".to_string(),
+			threshold: TextInput::new("5", 5).charset(Charset::Decimal),
 			threshold_focus: false,
+			dragging_threshold: false,
 			armed: None,
 			drag_offset: (0.0, 0.0),
 			running: false,
@@ -93,7 +97,7 @@ impl ConvertPalette {
 		if !self.relaxed {
 			return Ok((false, 0.0));
 		}
-		let pct: f32 = self.threshold.parse().map_err(|_| "threshold is not a number".to_string())?;
+		let pct: f32 = self.threshold.text().parse().map_err(|_| "threshold is not a number".to_string())?;
 		if !(0.0..=100.0).contains(&pct) {
 			return Err(format!("threshold {pct}% (0..=100)"));
 		}
@@ -115,7 +119,7 @@ impl ConvertPalette {
 		if self.method == Method::Rasterize {
 			line.push_str(if self.relaxed { " dedupe=relaxed" } else { " dedupe=strict" });
 			if self.relaxed {
-				let pct: f32 = self.threshold.parse().map_err(|_| "threshold is not a number")?;
+				let pct: f32 = self.threshold.text().parse().map_err(|_| "threshold is not a number")?;
 				if !(0.0..=100.0).contains(&pct) {
 					return Err(format!("threshold {pct}% (0..=100)"));
 				}
@@ -182,7 +186,7 @@ impl ConvertPalette {
 
 	pub fn on_press(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
 		let d = self.dialog_rect(w, h);
-		// Buttons stay live in both states — armed, firing on release-inside.
+		// Buttons stay live in both states - armed, firing on release-inside.
 		if self.cancel_rect(d).contains(x, y) {
 			self.armed = Some(ArmedBtn::Cancel);
 			return Press::Consumed;
@@ -212,6 +216,8 @@ impl ConvertPalette {
 				}
 				if self.relaxed && self.threshold_rect(d).contains(x, y) {
 					self.threshold_focus = true;
+					self.threshold.on_press(x, y, self.threshold_rect(d));
+					self.dragging_threshold = true;
 					return Press::Consumed;
 				}
 			}
@@ -226,6 +232,7 @@ impl ConvertPalette {
 	/// Fire the armed command button if the release is still on it;
 	/// a release anywhere else just disarms.
 	pub fn on_release(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
+		self.dragging_threshold = false;
 		let d = self.dialog_rect(w, h);
 		match self.armed.take() {
 			Some(ArmedBtn::Cancel) if self.cancel_rect(d).contains(x, y) => Press::Close,
@@ -240,16 +247,24 @@ impl ConvertPalette {
 		}
 	}
 
-	pub fn on_key(&mut self, ch: Option<char>, backspace: bool, _tab: bool) {
+	/// The threshold field's edit state when it's focused (and not mid-run).
+	pub fn edit_context(&self) -> Option<crate::modal::EditContext> {
+		(!self.running && self.threshold_focus).then(|| self.threshold.edit_context())
+	}
+
+	/// Route an editing key to the threshold field (when focused and idle).
+	pub fn key(&mut self, key: &crate::modal::ModalKey) {
 		if self.running || !self.threshold_focus {
 			return;
 		}
-		if backspace {
-			self.threshold.pop();
-		} else if let Some(c) = ch {
-			if (c.is_ascii_digit() || c == '.') && self.threshold.len() < 5 {
-				self.threshold.push(c);
-			}
+		self.threshold.on_key(key);
+	}
+
+	/// Mouse drag extends the threshold field's selection (after a press on it).
+	pub fn on_drag(&mut self, x: f32, y: f32, w: f32, h: f32) {
+		if self.dragging_threshold {
+			let r = self.threshold_rect(self.dialog_rect(w, h));
+			self.threshold.on_drag(x, y, r);
 		}
 	}
 
@@ -304,7 +319,7 @@ impl ConvertPalette {
 				if self.threshold_focus && live {
 					q.border(r, w, h, theme::INK);
 				}
-				q.label_in(&self.threshold, r, 6.0, FONT, w, h, if live { theme::INK } else { theme::INK_DIM });
+				// The threshold value/caret are drawn clipped by `field_contents`.
 				q.label_in("%", Rect::new(r.x + r.w + 4.0, r.y, 14.0, r.h), 0.0, FONT, w, h, theme::INK_DIM);
 			}
 		}
@@ -329,11 +344,22 @@ impl ConvertPalette {
 		q.label_in(if self.running { "Abort" } else { "Convert" }, self.convert_rect(d), 8.0, FONT, w, h, theme::INK);
 		q
 	}
+
+	/// The threshold field's text/caret/selection with its clip rect - present
+	/// only when the relaxed-rasterize threshold field is shown.
+	pub fn field_contents(&self, w: f32, h: f32) -> Vec<(UiQuads, Rect)> {
+		if self.method != Method::Rasterize || !self.relaxed {
+			return Vec::new();
+		}
+		let r = self.threshold_rect(self.dialog_rect(w, h));
+		vec![(self.threshold.content_quads(r, self.threshold_focus && !self.running, w, h), r)]
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::modal::ModalKey;
 
 	#[test]
 	fn command_lines_cover_the_option_space() {
@@ -346,9 +372,9 @@ mod tests {
 		m.relaxed = true;
 		m.water = true;
 		assert_eq!(m.command().unwrap(), "convert-palette rasterize water=keep dedupe=relaxed threshold=5");
-		m.threshold = "x".into();
+		m.threshold.set_text("x");
 		assert!(m.command().is_err());
-		m.threshold = "250".into();
+		m.threshold.set_text("250");
 		assert!(m.command().is_err());
 	}
 
@@ -360,7 +386,7 @@ mod tests {
 		let r = m.method_rect(d, Method::Rasterize);
 		assert_eq!(m.on_press(r.x + 2.0, r.y + 2.0, w, h), Press::Consumed);
 		assert_eq!(m.method, Method::Rasterize);
-		// The rasterize variant grows the dialog (dedupe row) — re-resolve.
+		// The rasterize variant grows the dialog (dedupe row) - re-resolve.
 		let d = m.dialog_rect(w, h);
 		let wr = m.water_rect(d);
 		m.on_press(wr.x + 2.0, wr.y + 2.0, w, h);
@@ -368,11 +394,12 @@ mod tests {
 		let dd = m.dedupe_rect(d, true);
 		m.on_press(dd.x + 2.0, dd.y + 2.0, w, h);
 		assert!(m.relaxed);
-		// Threshold field takes digits only once focused.
+		// Threshold field takes digits only once focused (caret to End, then type).
 		let tf = m.threshold_rect(d);
 		m.on_press(tf.x + 2.0, tf.y + 2.0, w, h);
-		m.on_key(Some('0'), false, false);
-		assert_eq!(m.threshold, "50");
+		m.key(&ModalKey::End { shift: false });
+		m.key(&ModalKey::Char('0'));
+		assert_eq!(m.threshold.text(), "50");
 		// Convert fires on release-inside; drag-off cancels. Rasterize is a
 		// stepped run, so confirming it starts the job rather than running a
 		// command line.
@@ -413,7 +440,7 @@ mod tests {
 		assert_eq!(m.on_release(c.x + 2.0, c.y + 2.0, w, h), Press::Abort);
 		// Typing is ignored while running.
 		m.threshold_focus = true;
-		m.on_key(Some('9'), false, false);
-		assert_eq!(m.threshold, "5");
+		m.key(&ModalKey::Char('9'));
+		assert_eq!(m.threshold.text(), "5");
 	}
 }

@@ -1,0 +1,43 @@
+{
+	"version": "1",
+	"name": "Mountain F-1",
+	"width": 3,
+	"height": 5,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"WATR09,SMb023",
+			"WATR05,SMb024"
+		],
+		[
+			"WATR07,SMb052",
+			"WATR00,SMb025",
+			"WATR08,SMb026"
+		],
+		[
+			"WATR02,SMb027",
+			"WATR08,SMb028",
+			"WATR09,SMb029"
+		],
+		[
+			"WATR09,SMb030",
+			"WATR11,SMb031",
+			"WATR08,SMb032"
+		],
+		[
+			"WATR09,SMb033",
+			"WATR04,SMb034",
+			""
+		]
+	]
+}

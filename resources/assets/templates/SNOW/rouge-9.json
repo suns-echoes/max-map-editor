@@ -1,0 +1,22 @@
+{
+	"version": "1",
+	"name": "Rouge 9",
+	"width": 2,
+	"height": 1,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR03,SLc033",
+			"WATR10,SLc034"
+		]
+	]
+}

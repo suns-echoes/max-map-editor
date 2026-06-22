@@ -1,0 +1,38 @@
+{
+	"version": "1",
+	"name": "Meadow 2",
+	"width": 3,
+	"height": 4,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "GREEN",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR07,GLc000",
+			"WATR02,GLc002",
+			""
+		],
+		[
+			"WATR01,GLc003",
+			"WATR00,GLc005",
+			"WATR04,GLc018"
+		],
+		[
+			"WATR05,GLc007",
+			"WATR04,GLc008",
+			"WATR01,GLc019"
+		],
+		[
+			"",
+			"WATR00,GLc011",
+			""
+		]
+	]
+}

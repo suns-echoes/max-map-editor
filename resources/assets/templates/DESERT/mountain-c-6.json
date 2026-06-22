@@ -1,0 +1,21 @@
+{
+	"version": "1",
+	"name": "Mountain C-6",
+	"width": 1,
+	"height": 1,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "DESERT",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR07,DMb002"
+		]
+	]
+}

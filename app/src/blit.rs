@@ -1,4 +1,4 @@
-//! Shared screen-space texture blit (one quad, nearest sampling) — the
+//! Shared screen-space texture blit (one quad, nearest sampling) - the
 //! minimap sources and the New Map modal's pack previews both draw
 //! CPU-built RGBA textures through this pass (`blit.wgsl`).
 
@@ -133,18 +133,24 @@ impl BlitPass {
 		uv: [f32; 4],
 		scissor: Rect,
 		screen: (u32, u32),
+		scale: f32,
 	) {
+		// `dst`/`scissor` are in **logical** px (the UI layout space). Project from
+		// the logical size (physical / scale) so they scale up to fill the
+		// framebuffer; the GPU scissor needs **physical** px, so multiply by scale.
+		// At scale 1.0 this is the original physical path.
 		let (w, h) = (screen.0 as f32, screen.1 as f32);
-		let sx = (scissor.x.max(0.0) as u32).min(screen.0);
-		let sy = (scissor.y.max(0.0) as u32).min(screen.1);
-		let sx1 = ((scissor.x + scissor.w).max(0.0) as u32).min(screen.0);
-		let sy1 = ((scissor.y + scissor.h).max(0.0) as u32).min(screen.1);
+		let (lw, lh) = (w / scale, h / scale);
+		let sx = ((scissor.x * scale).max(0.0) as u32).min(screen.0);
+		let sy = ((scissor.y * scale).max(0.0) as u32).min(screen.1);
+		let sx1 = (((scissor.x + scissor.w) * scale).max(0.0) as u32).min(screen.0);
+		let sy1 = (((scissor.y + scissor.h) * scale).max(0.0) as u32).min(screen.1);
 		if sx1 <= sx || sy1 <= sy {
 			return;
 		}
 
-		let nx = |x: f32| x / w * 2.0 - 1.0;
-		let ny = |y: f32| 1.0 - y / h * 2.0;
+		let nx = |x: f32| x / lw * 2.0 - 1.0;
+		let ny = |y: f32| 1.0 - y / lh * 2.0;
 		let (x0, y0, x1, y1) = (dst.x, dst.y, dst.x + dst.w, dst.y + dst.h);
 		let v = |x: f32, y: f32, u: f32, vv: f32| BlitVertex { pos: [nx(x), ny(y)], uv: [u, vv] };
 		let verts = [
@@ -160,18 +166,7 @@ impl BlitPass {
 			contents: bytemuck::cast_slice(&verts),
 			usage: wgpu::BufferUsages::VERTEX,
 		});
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("blit.pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: target,
-				resolve_target: None,
-				ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-		});
+		let mut pass = crate::render::load_pass(encoder, target, "blit.pass");
 		pass.set_scissor_rect(sx, sy, sx1 - sx, sy1 - sy);
 		pass.set_pipeline(&self.pipeline);
 		pass.set_bind_group(0, bind_group, &[]);

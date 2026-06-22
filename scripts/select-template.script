@@ -2,7 +2,7 @@
 # stamp the ghost elsewhere, cut, and export a template.
 # Run: cargo run -- --script scripts/select-template.script --headless
 
-open! resources/templates/GREEN_1.json
+open! resources/assets/maps/GREEN_1.json
 assert-dirty false
 
 # Paint a two-tile patch on open ocean (deterministic water beneath).
@@ -12,7 +12,7 @@ assert-cell 3 3 WATR00,GLa000
 assert-cell 4 3 WATR05,GLa001
 
 # Rect-select the pair and copy it. The clipboard carries both layers,
-# so stamping rewrites the target's water too — fully deterministic.
+# so stamping rewrites the target's water too - fully deterministic.
 select-rect 3 3 4 3
 copy
 paste

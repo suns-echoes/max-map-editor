@@ -1,5 +1,5 @@
 # Dockable workspace: default layout, window/dock commands, fit.
-# Run: cargo run -- resources/templates/GREEN_1.json --script scripts/workspace.script --headless
+# Run: cargo run -- resources/assets/maps/GREEN_1.json --script scripts/workspace.script --headless
 
 # Default layout: Minimap left, Tile Explorer + Color Palette right,
 # Toolbox bottom; the map fits the center area between them.
@@ -20,7 +20,7 @@ window toolbox off
 fit
 screenshot temp/workspace-hidden.png
 
-# Unknown ids fail loudly (exit 1) — guard against typo'd scripts.
+# Unknown ids fail loudly (exit 1) - guard against typo'd scripts.
 # (Re-show one panel so the round-trip is visible in the next run.)
 window tiles on
 dock tiles right

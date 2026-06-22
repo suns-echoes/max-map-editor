@@ -3,7 +3,7 @@
 //! A WRL is a tile-indexed map plus tileset:
 //! - 5-byte header, then `(u16 width, u16 height)` tile dimensions.
 //! - `width * height` bytes minimap (one byte per tile slot).
-//! - `width * height * u16` bigmap — each entry is an index into the tile table.
+//! - `width * height * u16` bigmap - each entry is an index into the tile table.
 //! - `u16 tile_count`, then `tile_count * 64 * 64` bytes of raw tile rasters.
 //! - 256 * 3 byte palette.
 //! - `tile_count` byte pass-table (terrain passability per tile).

@@ -2,7 +2,7 @@
 # Run: cargo run -- --script scripts/project-edit.script --headless
 # Hashes (1) and (3) must match; before/undone screenshots byte-identical.
 
-open! resources/templates/GREEN_1.json
+open! resources/assets/maps/GREEN_1.json
 assert-dirty false
 hash                          # (1) pristine project
 zoom-to 1
@@ -18,7 +18,7 @@ assert-dirty true
 hash                          # (2) edited
 screenshot temp/project-edit-after.png
 
-# Erase the ground layer only — water resurfaces underneath.
+# Erase the ground layer only - water resurfaces underneath.
 erase 3 3 ground
 assert-cell 3 3 WATR00
 

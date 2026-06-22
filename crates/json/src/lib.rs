@@ -1,4 +1,4 @@
-//! Minimal JSON parser + serializer — no dependencies.
+//! Minimal JSON parser + serializer - no dependencies.
 //!
 //! Parser extended from re-MAX's `help.rs` scanner (objects/strings/numbers)
 //! with arrays, booleans and null, which the map-editor data files need.
@@ -39,7 +39,7 @@ impl JsonValue {
 
 /// Nesting limit for arrays/objects. The parser is recursive-descent, so an
 /// adversarial deeply-nested document (`[[[[…]]]]`) would otherwise overflow
-/// the stack — an uncatchable `SIGABRT`, not a recoverable error. Project
+/// the stack - an uncatchable `SIGABRT`, not a recoverable error. Project
 /// files nest only a handful of levels; 128 is comfortably generous.
 const MAX_DEPTH: u32 = 128;
 
@@ -206,7 +206,7 @@ impl<'a> Scanner<'a> {
 					_ => return Err("bad escape".to_string()),
 				},
 				_ => {
-					// Multibyte UTF-8 — the source &str is already valid.
+					// Multibyte UTF-8 - the source &str is already valid.
 					let start = self.pos - 1;
 					while let Some(&n) = self.src.get(self.pos) {
 						if n & 0xC0 == 0x80 {
@@ -250,7 +250,7 @@ fn hex_digit(b: u8) -> Result<u8, String> {
 // ----- Serializer -----------------------------------------------------------
 
 impl JsonValue {
-	/// Pretty-print with tab indentation — byte-compatible with
+	/// Pretty-print with tab indentation - byte-compatible with
 	/// `JSON.stringify(data, null, '\t')` for the value shapes we use.
 	pub fn to_pretty(&self) -> String {
 		let mut out = String::new();
@@ -390,5 +390,38 @@ mod tests {
 		// One past the limit is rejected.
 		let over = "[".repeat(MAX_DEPTH as usize + 1) + &"]".repeat(MAX_DEPTH as usize + 1);
 		assert!(parse(&over).unwrap_err().contains("nesting deeper than"));
+	}
+
+	#[test]
+	fn serializes_control_chars_as_unicode_escapes() {
+		// A control char below 0x20 must emit `\\u00xx`, and round-trip back.
+		let s = JsonValue::String("a\u{0001}b\u{001f}".to_string()).to_pretty();
+		assert_eq!(s, r#""a\u0001b\u001f""#);
+		assert_eq!(parse(&s).unwrap().as_str(), Some("a\u{0001}b\u{001f}"));
+		// The named escapes win over the generic form.
+		assert_eq!(JsonValue::String("\t\n\r\"\\".to_string()).to_pretty(), r#""\t\n\r\"\\""#);
+	}
+
+	#[test]
+	fn write_number_picks_integer_or_float_form() {
+		let p = |n: f64| JsonValue::Number(n).to_pretty();
+		assert_eq!(p(112.0), "112", "integer-valued -> no decimal point");
+		assert_eq!(p(-2.5), "-2.5", "fractional -> float form");
+		// At/above 1e15 the i64 fast-path is skipped (precision guard); the value
+		// still serializes and round-trips.
+		assert_eq!(parse(&p(1e15)).unwrap().as_f64(), Some(1e15));
+		assert_eq!(parse(&p(1e18)).unwrap().as_f64(), Some(1e18));
+	}
+
+	#[test]
+	fn parser_handles_unicode_escape_edges() {
+		// A `\\u` escape cut off by EOF (fewer than 4 hex digits) errors.
+		assert!(parse(r#""\u1"#).unwrap_err().contains("unterminated \\u"));
+		// A non-hex digit in a `\\u` escape is rejected.
+		assert!(parse(r#""\u12zz""#).is_err());
+		// An unknown escape letter is rejected.
+		assert!(parse(r#""\x""#).unwrap_err().contains("bad escape"));
+		// A lone surrogate is not a valid scalar - it decodes to U+FFFD.
+		assert_eq!(parse(r#""\ud800""#).unwrap().as_str(), Some("\u{FFFD}"));
 	}
 }

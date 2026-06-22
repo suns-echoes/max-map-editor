@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M.A.X. Map Editor - Manual</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+	margin: 0; background: #16181c; color: #d6d9de;
+	font: 16px/1.65 ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 96px; }
+h1, h2, h3, h4 { color: #f2f4f7; line-height: 1.25; font-weight: 650; }
+h1 { font-size: 2.1rem; margin: 0 0 .2em; }
+h2 { font-size: 1.5rem; margin: 2.2em 0 .6em; padding-top: .4em; border-top: 1px solid #2b2f36; }
+h3 { font-size: 1.2rem; margin: 1.6em 0 .4em; color: #cdd2da; }
+h4 { font-size: 1.02rem; margin: 1.2em 0 .3em; color: #aeb4be; }
+a { color: #6fb3ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+p { margin: .7em 0; }
+ul, ol { margin: .6em 0; padding-left: 1.6em; }
+li { margin: .25em 0; }
+li > ul, li > ol { margin: .2em 0; }
+code { background: #23272e; border: 1px solid #2f343c; border-radius: 4px; padding: .08em .38em; font: .88em ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; color: #e7c98a; }
+pre { background: #1b1e23; border: 1px solid #2f343c; border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; border: 0; padding: 0; color: #cdd2da; }
+hr { border: 0; border-top: 1px solid #2b2f36; margin: 2em 0; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: .94em; }
+th, td { border: 1px solid #2f343c; padding: 7px 11px; text-align: left; vertical-align: top; }
+thead th { background: #21252b; color: #f2f4f7; }
+tbody tr:nth-child(even) { background: #1b1e23; }
+figure { margin: 1.4em 0; }
+figure img { display: block; width: 100%; height: auto; border: 1px solid #2f343c; border-radius: 8px; background: #0e0f12; }
+figcaption { color: #8a909b; font-size: .88em; margin-top: .5em; text-align: center; }
+nav.toc { background: #1b1e23; border: 1px solid #2b2f36; border-radius: 8px; padding: 14px 20px; margin: 1.6em 0 2.4em; }
+nav.toc strong { display: block; color: #f2f4f7; margin-bottom: .4em; }
+nav.toc ol { columns: 2; column-gap: 28px; margin: 0; padding-left: 1.3em; }
+.tagline { color: #8a909b; }
+footer { margin-top: 4em; padding-top: 1.2em; border-top: 1px solid #2b2f36; color: #6c727c; font-size: .88em; }
+</style>
+</head>
+<body>
+<main class="wrap">
+<nav class="toc"><strong>Contents</strong><ol><li><a href="#1-getting-started">1. Getting started</a></li><li><a href="#2-documents-projects-and-wrl">2. Documents: projects and WRL</a></li><li><a href="#3-the-workspace">3. The workspace</a></li><li><a href="#4-editing">4. Editing</a></li><li><a href="#5-the-palette">5. The palette</a></li><li><a href="#6-unit-previews">6. Unit previews</a></li><li><a href="#7-configuration-mme-ini-shipped-defaults-user-override">7. Configuration - <code>mme.ini</code> (shipped defaults + user override)</a></li><li><a href="#8-the-console">8. The console</a></li><li><a href="#9-command-line-scripting">9. Command line &amp; scripting</a></li><li><a href="#10-where-things-are-stored">10. Where things are stored</a></li></ol></nav>
+<h1 id="m-a-x-map-editor-manual">M.A.X. Map Editor - Manual</h1>
+<p>A map editor for <em>M.A.X.: Mechanized Assault &amp; Exploration</em> (Interplay, 1996). This manual covers the portable release; everything also applies when running from source with <code>cargo run</code>.</p>
+<hr>
+<h2 id="1-getting-started">1. Getting started</h2>
+<figure><img src="img/workspace.png" alt="The editor workspace: menu bar, map canvas, docked panels, and status bar." loading="lazy"><figcaption>The editor workspace: menu bar, map canvas, docked panels, and status bar.</figcaption></figure>
+<ol>
+<li>Unzip the release anywhere you like. That folder is the whole install - the editor reads and writes its settings <strong>beside the binary</strong>, nothing touches your home directory.</li>
+<li>Run <code>max-map-editor</code> (Linux) or <code>max-map-editor.exe</code> (Windows).</li>
+<li>Optional but recommended: tell the editor where your M.A.X. game lives - create/open <code>resources/user/config/mme.ini</code> (your override file - see §7) in a text editor and set:</li>
+</ol>
+<p>``<code>ini [Paths] MaxPath=/path/to/your/MAX </code>``</p>
+<p>With <code>MaxPath</code> set, Load dialogs start in your game directory, and the <strong>Units panel</strong> can load the game's unit sprites (see below). Future versions will use it for more (opening the MAX folder from the menu, installing finished maps straight into the game).</p>
+<p><strong>Linux desktop integration (optional).</strong> The zip includes <code>install.sh</code>. It copies the app to <code>~/.local/share/max-map-editor</code> (or a directory you pass), asks for your MAX path, and adds a menu entry + icons. The editor never <em>requires</em> installation - the unzipped folder works as-is.</p>
+<p>The editor opens a green starter map when launched without arguments. To open a specific document, pass it on the command line or use <strong>File → Open</strong>.</p>
+<h2 id="2-documents-projects-and-wrl">2. Documents: projects and WRL</h2>
+<figure><img src="img/importwrl.png" alt="Import WRL: match a standard-tile map onto existing tilesets." loading="lazy"><figcaption>Import WRL: match a standard-tile map onto existing tilesets.</figcaption></figure>
+<p>The editor works on <strong>map projects</strong> (<code>.json</code>) - layered, tileset-aware documents. The original game format (<code>.WRL</code>) is import/export:</p>
+<ul>
+<li><strong>Opening a <code>.WRL</code></strong> (File → Load Map) converts it into a project on the fly, keeping the WRL's own tiles as a synthetic, one-off pack.</li>
+<li><strong>File → Import WRL…</strong> instead rebuilds a standard-tile WRL <em>on top of existing tilesets</em> (see below) - the result is a fully editable project that reuses the shipped/user packs (auto-shore, variants, repaints all apply).</li>
+<li><strong>Save</strong> (<code>Ctrl+S</code>) writes the project; <strong>Export</strong> bakes a game-ready <code>.WRL</code> you can drop into your M.A.X. install.</li>
+</ul>
+<h3 id="import-wrl-match-onto-tilesets">Import WRL (match onto tilesets)</h3>
+<p><code>File → Import WRL…</code> takes a WRL that was built from standard game tiles and re-expresses every cell as a reference into the tilepacks you choose:</p>
+<ol>
+<li>Pick the <code>.WRL</code>, then tick the tilesets to match against (WATER is always the base; the palette-owner radio works like New Map).</li>
+<li>Each <em>used</em> WRL tile is matched against those packs by palette index, in all 8 orientations, so a rotated/mirrored tile reuses one pack tile with a transform. Animated coastal-water (palette indices 96-116) and a shore tile's transparency mask are wildcarded, so coastal tiles match whatever animation phase the WRL baked in. Matches are typically 95-100% for the originals.</li>
+<li>If some tiles match nothing, a list of them appears with three choices: <strong>Abort</strong>, <strong>Ignore missing</strong> (drop them - the water base shows through), or <strong>Import tiles</strong> with a destination toggle: <strong>This project</strong> (bundle the leftovers into a one-off pack saved beside the <code>.json</code>) or <strong>User tileset</strong> (fold them into the user pack mirroring the chosen tileset, deduped by exact pixels + pass so re-imports don't pile up duplicates). With nothing missing the converted map opens immediately.</li>
+</ol>
+<p>The result is a new untitled project (Save → Save As to keep it).</p>
+<p>The 24 original maps, rebuilt as ready-to-edit starter projects, ship in <code>resources/assets/maps/</code> - the <strong>Templates</strong> menu loads them directly.</p>
+<p>Project files carry a format version (<code>"mme_project_file_version": "2.0"</code>). The editor opens any file of the same <strong>major</strong> version, migrating it to the version it writes; a different major version is refused. Older pre-versioning projects are migrated automatically the first time you save them.</p>
+<h2 id="3-the-workspace">3. The workspace</h2>
+<figure><img src="img/panels.png" alt="Dockable panels - Minimap, Tile Explorer, and the Color Palette." loading="lazy"><figcaption>Dockable panels - Minimap, Tile Explorer, and the Color Palette.</figcaption></figure>
+<ul>
+<li><strong>Tabs</strong> - several documents can be open at once; the tab strip sits under the menu bar. Closing a document with unsaved changes asks first.</li>
+<li><strong>Panels</strong> - Minimap, Tile Explorer, Color Palette, WRL Internal Palette, Toolbox, and Units live in docks around the map view. Drag a titlebar to float a panel, drag it near an edge to dock it there, drag the splitters to resize. The close glyph hides a panel; the <strong>Windows</strong> menu brings it back. <strong>Windows → Reset layout</strong> restores the default arrangement. A panel with more content than fits scrolls by mouse wheel, by dragging its scrollbar (click the track to page), and by <strong>PageUp/PageDown/Home/End</strong> while the cursor is over it.</li>
+<li><strong>Status bar</strong> - a strip along the bottom shows a context hint for the active tool/mode, the cursor's cell coordinates, and the current selection's size. Toggle it with <strong>View → Status Bar</strong>.</li>
+<li>The layout is saved automatically on exit and restored on the next start.</li>
+</ul>
+<h3 id="map-navigation">Map navigation</h3>
+<table>
+<thead><tr><th>Action</th><th>Default control</th></tr></thead>
+<tbody>
+<tr><td>Pan</td><td>drag with Middle or Right mouse button</td></tr>
+<tr><td>Zoom</td><td>mouse wheel (towards the cursor)</td></tr>
+<tr><td>Fit map to window</td><td><code>F</code></td></tr>
+<tr><td>Paint</td><td>Left mouse button (a drag is one stroke = one undo step)</td></tr>
+</tbody></table>
+<h2 id="4-editing">4. Editing</h2>
+<figure><img src="img/editing.png" alt="Editing terrain - a marked selection, the Tile Explorer, and the toolbox." loading="lazy"><figcaption>Editing terrain - a marked selection, the Tile Explorer, and the toolbox.</figcaption></figure>
+<ul>
+<li><strong>Tile painting</strong> - pick a tile in the Tile Explorer (or eyedrop one from the map with the picker tool), then paint. The Toolbox's <strong>brush</strong> dropdown sets the pencil/eraser footprint size and <strong>shape</strong> group its shape (square or circle). <strong>Fill</strong> floods a connected region - or, when a selection is active, fills exactly that selection. With <strong>Randomize</strong> on, painting places random variants of the chosen tile so large areas don't look stamped. <strong>Delete</strong> (<code>Del</code>) clears the selected cells' ground.</li>
+<li><strong>Tile Painter</strong> - paint a tile's pixels by hand. The Tile Explorer's header has <strong>new</strong> (a blank tile), <strong>clone</strong> (a copy of the selected tile), <strong>edit</strong> (the selected tile in place), and <strong>del</strong> (remove the selected tile) buttons. <strong>del</strong> removes a tile from its pack - user tiles in normal mode, any tile in <code>--dev</code>; a tile still painted on the map is protected (erase it first). Pick a color from the 256-swatch palette grid or <strong>eyedropper</strong> one off the canvas; the swatch of the pixel under the cursor is ringed so you can see which slot it uses. The preview zooms (<strong>100 / 200 / 400 / 600 %</strong>) and, with <strong>animate colors</strong> on, cycles MAX's palette ranges live (water shimmer, etc.). <strong>replace</strong> recolors every pixel of a clicked color to the current color at once; <strong>copy</strong> / <strong>paste</strong> move a whole tile's pixels (raw indices) between tiles. <strong>export png</strong> / <strong>import png</strong> save the tile to / load it from a PNG image - on import each pixel maps to its visually closest palette color (any image size is sampled down to 64×64; transparent pixels become the family's mask color). A <strong>passability</strong> selector (land / water / shore / blocked) sets the tile's movement type, and the <strong>tile id</strong> field names the tile (a fresh suggestion for clones; editing it on an existing tile renames it). <strong>new</strong> and <strong>clone</strong> save to a user pack under <code>resources/user/tilepacks/&lt;PACK&gt;/</code> (named after the pack the tile derives from), available to any map that uses that pack. Shipped (stock) tiles are read-only - <strong>edit</strong> them only in developer mode (see <code>--dev</code> below); otherwise <strong>clone</strong> and edit the copy.</li>
+<li><strong>Map Preferences</strong> (<strong>Edit → Map Preferences…</strong>) - optional metadata: name, suggested player range (<strong>2</strong> / <strong>2-3</strong> / <strong>2-4</strong>), description, date, version, author. Every editable field here and in the other dialogs is a full text editor: caret + arrow keys, Home/End, Shift-select, mouse drag-select, the system clipboard (<code>Ctrl+X</code>/<code>C</code>/<code>V</code>), and a <strong>right-click menu</strong> with Cut/Copy/Paste/Select All. Fields are ASCII and accept only their valid characters (e.g. digits for sizes). The <strong>description</strong> is multiline: <strong>Enter</strong> inserts a newline (carriage returns are always stripped), and a scrollbar appears - draggable, wheel- and Home/End-scrollable - when the text overflows.</li>
+<li><strong>Layers</strong> - projects have a water base layer and a ground detail layer; painting acts on the active one (<strong>Mode → Tile Layer</strong>). Layers are a convenience for editing, not a hard rule - tiles simply stack bottom-up. An opened <code>.WRL</code> is decomposed onto the two layers by passability (water cells on the base layer, land/shore/obstructions on the ground layer). <strong>Show Only Selected</strong> (same submenu) hides every layer but the active one so you can inspect or edit it in isolation; it's a view filter only and never changes the document. The app background behind the map is dimmed and the map is framed by a thin green outline, so the editor chrome reads clearly.</li>
+<li><strong>Auto-shore</strong> - generates correct shore transitions between water and land automatically (<strong>Tools</strong> menu; <code>shore</code> in the console). The <strong>Fix Shore</strong> modal repairs an existing map's shorelines with live stats and a Stop button, in three modes: <strong>Fast</strong> (~1 s, re-tiles broken shore only), <strong>Aggressive</strong> (unbounded; may also re-tile land next to the shore when that closes a seam), and <strong>Destructive</strong> (full freedom over water, shore, and land - where no lawful shore exists, the area flattens to water rather than keeping a broken seam).</li>
+<li><strong>Pass editors</strong> - passability (the data the game uses for unit movement) is <strong>tile-dependent</strong>: <strong>Mode → Pass Table Editor</strong> paints the <em>tile's</em> pass value, so every cell sharing that tile id retints at once. When a designer needs one cell to differ, <strong>Mode → Local Pass Override Editor</strong> paints a <em>per-cell</em> override on top (the eraser tool lifts an override back to the tile's value). Both show the colored pass overlay; the effective pass is the override if present, else the tile's value. A Pass Table edit changes the <em>tile's</em> pass in the loaded tileset; in <code>--dev</code> it queues that pack, so <strong>Bake to Asset Packs</strong> writes the new values to the tileset's <code>tiles.pass.json</code>. <strong>Tools → Reset Pass Table to Tileset</strong> reverts every tile's pass back to its tileset's shipped value (undoing Pass Table edits and any pass a loaded map carried) - per-cell overrides are left alone. One undo step.</li>
+<li><strong>Resize</strong> - grows or crops the map from any edge (<strong>Tools → Resize</strong>).</li>
+<li><strong>New from image</strong> - builds a map from any picture: the image is quantized to the tileset's palette (with optional dithering) and matched to tiles. Great for blocking out a map from a sketch.</li>
+<li><strong>Generate Random Terrain</strong> - seeds a whole map procedurally (<strong>Tools → Generate Random Terrain...</strong>), replacing the current terrain entirely (both layers - undo brings the old map back): pick a pattern - <strong>Islands</strong>, <strong>Continent</strong>, <strong>Land Mass</strong> (always connected), or <strong>River Raid</strong> (land cut by rivers) - set the water, obstruction, and decoration percentages, pick the shore method (<strong>Auto Shore</strong> for a uniform coastline, <strong>Auto Shore ALT</strong> for a more varied one), and press Generate. A progress bar tracks the run and the editor stays responsive throughout - the Generate button becomes <strong>Abort</strong> while it works, and aborting rolls the map back as if nothing happened. Mountains, trees, and other features are stamped as <strong>whole multi-tile formations</strong> lifted from the original maps, never as random single tiles; decorations are the passable terrain features. Coastlines are auto-shored and seam-fixed as part of the run, and the whole thing is one undo step. The same seed + settings always produce the same map, so a seed is shareable; leave the seed field empty to roll a fresh map on every press until one looks right.</li>
+<li><strong>Selection</strong> - pick the <strong>select</strong> tool (toolbox or <strong>Select</strong> menu) and drag over tiles to select them, or the <strong>rect</strong> tool to span rectangles. <strong>Shift+drag adds</strong> to the selection, <strong>Ctrl+drag subtracts</strong>, a plain drag starts fresh; regions don't have to be contiguous - a thick green outline traces whatever is selected. <strong>Select All / Invert / Clear / Select Similar</strong> live in the Select menu (<code>Esc</code> also clears).</li>
+<li><strong>Copy / cut / paste</strong> - <code>Ctrl+C</code> / <code>Ctrl+X</code> / <code>Ctrl+V</code> (or the Edit menu) work on the selection. Cut clears the selected ground (the water base stays); <strong>Clear</strong> (<code>Delete</code>, Edit ▸ Clear) clears the <strong>active layer</strong> without touching the clipboard - so on the water layer it deletes water, with no land/water distinction. <strong>Clear All Layers</strong> (<code>Shift+Delete</code>, Edit ▸ Clear All Layers) empties every layer of the selection at once, leaving true holes. Paste arms the copied tiles as a <strong>ghost</strong> under the cursor - move it where you want, click to place (it stays armed for repeat stamping), <code>Esc</code> to put it away. Every placement is one undo step. While a ghost is armed (a paste or a template), the <strong>transform</strong> tool (flip h/v, rot cw/ccw) turns the <strong>whole stamp</strong> - but only as far as its tiles allow: water rides along untouched, and a tile that isn't drawn for the turn (an obstruction, an <code>invert</code>-only tile that flips but won't quarter-turn) refuses the op with a message naming it, so a stamp never bakes a broken orientation.</li>
+<li><strong>Right-click context menu</strong> - a right <em>click</em> on the map (press and release in place; holding and moving pans as usual) opens a menu of what makes sense right there: cut/copy/delete and template save with a selection, paste with a filled clipboard, place/cancel with an armed ghost stamp, plus Pick Tile, Center Here, Select All, and Fit Map. Click an entry to run it; <code>Esc</code>, a click elsewhere, or the wheel closes the menu. Menu entries show their keyboard shortcuts, dim on the right<ul>
+<li>the same hints appear throughout the main menus.</li>
+</ul>
+</li>
+<li><strong>Templates</strong> - reusable chunks of map. Select something you built, open the <strong>Templates Explorer</strong> (Templates menu or <strong>Windows ▸ Dockable Dialogs</strong>), and press <strong>save</strong> - the selection becomes a template you can stamp on any map that uses the same tile packs. Clicking a template arms it as a ghost, exactly like paste. The editor ships <strong>stock templates</strong> (under <code>resources/assets/templates</code>) and stores yours in <code>resources/user/templates</code> as plain JSON - share them, import them (<strong>import</strong> / Templates ▸ Import), clone or delete from the same menu. Both trees are organized into <strong>per-pack subfolders</strong> (<code>templates/&lt;PACKS&gt;/</code>, named after the terrain pack(s) a template uses - joined with <code>+</code> for several, with the universal <code>WATER</code> base omitted) so names never collide across packs. Templates whose tile packs aren't in the open map are hidden. The explorer header also has <strong>rename</strong> (rename the selected user template - <strong>F2</strong> also opens it - with a preview; renaming onto a name another template already uses is rejected with an in-dialog alert so you can fix it before applying), <strong>delete</strong> (a confirmation modal with a preview before it removes the template), <strong>duplicates</strong> (find and remove exact-duplicate user templates among the visible list, with a scrollable confirmation), <strong>explore</strong> (open the user-templates folder in your file manager), and a <strong>size</strong> dropdown that sets the thumbnail size (very small 32 .. very large 128) - remembered across sessions (§7), as is the Tile Explorer's own size dropdown. The header keeps every control on one row, wrapping only when the panel is too narrow. A template's shown name is its JSON <code>name</code> (kept as you type it); the file on disk is named from a sanitized form - lowercase, spaces and runs become <code>-</code>, special characters dropped, a numeral suffix added on collision. <strong>Right-click a thumbnail</strong> for its own menu: <strong>Use</strong> (arm it as a ghost), <strong>Rename</strong> / <strong>Duplicate</strong> / <strong>Delete</strong>, and <strong>Export as PNG</strong> - render the template to an image (one 64-px cell per tile, water under ground, shore transparency kept; large templates scale down so the long side stays manageable). A <strong>stock</strong> template is read-only, so its menu offers only Duplicate + Export - unless you run with <code>--dev</code>, which makes Rename/Delete edit the shipped template files directly (see §9). Export is also scriptable: <code>template-export-png PATH</code> writes the selected template.</li>
+<li><strong>Undo/redo</strong> - <code>Ctrl+Z</code> / <code>Ctrl+Shift+Z</code> (or <code>Ctrl+Y</code>), full history.</li>
+</ul>
+<h2 id="5-the-palette">5. The palette</h2>
+<figure><img src="img/palette.png" alt="The Color Palette panel and its palette manager." loading="lazy"><figcaption>The Color Palette panel and its palette manager.</figcaption></figure>
+<p>The Color Palette panel edits the project's 256-color game palette:</p>
+<ul>
+<li>click a slot to select it (shift-click selects a range), drag the RGB/HSL sliders to retint; <strong>HSL block</strong> operations shift whole ranges;</li>
+<li>the game's <strong>color cycling</strong> (water shimmer, effect sparkles) runs live - toggle animation with <code>A</code>;</li>
+<li><strong>managing palettes</strong> - the toolbar has <strong>grid</strong> / <strong>saved</strong> tabs and five buttons. The <strong>saved</strong> tab lists palettes shipped with tilesets plus your own (in <code>resources/user/palettes/</code>); <strong>click one to load it into the grid and select it</strong>. With a saved palette selected, <strong>Save</strong> writes the current working palette into <code>user/palettes</code> under a name you type (it asks before overwriting an existing one), <strong>Edit</strong> renames it, and <strong>Delete</strong> removes it (Edit/Delete are greyed for the read-only tileset palettes). <strong>Import</strong> copies an external palette JSON into your collection; <strong>Export</strong> writes the working palette to any location you pick;</li>
+<li><strong>In-Game mode</strong> (View menu) previews the map exactly as the game renders it - palette cycling plus 6-bit color; the <strong>CRT</strong> toggle adds a scanline/phosphor effect on top, for the full 1996 experience.</li>
+</ul>
+<h3 id="the-internal-wrl-palette">The internal (WRL) palette</h3>
+<p>The game ignores most of a WRL's palette: every <em>static</em> slot is replaced with fixed engine colors at runtime - only the dynamic slots (64–159) belong to the map. Three tools deal with files whose internal palette strays from that contract:</p>
+<ul>
+<li><strong>Windows → WRL Internal Palette</strong> - a read-only panel showing the opened document's palette exactly as the file stores it (before the engine's substitutions).</li>
+<li><strong>Debug → Render using map palette</strong> - renders the map with that internal palette instead of the game-resolved one, so you can see what the file "thinks" it looks like.</li>
+<li><strong>Tools → Palette → Convert to Compatible Palette…</strong> - converts an opened WRL onto a game-correct palette. The modal offers two methods:<ul>
+<li><strong>best match</strong> - only the colors actually used by pixels are touched: each one reuses an in-game static color when one matches, and the rest are approximated into the <em>unused</em> dynamic slots (a weighted clustering pass keeps the heavy colors near-exact). Pixels on the engine's effect cycles (slots 9–31) always move off - the game cycles its own colors there, so they are never used.</li>
+<li><strong>rasterize</strong> - renders the whole map through its internal palette and re-imports the raster exactly like New from Image (quantize, dither, rebuild tiles, dedupe - strict or relaxed with a threshold). It runs live in the modal - progress bar, ETA, and an <strong>Abort</strong> button - without freezing the editor.</li>
+</ul>
+</li>
+</ul>
+<p>Both methods honor <strong>keep animated water colors</strong> (on by default): the water cycle blocks (96–127) stay byte-identical so the water still animates in-game. Lossy, but a single <strong>Undo</strong> restores the whole document; the file on disk is unchanged until you export. Scriptable as <code>convert-palette [match|rasterize] [water=keep|drop] [dedupe=strict|relaxed] [threshold=PCT]</code>.</p>
+<h2 id="6-unit-previews">6. Unit previews</h2>
+<p>A map's colors only prove themselves with units standing on them. With <code>MaxPath</code> set, <strong>Windows → Units</strong> opens a panel with every unit and building from your game (loaded straight from MAX.RES - the editor ships no game art):</p>
+<ul>
+<li>pick a team color (the five swatches in the panel header), click a unit, then click the map to stamp it - body, turret, and shadow composited like in the game, recolored to the team. A plain click stamps once and returns to the pencil; <strong>hold Shift to keep stamping</strong>;</li>
+<li>the <strong>erase</strong> button in the panel header switches to the unit eraser - click placed units to remove them one by one (<code>unit-clear</code> removes all);</li>
+<li><strong>View → Show Units</strong> toggles their visibility (picking a unit switches it back on automatically);</li>
+<li>placed units follow your palette edits and the live color cycling, so you can judge terrain colors against real units while you tune;</li>
+<li>placements are <strong>saved with the project</strong>, so your reference scene is there next session - but they never affect the WRL export, and they're not part of undo.</li>
+</ul>
+<p>Console forms: <code>unit TAG</code> / <code>unit off</code>, <code>unit-team red|green|blue|gray|yellow</code>, <code>unit-place TAG X Y</code>, <code>unit-erase X Y</code>, <code>unit-clear</code>, <code>units on|off|toggle</code>.</p>
+<h2 id="7-configuration-mme-ini-shipped-defaults-user-override">7. Configuration - <code>mme.ini</code> (shipped defaults + user override)</h2>
+<p>Settings live in two layered INI files:</p>
+<ul>
+<li><strong><code>resources/config/mme.ini</code></strong> - the <strong>shipped defaults</strong>, with explanatory comments. The editor never writes here; treat it as read-only (edits may be lost on update).</li>
+<li><strong><code>resources/user/config/mme.ini</code></strong> - <strong>your overrides</strong>. The editor saves your changes here, and any key you set wins over the shipped default. Create it (or hand-edit it) to override any setting below - include only the keys you want to change; everything else falls back to the shipped defaults.</li>
+</ul>
+<p>Sections and keys are CamelCase and <strong>case-sensitive</strong> - including <code>[Bindings]</code>, whose keys are PascalCase action names (a raw command line also works as a key). The editor rewrites the <strong>user</strong> file when it saves the UI layout, and <strong>comments do not survive</strong> there - the shipped file's comments and this manual are the reference.</p>
+<h3 id="paths"><code>[Paths]</code></h3>
+<table>
+<thead><tr><th>Key</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>MaxPath</code></td><td>Your M.A.X. game directory. Empty = unset.</td></tr>
+</tbody></table>
+<h3 id="bindings-keyboard"><code>[Bindings]</code> - keyboard</h3>
+<p>Each entry is <code>Action = chord [chord ...]</code> - the key is a <strong>PascalCase action name</strong> (the table below), the value one or more key chords. An entry replaces that action's default chords; an <strong>empty value unbinds</strong> the action; actions you don't list keep their defaults. (A raw command line still works as a key too - e.g. <code>save-copy backup.json=Ctrl+Shift+B</code> for a command with no named action - and the older inverted <code>Chord=Action</code> form still loads, with a startup warning.)</p>
+<pre><code>[Bindings]
+GridToggle=G F8
+ZoomTo100=1
+Fit=</code></pre>
+<p>Chords: optional <code>Ctrl</code> / <code>Shift</code> / <code>Alt</code> plus one key - letters, digits, punctuation, <code>F1</code>–<code>F12</code>, <code>Escape</code>, <code>Enter</code>, <code>Space</code>, <code>Tab</code>, <code>Backspace</code>, <code>Delete</code>, <code>Insert</code>, <code>Home</code>, <code>End</code>, <code>PageUp</code>, <code>PageDown</code>, <code>ArrowLeft/Right/Up/Down</code>, <code>Backquote</code>, <code>Plus</code>, <code>Minus</code>, <code>Equals</code>.</p>
+<p>Bound actions show their chord <strong>in the menus</strong>, right-aligned and dim. One chord may serve several actions with disjoint contexts - out of the box the digit keys pick pass values in the Pass Table Editor and zoom presets in the map editor; the tool keys only act in the map editor.</p>
+<p>Default bindings:</p>
+<table>
+<thead><tr><th>Action</th><th>Keys</th><th></th></tr></thead>
+<tbody>
+<tr><td><code>SaveProject</code></td><td><code>Ctrl+S</code></td><td>save (asks for a path if never saved)</td></tr>
+<tr><td><code>FileDialogSaveAs</code></td><td><code>Ctrl+Shift+S</code></td><td>Save As</td></tr>
+<tr><td><code>FileDialogLoad</code></td><td><code>Ctrl+O</code></td><td>Load Map</td></tr>
+<tr><td><code>NewMap</code></td><td><code>Ctrl+N</code></td><td>New Map modal</td></tr>
+<tr><td><code>CloseProject</code></td><td><code>Ctrl+W</code></td><td>close the active tab</td></tr>
+<tr><td><code>Export</code></td><td><code>Ctrl+E</code></td><td>bake a game-ready WRL</td></tr>
+<tr><td><code>Undo</code> / <code>Redo</code></td><td><code>Ctrl+Z</code> / <code>Ctrl+Shift+Z</code>, <code>Ctrl+Y</code></td><td></td></tr>
+<tr><td><code>Cut</code> / <code>Copy</code> / <code>Paste</code></td><td><code>Ctrl+X</code> / <code>Ctrl+C</code> / <code>Ctrl+V</code></td><td>clipboard (§4)</td></tr>
+<tr><td><code>Delete</code></td><td><code>Delete</code></td><td>clear the selected ground (Edit ▸ Clear)</td></tr>
+<tr><td><code>SelectAll</code> / <code>SelectClear</code> / <code>SelectInvert</code></td><td><code>Ctrl+A</code> / <code>Ctrl+D</code> / <code>Ctrl+I</code></td><td></td></tr>
+<tr><td><code>ToolPencil</code> / <code>ToolEraser</code> / <code>ToolPicker</code> / <code>ToolFill</code></td><td><code>B</code> / <code>E</code> / <code>I</code> / <code>K</code></td><td>map editor only</td></tr>
+<tr><td><code>ToolSelect</code> / <code>ToolSelectRect</code></td><td><code>L</code> / <code>M</code></td><td>map editor only</td></tr>
+<tr><td><code>Fit</code></td><td><code>F</code></td><td>fit the map in the view</td></tr>
+<tr><td><code>ZoomTo100</code> / <code>ZoomTo50</code> / <code>ZoomTo25</code></td><td><code>1</code> / <code>2</code> / <code>3</code></td><td>map editor zoom presets</td></tr>
+<tr><td><code>ZoomIn</code> / <code>ZoomOut</code></td><td><code>Plus</code>, <code>=</code> / <code>Minus</code></td><td>zoom in / out</td></tr>
+<tr><td><code>PassPick0</code>–<code>PassPick3</code></td><td><code>0</code>–<code>3</code></td><td>Pass Table Editor: pick the pass value</td></tr>
+<tr><td><code>GridToggle</code></td><td><code>G</code></td><td>cell grid overlay</td></tr>
+<tr><td><code>PassOverlayToggle</code></td><td><code>O</code></td><td>pass-value overlay</td></tr>
+<tr><td><code>UnitsToggle</code></td><td><code>U</code></td><td>show/hide unit previews</td></tr>
+<tr><td><code>TemplateRename</code></td><td><code>F2</code></td><td>rename the selected template (Templates Explorer)</td></tr>
+<tr><td><code>AnimateToggle</code></td><td><code>A</code></td><td>palette cycling</td></tr>
+<tr><td><code>ConsoleToggle</code></td><td><code>Backquote</code>, <code>F1</code></td><td></td></tr>
+<tr><td><code>Quit</code></td><td><code>Escape</code></td><td>see below</td></tr>
+</tbody></table>
+<p><code>Escape</code> is layered: it first closes an open menu or context menu, then disarms a ghost stamp, then clears the selection - only an idle <code>Escape</code> asks to quit.</p>
+<p>Quitting the editor (the window close button or <strong>File ▸ Exit</strong>) with unsaved work in any tab raises a <strong>Save / Discard / Cancel</strong> prompt rather than losing it - Save writes each unsaved map (one at a time, asking Save-As for any never-saved one) and then quits; Discard quits immediately. (The <code>quit</code> console command still hard-fails on unsaved changes so scripts stay deterministic - use <code>quit!</code> to force.)</p>
+<h3 id="mouse"><code>[Mouse]</code></h3>
+<table>
+<thead><tr><th>Key</th><th>Meaning</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>PanButtons</code></td><td>space-separated buttons that drag-pan (<code>Left</code> <code>Middle</code> <code>Right</code>)</td><td><code>Middle Right</code></td></tr>
+<tr><td><code>PaintButton</code></td><td>button that paints</td><td><code>Left</code></td></tr>
+<tr><td><code>ZoomStep</code></td><td>wheel zoom factor per notch, <code>1.01</code>–<code>2.0</code></td><td><code>1.15</code></td></tr>
+</tbody></table>
+<p>A right <strong>click</strong> (no drag) over the map always opens the context menu (§4), whether or not <code>Right</code> is among the pan buttons.</p>
+<h3 id="workspace"><code>[Workspace]</code></h3>
+<p>Machine-written - the saved UI state: dock sizes, each panel's placement and size, the overall <strong>UI scale</strong> (<code>UiScale</code>, View ▸ UI Scale), and the explorer thumbnail sizes (<code>TilesPreview</code> for the Tile Explorer, <code>TemplatesPreview</code> for the Templates Explorer - each the px chosen from that panel's size dropdown, so your preferred preview size persists across sessions). The editor rewrites this section as you move/resize panels and change those settings. Edit at your own risk; deleting the whole section resets everything here to defaults.</p>
+<h2 id="8-the-console">8. The console</h2>
+<figure><img src="img/console.png" alt="The in-app console - every editor action is a typeable command." loading="lazy"><figcaption>The in-app console - every editor action is a typeable command.</figcaption></figure>
+<p>`<code> </code> `<code> (Backquote) or </code>F1<code> opens the in-app console. Every editor action is a console command - the same commands work in </code>[Bindings]` and in script files, so anything you can click, you can also type, bind, or automate. The input line keeps a command history (Up/Down); the scrollback scrolls with the mouse wheel and with PageUp/PageDown/Home/End.</p>
+<p>Commonly useful:</p>
+<table>
+<thead><tr><th>Command</th><th>Does</th></tr></thead>
+<tbody>
+<tr><td><code>open PATH</code> / <code>save [PATH]</code> / <code>export [PATH]</code></td><td>document I/O (<code>export</code> bakes a <code>.WRL</code>)</td></tr>
+<tr><td><code>import-wrl PATH</code></td><td>open the Import WRL modal to match a standard-tile WRL onto chosen tilesets (§2)</td></tr>
+<tr><td><code>new W H PACK SEED</code></td><td>new map (e.g. <code>new 64 64 GREEN 7</code>)</td></tr>
+<tr><td><code>tile SPEC</code> / <code>paint X Y</code> / <code>fill X Y</code></td><td>choose a tile and place it</td></tr>
+<tr><td><code>shore</code></td><td>run auto-shore</td></tr>
+<tr><td>`generate PATTERN [water=N] [obstructions=N] [decorations=N] [seed=N] [shore=sweep\</td><td>alt]`</td></tr>
+<tr><td>`select all\</td><td>clear\</td></tr>
+<tr><td><code>copy</code> / <code>cut</code> / <code>paste</code> / <code>delete</code> / <code>delete-all</code>, <code>stamp X Y</code>, <code>stamp cancel</code></td><td>clipboard + ghost placement (<code>delete</code> = active layer, <code>delete-all</code> = every layer)</td></tr>
+<tr><td><code>context-menu X Y</code> / <code>context-menu off</code></td><td>open/close the right-click menu (scripts)</td></tr>
+<tr><td><code>template-save [NAME]</code>, <code>template-pick NAME</code>, <code>template-clone</code></td><td>templates (§4)</td></tr>
+<tr><td><code>template-rename "FROM" "TO"</code>, <code>template-delete</code> / <code>template-delete!</code>, <code>template-dedupe</code> / <code>template-dedupe!</code>, <code>template-explore</code></td><td>rename / delete / remove-duplicate / reveal templates (bare verb opens the dialog; <code>!</code> performs it)</td></tr>
+<tr><td><code>template-export-png [PATH]</code></td><td>render the selected template to a PNG (bare opens the save dialog)</td></tr>
+<tr><td><code>undo</code> / <code>redo</code></td><td>history</td></tr>
+<tr><td><code>zoom-to N</code> / <code>pan-to X Y</code> / <code>fit</code></td><td>view</td></tr>
+<tr><td>`grid on</td><td>off</td></tr>
+<tr><td><code>brush-size N</code></td><td>pencil/eraser footprint size (1–99; brush dropdown offers 1–13)</td></tr>
+<tr><td><code>map-preferences</code></td><td>open the Map Preferences dialog (name, players, …)</td></tr>
+<tr><td><code>animate</code>, <code>ingame</code>, <code>crt</code>, <code>map-palette</code></td><td>toggles (palette cycling, in-game look, CRT, internal-palette debug render)</td></tr>
+<tr><td>`convert-palette [match\</td><td>rasterize] [water=keep\</td></tr>
+<tr><td>`mode map\</td><td>pass\</td></tr>
+<tr><td><code>pass-pick 0..3</code>, <code>tile-pass X Y V</code> (tile pass), <code>pass-paint X Y V</code> / <code>pass-clear X Y</code> (per-cell override), <code>tile-pass-reset</code> (reset tile pass to the tileset)</td><td>passability (§4)</td></tr>
+<tr><td>`show-only-layer on\</td><td>off\</td></tr>
+<tr><td><code>unit TAG</code>, <code>unit-team NAME</code>, <code>unit-place TAG X Y</code>, <code>unit-clear</code></td><td>unit previews (§6)</td></tr>
+<tr><td>`window ID on</td><td>off<code>, </code>dock ID left</td></tr>
+<tr><td><code>save-settings</code>, <code>reset-layout</code></td><td>persist / reset the UI layout</td></tr>
+<tr><td><code>screenshot PATH</code></td><td>save a PNG of the current frame</td></tr>
+<tr><td><code>quit</code> / <code>quit!</code></td><td>exit (<code>!</code> discards unsaved changes)</td></tr>
+</tbody></table>
+<p>There are more - including <code>assert-*</code> commands used by the regression scripts; see them in action under <code>scripts/</code> in the repository.</p>
+<h2 id="9-command-line-scripting">9. Command line &amp; scripting</h2>
+<pre><code>max-map-editor [MAP.WRL|PROJECT.json] [options]
+
+--script FILE       run commands from FILE (one per line, # comments)
+--screenshot OUT    shorthand: render headless and save a PNG
+--crop x,y,w,h      crop the --screenshot to a region
+--resize WxH        resize the --screenshot after cropping
+--headless          run the script without a window, then exit
+--size WxH          render-target size (default 1280x800)
+--settings FILE     load/persist all settings from FILE (an alternate mme.ini)
+--dev               developer mode: edit shipped (stock) tiles, templates,
+                    and maps, and add the DEV menu (Bake, Update Map)</code></pre>
+<p><strong>Developer mode (<code>--dev</code>)</strong> unlocks shipped-asset authoring: the Tile Painter's <strong>edit</strong> button works on shipped tiles (and new/clone tiles grow the stock pack directly), the <strong>DEV</strong> menu's <strong>Bake to Asset Packs</strong> writes the tiles you changed this session back to <code>resources/assets/tilepacks/&lt;PACK&gt;/</code> - repaints, passability, and any new tiles, and <strong>stock templates become editable</strong> - <strong>Rename</strong> and <strong>Delete</strong> apply directly to the shipped template files (in <code>resources/assets/templates/&lt;PACKS&gt;/</code>), where outside <code>--dev</code> they're read-only. The DEV menu also has <strong>Update Map</strong>, which overwrites the map's <em>original</em> file in place - even a shipped map (<code>resources/assets/maps/</code>), which normally opens read-only so plain Save can't touch it. (New / WRL / image maps have no original file - use Save As.) Bake rewrites only the files you actually changed (a repaint touches just the pixel data) and leaves match/pattern files intact. Baking is <strong>non-destructive</strong> - it never drops a tile or its passability (even value 0), only those you deleted with <strong>del</strong> - and it <strong>reorders</strong> each pack's tiles into ascending-id order, so cloned/new tiles settle into place. Without <code>--dev</code> the DEV menu is hidden, stock tiles are read-only, shipped maps open read-only (Save → Save As), and a stock template's right-click menu offers only Duplicate (clone it, then edit the copy).</p>
+<p>A script file is just console commands, one per line. Scripts double as regression tests in the repository - they can assert map state (<code>assert-cell</code>, <code>assert-hash</code>, <code>assert-dirty</code>) and fail the run when the editor misbehaves.</p>
+<h2 id="10-where-things-are-stored">10. Where things are stored</h2>
+<table>
+<thead><tr><th>What</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td>Settings, bindings, UI layout (shipped defaults)</td><td><code>resources/config/mme.ini</code></td></tr>
+<tr><td>Your settings overrides</td><td><code>resources/user/config/mme.ini</code></td></tr>
+<tr><td>Tilesets (tile packs)</td><td><code>resources/assets/tilepacks/&lt;PACK&gt;/</code></td></tr>
+<tr><td>Your custom tiles (Tile Painter)</td><td><code>resources/user/tilepacks/&lt;PACK&gt;/</code></td></tr>
+<tr><td>Starter projects (the 24 originals)</td><td><code>resources/assets/maps/</code></td></tr>
+<tr><td>Stock templates (shipped)</td><td><code>resources/assets/templates/&lt;PACKS&gt;/</code></td></tr>
+<tr><td>Your saved templates (Save as Template)</td><td><code>resources/user/templates/&lt;PACKS&gt;/</code></td></tr>
+<tr><td>Your saved palettes</td><td><code>resources/user/palettes/</code></td></tr>
+<tr><td>Default save location for maps</td><td><code>resources/maps/</code> (created on first save)</td></tr>
+</tbody></table>
+<p>A tile pack is a folder of palette + tile data + passability + props + variant groups; projects reference packs by name and carry their own palette, so a map and its look travel together. Tiles you make with the Tile Painter land in a parallel <strong>user pack</strong> under <code>resources/user/tilepacks/&lt;PACK&gt;/</code>, mirroring the shipped pack they derive from; it loads automatically alongside the stock pack for any map that uses that pack.</p>
+<hr>
+<p>M.A.X. COPYRIGHT © 1996 INTERPLAY PRODUCTIONS. ALL RIGHTS RESERVED. The editor ships no original game content - point <code>MaxPath</code> at your own copy.</p>
+
+<footer>Generated from MANUAL.md · <a href="https://suns-echoes.github.io/max-map-editor/" target="_blank" rel="noopener">Website</a> · <a href="https://github.com/suns-echoes/max-map-editor" target="_blank" rel="noopener">GitHub</a></footer>
+</main>
+</body>
+</html>

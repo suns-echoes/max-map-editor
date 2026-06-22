@@ -1,0 +1,39 @@
+{
+	"version": "1",
+	"name": "Mountain C-2",
+	"width": 5,
+	"height": 3,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "DESERT",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR00,DMb025",
+			"WATR11,DMb026",
+			"WATR07,DMb027",
+			"WATR09,DMb028",
+			""
+		],
+		[
+			"WATR07,DMb029",
+			"WATR02,DMb030",
+			"WATR09,DMb031",
+			"WATR03,DMb032",
+			"WATR03,DMb036"
+		],
+		[
+			"",
+			"WATR04,DMb033",
+			"WATR02,DMb034",
+			"WATR03,DMb035",
+			"WATR09,DMb037"
+		]
+	]
+}

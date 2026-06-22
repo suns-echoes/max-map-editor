@@ -1,5 +1,5 @@
 //! Dockable workspace: four edge docks around the map view
-//! plus a floating layer — in-app windows, not OS windows. Behavior ports the
+//! plus a floating layer - in-app windows, not OS windows. Behavior ports the
 //! finished Tauri prototype (workspace.component.ts, archived on the
 //! `bak/rust-1` branch under `_old-app/front/src/ui/main-window/workspace/`):
 //! drag a titlebar >3 px to undock into floating; dragging near an edge peeks
@@ -8,7 +8,7 @@
 //! strips between each dock and the center; empty docks auto-hide; the close
 //! glyph hides a panel (the `window` command re-shows it).
 //!
-//! Pure layout/state logic — headless-testable; rendering happens in [`draw`]
+//! Pure layout/state logic - headless-testable; rendering happens in [`draw`]
 //! from the computed [`Layout`], so the rects you click are the rects drawn.
 
 use ini::INISection;
@@ -97,6 +97,8 @@ pub struct Workspace {
 	/// Reserved strip above the docks (the main menu bar). 0 in unit tests;
 	/// the editor sets it to `menu::BAR_H`.
 	pub top: f32,
+	/// Reserved strip below the docks (the status bar). 0 when hidden.
+	pub bottom: f32,
 	dock_size: [f32; 4],
 	drag: Drag,
 	cursor: (f32, f32),
@@ -106,9 +108,9 @@ pub struct Workspace {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Press {
 	None,
-	/// Titlebar / close / splitter / resizer — handled internally.
+	/// Titlebar / close / splitter / resizer - handled internally.
 	Chrome,
-	/// A panel body — the shell routes content interaction (picker, …).
+	/// A panel body - the shell routes content interaction (picker, …).
 	Body {
 		id: &'static str,
 		body: Rect,
@@ -120,7 +122,7 @@ pub struct Layout {
 	pub center: Rect,
 	/// Visible dock areas (including drag-peeked empty ones).
 	pub docks: [Option<Rect>; 4],
-	/// Docked panels first (vec order), floating after — also draw order.
+	/// Docked panels first (vec order), floating after - also draw order.
 	pub panels: Vec<(usize, Rect)>,
 	/// `(side, nth docked panel it resizes, rect)`.
 	pub splitters: Vec<(usize, usize, Rect)>,
@@ -179,7 +181,7 @@ impl Default for Workspace {
 					// Max width = 8 max-size swatches + gaps + padding + scrollbar.
 					(251.0, 640.0),
 				),
-				// Hidden by default — a debugging aid (Windows menu shows it);
+				// Hidden by default - a debugging aid (Windows menu shows it);
 				// `prev` points at a real dock so `window wrlpalette on` has
 				// somewhere sensible to restore to.
 				Panel {
@@ -206,10 +208,10 @@ impl Default for Workspace {
 					160.0,
 					360.0,
 					(300.0, 140.0),
-					// Height intentionally unbounded for now — the toolbox scrolls.
+					// Height intentionally unbounded for now - the toolbox scrolls.
 					(1200.0, 4096.0),
 				),
-				// Hidden by default — needs MaxPath/MAX.RES; Windows menu shows
+				// Hidden by default - needs MaxPath/MAX.RES; Windows menu shows
 				// it. `prev` points at a real dock so `window units on` has
 				// somewhere sensible to restore to.
 				Panel {
@@ -226,7 +228,7 @@ impl Default for Workspace {
 						(560.0, 900.0),
 					)
 				},
-				// Hidden by default — Windows menu / `window templates` shows it.
+				// Hidden by default - Windows menu / `window templates` shows it.
 				Panel {
 					prev: Place::Docked(RIGHT),
 					..panel(
@@ -243,6 +245,7 @@ impl Default for Workspace {
 				},
 			],
 			top: 0.0,
+			bottom: 0.0,
 			dock_size: [240.0, 280.0, 130.0, 150.0],
 			drag: Drag::None,
 			cursor: (0.0, 0.0),
@@ -317,6 +320,9 @@ impl Workspace {
 
 	/// Compute the frame's geometry for a `w`×`h` screen.
 	pub fn layout(&self, w: f32, h: f32) -> Layout {
+		// Reserve the status-bar strip at the bottom: every dock + the center
+		// map area lives above it.
+		let h = (h - self.bottom).max(1.0);
 		let peek = self.peek(w, h);
 		let occupied: [Vec<usize>; 4] = [self.docked(0), self.docked(1), self.docked(2), self.docked(3)];
 		let visible = [
@@ -411,13 +417,17 @@ impl Workspace {
 	/// Is the cursor over any workspace chrome (panel, splitter, edge)?
 	/// Map input (paint/pan) should be suppressed when this is true.
 	pub fn over_ui(&self, x: f32, y: f32, w: f32, h: f32) -> bool {
+		// The status-bar strip counts as chrome (clicks there never reach the map).
+		if self.bottom > 0.0 && y >= h - self.bottom {
+			return true;
+		}
 		let l = self.layout(w, h);
 		l.panels.iter().any(|(_, r)| r.contains(x, y))
 			|| l.splitters.iter().any(|(_, _, r)| r.contains(x, y))
 			|| l.edges.iter().flatten().any(|r| r.contains(x, y))
 	}
 
-	/// The topmost panel under the cursor (id + body rect) — wheel routing.
+	/// The topmost panel under the cursor (id + body rect) - wheel routing.
 	pub fn body_at(&self, x: f32, y: f32, w: f32, h: f32) -> Option<(&'static str, Rect)> {
 		let l = self.layout(w, h);
 		l.panels.iter().rev().find(|(_, r)| r.contains(x, y)).map(|&(i, r)| (self.panels[i].id, self.body_of(i, r)))
@@ -437,7 +447,7 @@ impl Workspace {
 				return Press::Chrome;
 			}
 			if ui::titlebar_rect(r, frame).contains(x, y) {
-				// `raise` reorders the vec — re-resolve the index by id.
+				// `raise` reorders the vec - re-resolve the index by id.
 				let id = self.panels[i].id;
 				self.raise(i);
 				self.drag = Drag::Move {
@@ -479,7 +489,7 @@ impl Workspace {
 		Press::None
 	}
 
-	/// `raise` moves a floating panel to the end of the vec (topmost) —
+	/// `raise` moves a floating panel to the end of the vec (topmost) -
 	/// indices in an active drag are resolved by id afterwards.
 	fn raise(&mut self, i: usize) {
 		if matches!(self.panels[i].place, Place::Floating(..)) && i + 1 != self.panels.len() {
@@ -500,7 +510,7 @@ impl Workspace {
 						return false;
 					}
 					// Undock: become floating at the cursor, keeping the grab
-					// point inside the (possibly narrower) floating titlebar —
+					// point inside the (possibly narrower) floating titlebar -
 					// and take the top z-index immediately (`raise` reorders
 					// the vec, so re-resolve the dragged index by id).
 					grab.0 = grab.0.min(self.panels[i].w - ui::TITLEBAR_H);
@@ -601,7 +611,7 @@ impl Workspace {
 
 	/// Frame chrome below the panels: dock-edge resizers + splitters.
 	/// The shell composes a frame as: background → peeks → per-panel chrome +
-	/// content (in `layout().panels` order — that IS the z-order).
+	/// content (in `layout().panels` order - that IS the z-order).
 	pub fn draw_background(&self, w: f32, h: f32) -> UiQuads {
 		let mut q = UiQuads::default();
 		let layout = self.layout(w, h);
@@ -650,7 +660,7 @@ impl Workspace {
 		}
 		if matches!(p.place, Place::Floating(..)) {
 			// A dark grip triangle in the bottom-right corner (the hit area is
-			// still the corner square — see `on_press`).
+			// still the corner square - see `on_press`).
 			let (x1, y1) = (r.x + r.w, r.y + r.h);
 			q.tri((x1 - HANDLE, y1), (x1, y1 - HANDLE), (x1, y1), w, h, theme::RESIZE_HANDLE);
 		}
@@ -724,7 +734,7 @@ impl Workspace {
 	}
 
 	/// Serialize the layout as the `[Workspace]` section of `mme.ini`:
-	/// `Docks = left right top bottom`, plus one key per panel —
+	/// `Docks = left right top bottom`, plus one key per panel -
 	/// `Place X Y W H Extent` (`X`/`Y` only meaningful for `Float`).
 	pub fn to_ini(&self) -> INISection {
 		const NAMES: [&str; 4] = ["Left", "Right", "Top", "Bottom"];
@@ -793,7 +803,7 @@ impl Workspace {
 				self.panels[idx].prev = place;
 			}
 		}
-		// Loaded sizes are untrusted — clamp them into range before clamping
+		// Loaded sizes are untrusted - clamp them into range before clamping
 		// position, so a stale/hand-edited file can't overflow content off-screen.
 		self.clamp_sizes(w, h);
 		self.clamp_floating(w, h);
@@ -801,8 +811,14 @@ impl Workspace {
 }
 
 /// Panel ids are single lowercase words (`"palette"`); their `[Workspace]`
-/// keys follow the CamelCase INI convention (`Palette`).
+/// keys follow the CamelCase INI convention (`Palette`). `wrlpalette` is a
+/// compound (WRL + palette) with no separator to split on, so its key is spelled
+/// out. (`apply_ini` matches keys case-insensitively, so old `Wrlpalette` files
+/// still load.)
 fn camel(id: &str) -> String {
+	if id == "wrlpalette" {
+		return "WrlPalette".to_string();
+	}
 	let mut chars = id.chars();
 	match chars.next() {
 		Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
@@ -876,7 +892,7 @@ mod tests {
 		w.clamp_sizes(W, H);
 		assert_eq!(w.panels[i].w, W, "floating width capped at the viewport");
 		// A dock too thin for its widest panel's content is widened (fresh
-		// workspace — minimap docked LEFT by default).
+		// workspace - minimap docked LEFT by default).
 		let mut d = ws();
 		d.dock_size[LEFT] = 10.0;
 		d.clamp_sizes(W, H);
@@ -1001,7 +1017,7 @@ mod tests {
 	#[test]
 	fn re_docks_into_an_emptied_peeked_dock() {
 		let mut w = ws();
-		// Drag the only left panel out — the left dock auto-hides...
+		// Drag the only left panel out - the left dock auto-hides...
 		let l = w.layout(W, H);
 		let mm = w.find("minimap").unwrap();
 		let r = l.panels.iter().find(|(i, _)| *i == mm).unwrap().1;

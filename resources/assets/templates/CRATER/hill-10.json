@@ -1,0 +1,21 @@
+{
+	"version": "1",
+	"name": "Hill 10",
+	"width": 1,
+	"height": 1,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "CRATER",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR08,CHa009"
+		]
+	]
+}

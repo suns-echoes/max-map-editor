@@ -1,0 +1,36 @@
+{
+	"version": "1",
+	"name": "Mountain C-2",
+	"width": 4,
+	"height": 3,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR04,SMD037",
+			"WATR06,SMD038",
+			"WATR00,SMD047",
+			""
+		],
+		[
+			"WATR11,SMD048",
+			"WATR02,SMD049",
+			"WATR07,SMD050",
+			"WATR05,SMD051"
+		],
+		[
+			"WATR09,SMD052",
+			"WATR02,SMD053",
+			"WATR08,SMD054",
+			""
+		]
+	]
+}

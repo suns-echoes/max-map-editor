@@ -127,7 +127,7 @@ fn recursive_parse_ini(
 			// Re-opening an existing section is allowed and merges into it:
 			// later `key=value` lines append new entries and override any
 			// duplicate keys. This is what lets mod modules layer on top of
-			// a base config — matches the contract in `assets/config/main.ini`.
+			// a base config - matches the contract in `assets/config/main.ini`.
 			if !ini.has_section(&section_name) {
 				ini.insert_section(section_name.clone(), INISection::new());
 			}
@@ -248,12 +248,12 @@ mod tests {
 	fn test_parse_classifies_numeric_values() {
 		let ini = parse_ini_str("[s]\n int = 42\n neg = -3\n f = 5.7\n exact = 5.0\n").unwrap();
 		let s = ini.get_section("s").unwrap();
-		// Bare integer — must stay an i64 so callers reading i64 keep working.
+		// Bare integer - must stay an i64 so callers reading i64 keep working.
 		assert_eq!(s.get_entry::<i64>("int"), Some(42));
 		assert_eq!(s.get_entry::<f64>("int"), None);
 		assert_eq!(s.get_entry::<i64>("neg"), Some(-3));
 		// Values with a decimal point classify as f64 even when the fraction
-		// is zero — that's what lets `5.0` round-trip through `Display`.
+		// is zero - that's what lets `5.0` round-trip through `Display`.
 		assert_eq!(s.get_entry::<f64>("f"), Some(5.7));
 		assert_eq!(s.get_entry::<f64>("exact"), Some(5.0));
 		assert_eq!(s.get_entry::<i64>("f"), None);
@@ -352,7 +352,7 @@ mod tests {
 	#[test]
 	fn test_parse_reopened_section_merges_keys() {
 		// Reopening an existing section should append new keys and override
-		// duplicates — the foundation of layered mod modules.
+		// duplicates - the foundation of layered mod modules.
 		let ini_str = r"
 			[section1]
 			keep = original

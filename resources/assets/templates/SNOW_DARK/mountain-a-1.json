@@ -1,0 +1,53 @@
+{
+	"version": "1",
+	"name": "Mountain A-1",
+	"width": 5,
+	"height": 5,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"WATR11,SMA008",
+			"WATR00,SMA009",
+			"",
+			""
+		],
+		[
+			"WATR01,SMA010",
+			"WATR09,SMA011",
+			"WATR03,SMA012",
+			"WATR08,SMA013",
+			""
+		],
+		[
+			"WATR05,SMA021",
+			"WATR09,SMA022",
+			"WATR08,SMA023",
+			"WATR05,SMA024",
+			"WATR05,SMA025"
+		],
+		[
+			"WATR10,SMA026",
+			"WATR02,SMA027",
+			"WATR09,SMA028",
+			"WATR04,SMA029",
+			""
+		],
+		[
+			"WATR10,SMA030",
+			"WATR07,SMA031",
+			"WATR01,SMA032",
+			"",
+			""
+		]
+	]
+}

@@ -1,5 +1,5 @@
 //! Auto-shore: generate shoreline on the **water cells** bordering
-//! land — the original maps' anatomy (a shore tile rides the water cell's
+//! land - the original maps' anatomy (a shore tile rides the water cell's
 //! ground layer: `"WATR06,GSh004"`), so painted land keeps its shape and the
 //! coast grows seaward.
 //!
@@ -11,18 +11,18 @@
 //!   allow `__WATER__`; directions facing land must not be water-only;
 //!   between band tiles anything goes. And the boundary law that drives
 //!   targeting: **water never touches land orthogonally** (diagonal contact
-//!   is legal — CRATER/DESERT cliffs sit corner-to-corner with the sea).
+//!   is legal - CRATER/DESERT cliffs sit corner-to-corner with the sea).
 //! - **Preference** (the score): the per-family continuation lists
 //!   (`"GSa:!S"`, …). Where a listed continuation matches, the shoreline
-//!   pixels flow across the seam — so worklist sweeps pick the tiles with
+//!   pixels flow across the seam - so worklist sweeps pick the tiles with
 //!   the most matched continuations. The lists are one-directional by
 //!   design; both directions of a seam are counted. Ties seed from the
 //!   continuation-richest family (generic straights chain plain-to-plain;
-//!   sparse end-pieces appear only where corners demand them — no
+//!   sparse end-pieces appear only where corners demand them - no
 //!   mirror-alternation "saw").
 //!
 //! **Impossible pockets close into the terrain.** No band family accepts
-//! land on three sides or on two opposite sides (probed across all packs) —
+//! land on three sides or on two opposite sides (probed across all packs) -
 //! so a 1-wide notch, 1-wide channel, or 1×1 pond can never wear a legal
 //! shore. Instead of leaving a broken seam, such water cells fill with the
 //! adjacent terrain (cloned from a neighbor, deterministic pixel variant)
@@ -36,10 +36,10 @@
 //! targets re-resolve, so edits knit into existing coastline). Straights
 //! resolve in the first sweep, corner pieces close the chain next, and
 //! broken seams that single-cell moves can't fix re-pick both endpoint
-//! cells jointly (pair moves) — the "multi iterations".
+//! cells jointly (pair moves) - the "multi iterations".
 //!
 //! Determinism: richness-sorted candidates, row-major worklist sweeps, and
-//! per-cell splitmix64 pixel-variant picks — a run is reproducible and a
+//! per-cell splitmix64 pixel-variant picks - a run is reproducible and a
 //! second run changes nothing. Valid existing shore keeps its tiles;
 //! orphaned shore dissolves to open water. One run = one undo unit.
 
@@ -50,9 +50,9 @@ use crate::project::{LAYER_GROUND, LAYER_WATER, Project, Rng, TileRef, Transform
 
 /// Direction ring (N=0, E=1, S=2, W=3) as cell offsets.
 const RING: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
-/// The 8-neighborhood — outer-corner shore sits diagonally off land.
+/// The 8-neighborhood - outer-corner shore sits diagonally off land.
 const RING8: [(i32, i32); 8] = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)];
-/// Sweep cap — coastlines settle in 2–3; the cap only guards pathological
+/// Sweep cap - coastlines settle in 2–3; the cap only guards pathological
 /// flip-flops.
 const MAX_SWEEPS: usize = 12;
 
@@ -61,7 +61,7 @@ fn opp(dir: usize) -> usize {
 }
 
 /// The base-orientation direction that faces screen direction `dir` once a
-/// tile is transformed by `t` — the direction form of `tile_pixel`'s
+/// tile is transformed by `t` - the direction form of `tile_pixel`'s
 /// dest→src mapping (undo the rotation, then undo the mirror).
 fn base_dir(dir: usize, t: Transform) -> usize {
 	let d = (dir + 4 - t.rot as usize) % 4;
@@ -72,9 +72,9 @@ fn base_dir(dir: usize, t: Transform) -> usize {
 /// continuations (base orientation, families interned to indices).
 struct DirRule {
 	water: bool,
-	/// `[__WATER__]` and nothing else — this edge is open sea.
+	/// `[__WATER__]` and nothing else - this edge is open sea.
 	water_only: bool,
-	/// Lists `__LAND__` — this edge belongs against land.
+	/// Lists `__LAND__` - this edge belongs against land.
 	land: bool,
 	tiles: Vec<(u16, Transform)>,
 }
@@ -89,7 +89,7 @@ struct Family {
 	/// Part of the shore band: lists water or continuations somewhere.
 	/// The rest (CRATER's all-`__LAND__` CLa/CHa) count as land.
 	band: bool,
-	/// Total continuation entries — rich families are the generic pieces;
+	/// Total continuation entries - rich families are the generic pieces;
 	/// ties seed from them so runs stay uniform.
 	richness: u16,
 }
@@ -129,7 +129,7 @@ fn parse_families(project: &Project) -> Vec<Family> {
 								Ok(t) => (id, t),
 								Err(e) => {
 									// A dropped continuation is conservative
-									// (no false matches) — but bad pack data
+									// (no false matches) - but bad pack data
 									// should scream in tests.
 									debug_assert!(false, "{name}/{s}: {e}");
 									return None;
@@ -138,7 +138,7 @@ fn parse_families(project: &Project) -> Vec<Family> {
 							None => (s.as_str(), Transform::default()),
 						};
 						// Refs to families without tiles (WTR) can never
-						// match a placed neighbor — drop them.
+						// match a placed neighbor - drop them.
 						name_idx.get(id).map(|&f| (f, t))
 					})
 					.collect(),
@@ -151,7 +151,7 @@ fn parse_families(project: &Project) -> Vec<Family> {
 }
 
 /// Does `a` (placed with `ta`) list `b` as its continuation toward `dir`?
-/// Rule specs are base-relative — placing the family transformed composes
+/// Rule specs are base-relative - placing the family transformed composes
 /// its transform onto every listed continuation. (The run itself uses the
 /// pre-composed `comp` lists; this reference form pins the semantics in
 /// tests.)
@@ -183,6 +183,70 @@ fn build_comp(families: &[Family]) -> Vec<[Vec<(u16, u8)>; 4]> {
 		.collect()
 }
 
+/// Does the pre-composed `comp` list admit `(b, tb)` as a continuation of
+/// `(a, ta)` across screen `dir`? Indexed `[family * 8 + bits][dir]`.
+fn comp_admits(comp: &[[Vec<(u16, u8)>; 4]], a: u16, ta: Transform, dir: usize, b: u16, tb: Transform) -> bool {
+	comp[a as usize * 8 + ta.bits() as usize][dir].contains(&(b, tb.bits() as u8))
+}
+
+/// Runtime seam quality 0–2 between two placed tiles (both directions count;
+/// the shipped continuation lists are one-directional). The `comp`-backed
+/// counterpart of the test-only [`seam_score`].
+fn comp_cseam(comp: &[[Vec<(u16, u8)>; 4]], a: u16, ta: Transform, dir: usize, b: u16, tb: Transform) -> usize {
+	comp_admits(comp, a, ta, dir, b, tb) as usize + comp_admits(comp, b, tb, opp(dir), a, ta) as usize
+}
+
+/// Seam validity between two trial states (0 = broken): Tile×Tile is the
+/// rule-table seam; water against a tile consults that tile's dir rule; water
+/// beside water is fine; naked water against unruled land scores broken.
+fn comp_tseam(comp: &[[Vec<(u16, u8)>; 4]], families: &[Family], a: Trial, dir: usize, b: Trial) -> usize {
+	let water_ok = |f: u16, t: Transform, d: usize| 2 * families[f as usize].dirs[base_dir(d, t)].water as usize;
+	match (a, b) {
+		(Trial::Tile(fa, ta), Trial::Tile(fb, tb)) => comp_cseam(comp, fa, ta, dir, fb, tb),
+		(Trial::Tile(f, t), Trial::Water) => water_ok(f, t, dir),
+		(Trial::Water, Trial::Tile(f, t)) => water_ok(f, t, opp(dir)),
+		(Trial::Water, Trial::Water) => 2,
+		(Trial::Water, Trial::Plain) | (Trial::Plain, Trial::Water) => 0,
+		// Tile↔Plain stays uncounted-OK (parity with the original tool, which
+		// never judged band-against-unruled seams).
+		(Trial::Tile(..), Trial::Plain) | (Trial::Plain, Trial::Tile(..)) => 2,
+		(Trial::Plain, Trial::Plain) => 2,
+	}
+}
+
+/// Whether band family `fam` under transform `t` may legally face neighbour
+/// `nb` across screen `dir`: open water needs a water edge, hard land may not
+/// press a water-only edge, everything else is unconstrained.
+fn dir_ok(fam: &Family, t: Transform, dir: usize, nb: Nb) -> bool {
+	let rule = &fam.dirs[base_dir(dir, t)];
+	match nb {
+		Nb::Edge | Nb::Pending | Nb::Shore(..) => true,
+		Nb::OpenWater => rule.water,
+		Nb::Hard => !rule.water_only,
+	}
+}
+
+/// Every band family + transform that legally faces `views` on all four sides,
+/// as `(family, transform)` pairs - the candidate enumeration shared by the
+/// sweep, destructive, and loop-walk matchers.
+fn lawful_band_transforms(families: &[Family], views: &[Nb; 4]) -> Vec<(u16, Transform)> {
+	let mut out = Vec::new();
+	for (fi, fam) in families.iter().enumerate() {
+		if !fam.band {
+			continue;
+		}
+		for rot in 0..4u8 {
+			for mirror in [false, true] {
+				let t = Transform { rot, mirror };
+				if (0..4).all(|d| dir_ok(fam, t, d, views[d])) {
+					out.push((fi as u16, t));
+				}
+			}
+		}
+	}
+	out
+}
+
 /// Whole-map cell snapshot (the matcher never reads live cells mid-run).
 #[derive(Clone, Copy, PartialEq)]
 enum Cell {
@@ -197,15 +261,15 @@ enum Cell {
 /// A neighbor as the matcher sees it during the run.
 #[derive(Clone, Copy)]
 enum Nb {
-	/// Off the map — unconstrained.
+	/// Off the map - unconstrained.
 	Edge,
 	/// Water that is not becoming shore.
 	OpenWater,
-	/// A target cell not yet assigned this sweep — unconstrained for now.
+	/// A target cell not yet assigned this sweep - unconstrained for now.
 	Pending,
 	/// Shore (existing or assigned): continuations are scored.
 	Shore(u16, Transform),
-	/// Land-side (land, blocked, belts) — anything but open sea.
+	/// Land-side (land, blocked, belts) - anything but open sea.
 	Hard,
 }
 
@@ -261,7 +325,7 @@ fn region_rect(region: Option<(u16, u16, u16, u16)>, w: i32, h: i32) -> (i32, i3
 /// Landfill: impossible water pockets close into the terrain. No band
 /// family accepts land on 3 sides or 2 opposite sides, so such water cells
 /// can never wear a legal shore. They fill with the adjacent terrain
-/// instead — 1-wide notches and channels and 1×1 ponds disappear, and the
+/// instead - 1-wide notches and channels and 1×1 ponds disappear, and the
 /// shoreline closes straight over them. Fills cascade (a 1-wide channel
 /// disappears cell by cell) and only trigger off impossible water cells,
 /// so pristine maps never change. Mutates `snap` to match; returns the
@@ -324,13 +388,13 @@ fn landfill(
 
 /// Branch-and-bound minimiser for one repair window (`auto_shore_alt`'s
 /// second pass). Assign each window cell a tile from its candidate list to
-/// minimise broken seams — window-internal pairs (both endpoints in the
+/// minimise broken seams - window-internal pairs (both endpoints in the
 /// window, in any direction, so 2-D folds are handled exactly) and pairs
 /// against the fixed border. `best` is seeded with the current assignment's
 /// cost so only a STRICT improvement replaces it; candidates dive
 /// cheapest-first (ties by family/bits) so the search is deterministic and
 /// finds a good leaf early; `budget` caps the node count. Returns once the
-/// budget is spent or the tree is exhausted — `best_assign` then holds the
+/// budget is spent or the tree is exhausted - `best_assign` then holds the
 /// best found.
 #[allow(clippy::too_many_arguments)]
 fn repair_window<T, F, K>(
@@ -396,7 +460,7 @@ fn repair_window<T, F, K>(
 pub enum FixStrength {
 	/// Re-tile broken shore-band cells only (the Fast mode).
 	Shore,
-	/// Also re-tile ruled land adjacent to the band — each such cell keeps
+	/// Also re-tile ruled land adjacent to the band - each such cell keeps
 	/// its own tile as a candidate, so land changes only when it closes a
 	/// seam (the Aggressive mode; the old `mangle` flag).
 	Mangle,
@@ -404,13 +468,13 @@ pub enum FixStrength {
 	/// may additionally become open water, and seams against fixed water /
 	/// unruled land are scored too. Where the window solver *proves* no
 	/// local fix exists, the 3×3 around the break is erased to open water
-	/// (each cell at most once) and the shore regrows against the new edge —
+	/// (each cell at most once) and the shore regrows against the new edge -
 	/// a broken seam never survives for lack of trying.
 	Destructive,
 }
 
 /// A cell's trial state during a fix run. `Plain` never appears in a
-/// candidate list — it only models a fixed unruled neighbor so destructive
+/// candidate list - it only models a fixed unruled neighbor so destructive
 /// scoring can refuse to flood naked water against it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Trial {
@@ -431,7 +495,7 @@ impl Trial {
 }
 
 /// A resumable fix-shore run: the bounded backtracking repair of
-/// `fix_shore`, split so the caller can drive it across frames — `step`
+/// `fix_shore`, split so the caller can drive it across frames - `step`
 /// does a budgeted slice of work and reports progress, `apply` commits the
 /// result as one undo unit. This is what lets the Auto Fix Shore modal show
 /// live stats and offer a Stop button without ever freezing the UI.
@@ -449,7 +513,7 @@ pub struct FixSession {
 	/// Trial state per cell (`None` outside the re-tile set).
 	work: Vec<Option<Trial>>,
 	strength: FixStrength,
-	/// The session's region bounds (inclusive) — escalation stays inside.
+	/// The session's region bounds (inclusive) - escalation stays inside.
 	bounds: (i32, i32, i32, i32),
 	/// Destructive escalation bookkeeping: a cell may be force-flattened to
 	/// water at most once, so blast-and-regrow can't oscillate forever.
@@ -497,7 +561,7 @@ impl FixSession {
 					}
 				}
 			}
-			// Aggressive may also re-tile land next to broken shore — it
+			// Aggressive may also re-tile land next to broken shore - it
 			// keeps each such cell's own tile as a candidate, so it only
 			// changes when that closes a seam. Destructive additionally
 			// claims adjacent water, so a hopeless fold can flood instead.
@@ -556,38 +620,18 @@ impl FixSession {
 		s
 	}
 
-	fn cseam(&self, a: u16, ta: Transform, dir: usize, b: u16, tb: Transform) -> usize {
-		let admits = |a: u16, ta: Transform, dir: usize, b: u16, tb: Transform| {
-			self.comp[a as usize * 8 + ta.bits() as usize][dir].contains(&(b, tb.bits() as u8))
-		};
-		admits(a, ta, dir, b, tb) as usize + admits(b, tb, opp(dir), a, ta) as usize
-	}
-
 	/// Seam validity between two trial states (0 = broken). Tile×Tile is the
 	/// rule-table seam; water against a tile consults that tile's dir rule
 	/// (its transform unrolled); water beside water is fine; naked water
 	/// against unruled land is exactly the kind of seam Destructive must not
 	/// create, so it scores broken.
 	fn tseam(&self, a: Trial, dir: usize, b: Trial) -> usize {
-		let water_ok = |f: u16, t: Transform, d: usize| -> usize {
-			2 * self.families[f as usize].dirs[base_dir(d, t)].water as usize
-		};
-		match (a, b) {
-			(Trial::Tile(fa, ta), Trial::Tile(fb, tb)) => self.cseam(fa, ta, dir, fb, tb),
-			(Trial::Tile(f, t), Trial::Water) => water_ok(f, t, dir),
-			(Trial::Water, Trial::Tile(f, t)) => water_ok(f, t, opp(dir)),
-			(Trial::Water, Trial::Water) => 2,
-			(Trial::Water, Trial::Plain) | (Trial::Plain, Trial::Water) => 0,
-			// Tile↔Plain stays uncounted-OK (parity with the original tool,
-			// which never judged band-against-unruled seams).
-			(Trial::Tile(..), Trial::Plain) | (Trial::Plain, Trial::Tile(..)) => 2,
-			(Trial::Plain, Trial::Plain) => 2,
-		}
+		comp_tseam(&self.comp, &self.families, a, dir, b)
 	}
 
 	/// The band tile at a cell: trial value if re-tileable, else the fixed
 	/// band tile from the snapshot (`None` for land/water/off-map). The
-	/// Fast/Aggressive view of the world — water and unruled land are
+	/// Fast/Aggressive view of the world - water and unruled land are
 	/// invisible to scoring, exactly like the original tool.
 	fn tile_at(&self, x: i32, y: i32) -> Option<(u16, Transform)> {
 		if x < 0 || y < 0 || x >= self.w || y >= self.h {
@@ -609,7 +653,7 @@ impl FixSession {
 	/// The trial state at a cell for the current strength. For re-tileable
 	/// cells it's the live trial; for fixed cells, Destructive sees the full
 	/// terrain (any ruled tile / water / unruled land), the other strengths
-	/// see only band tiles (`None` elsewhere — uncounted, the old behavior).
+	/// see only band tiles (`None` elsewhere - uncounted, the old behavior).
 	fn trial_at(&self, x: i32, y: i32) -> Option<Trial> {
 		if x < 0 || y < 0 || x >= self.w || y >= self.h {
 			return None;
@@ -632,14 +676,6 @@ impl FixSession {
 	}
 
 	fn lawful_at(&self, x: i32, y: i32) -> Vec<Trial> {
-		let dir_ok = |fam: &Family, t: Transform, dir: usize, nb: Nb| {
-			let rule = &fam.dirs[base_dir(dir, t)];
-			match nb {
-				Nb::Edge | Nb::Pending | Nb::Shore(..) => true,
-				Nb::OpenWater => rule.water,
-				Nb::Hard => !rule.water_only,
-			}
-		};
 		let views: [Nb; 4] = std::array::from_fn(|d| {
 			let (nx, ny) = (x + RING[d].0, y + RING[d].1);
 			if self.is_retile(nx, ny) && self.work[(ny * self.w + nx) as usize] == Some(Trial::Water) {
@@ -655,23 +691,11 @@ impl FixSession {
 				Nb::Hard
 			}
 		});
-		let mut out = Vec::new();
-		for (fi, fam) in self.families.iter().enumerate() {
-			if !fam.band {
-				continue;
-			}
-			for rot in 0..4u8 {
-				for mirror in [false, true] {
-					let t = Transform { rot, mirror };
-					if (0..4).all(|d| dir_ok(fam, t, d, views[d])) {
-						out.push(Trial::Tile(fi as u16, t));
-					}
-				}
-			}
-		}
+		let mut out: Vec<Trial> =
+			lawful_band_transforms(&self.families, &views).into_iter().map(|(fi, t)| Trial::Tile(fi, t)).collect();
 		// Mangle keeps a cell's own (possibly non-band) tile as an option,
 		// so re-tiling land is opt-in per cell, not forced. Destructive adds
-		// open water — the universal solvent.
+		// open water - the universal solvent.
 		if self.strength != FixStrength::Shore {
 			if let Some(cur) = self.work[(y * self.w + x) as usize] {
 				if !out.contains(&cur) {
@@ -694,7 +718,7 @@ impl FixSession {
 	}
 
 	/// Broken seams over the whole re-tile set, each adjacent pair once:
-	/// right/down (the original tool's accounting — exact parity for
+	/// right/down (the original tool's accounting - exact parity for
 	/// Fast/Aggressive). Destructive additionally counts left/up seams
 	/// against *fixed* neighbors, so a flooded edge facing fixed water/land
 	/// on any side is judged.
@@ -741,7 +765,7 @@ impl FixSession {
 
 	/// Destructive escalation: erase the 3×3 around an unfixable break to
 	/// open water, and claim the surrounding 5×5 ring into the re-tile set
-	/// at its original state — the new pond needs its shore ring built on
+	/// at its original state - the new pond needs its shore ring built on
 	/// the *outside*, on cells the band never covered (a lone water pocket
 	/// in unruled land is inexpressible otherwise). Each cell flattens at
 	/// most once; returns whether anything changed.
@@ -766,7 +790,7 @@ impl FixSession {
 					self.cells.push((x, y));
 					grew = true;
 				}
-				// Only the inner 3×3 is flattened — once per cell.
+				// Only the inner 3×3 is flattened - once per cell.
 				if dx.abs() <= 1 && dy.abs() <= 1 && !self.blasted[ci] {
 					self.blasted[ci] = true;
 					if self.work[ci] != Some(Trial::Water) {
@@ -785,7 +809,7 @@ impl FixSession {
 
 	/// Do roughly `budget` nodes of repair work, resuming the current pass
 	/// across calls. Each broken window is solved (or proven unfixable) in
-	/// one go — the per-window backtracking can't resume mid-window, so a
+	/// one go - the per-window backtracking can't resume mid-window, so a
 	/// `step` overshoots `budget` by up to one window. A full pass with no
 	/// improvement sets `done` (converged). Returns the nodes spent.
 	pub fn step(&mut self, budget: i64) -> i64 {
@@ -887,30 +911,13 @@ impl FixSession {
 			let mut best_assign = current.clone();
 			let mut assign = current.clone();
 			// A window runs to completion (full per-window cap) so it always
-			// resolves or proves itself unfixable — the backtracking can't
+			// resolves or proves itself unfixable - the backtracking can't
 			// resume mid-window. `step` therefore overshoots `budget` by at
 			// most one window.
 			let mut wbud = FIX_PER_WIN;
 			let comp = &self.comp;
 			let families = &self.families;
-			let tseam = |a: Trial, dir: usize, b: Trial| -> usize {
-				let admits = |a: u16, ta: Transform, dir: usize, b: u16, tb: Transform| {
-					comp[a as usize * 8 + ta.bits() as usize][dir].contains(&(b, tb.bits() as u8))
-				};
-				let water_ok =
-					|f: u16, t: Transform, d: usize| 2 * families[f as usize].dirs[base_dir(d, t)].water as usize;
-				match (a, b) {
-					(Trial::Tile(fa, ta), Trial::Tile(fb, tb)) => {
-						admits(fa, ta, dir, fb, tb) as usize + admits(fb, tb, opp(dir), fa, ta) as usize
-					}
-					(Trial::Tile(f, t), Trial::Water) => water_ok(f, t, dir),
-					(Trial::Water, Trial::Tile(f, t)) => water_ok(f, t, opp(dir)),
-					(Trial::Water, Trial::Water) => 2,
-					(Trial::Water, Trial::Plain) | (Trial::Plain, Trial::Water) => 0,
-					(Trial::Tile(..), Trial::Plain) | (Trial::Plain, Trial::Tile(..)) => 2,
-					(Trial::Plain, Trial::Plain) => 2,
-				}
-			};
+			let tseam = |a: Trial, dir: usize, b: Trial| comp_tseam(comp, families, a, dir, b);
 			repair_window(
 				0,
 				0,
@@ -931,7 +938,7 @@ impl FixSession {
 				}
 				self.pass_improved = true;
 			} else if self.strength == FixStrength::Destructive && self.blast(bx, by) {
-				// No lawful local fix exists — erase the 3×3 around the break
+				// No lawful local fix exists - erase the 3×3 around the break
 				// to open water; the next passes regrow shore from the edge.
 				self.pass_improved = true;
 			}
@@ -941,7 +948,7 @@ impl FixSession {
 
 	/// Commit the re-tiled cells to the project as one undo unit; returns
 	/// the number of cells changed. A cell that became open water gets its
-	/// ground layer erased — the water base beneath shows through.
+	/// ground layer erased - the water base beneath shows through.
 	pub fn apply(&self, project: &mut Project) -> usize {
 		let mut edits: Vec<(u16, u16, usize, Option<TileRef>)> = Vec::new();
 		for &(x, y) in &self.cells {
@@ -972,7 +979,7 @@ impl FixSession {
 }
 
 impl Project {
-	/// Open a resumable fix-shore session — the steppable form of
+	/// Open a resumable fix-shore session - the steppable form of
 	/// `fix_shore` for the Auto Fix Shore modal; see [`FixStrength`] for what
 	/// each mode may rewrite.
 	pub fn fix_session(&self, region: Option<(u16, u16, u16, u16)>, strength: FixStrength) -> FixSession {
@@ -995,12 +1002,7 @@ impl Project {
 			families.iter().enumerate().map(|(i, f)| (f.name.as_str(), i as u16)).collect();
 
 		let comp = build_comp(&families);
-		let admits = |a: u16, ta: Transform, dir: usize, b: u16, tb: Transform| -> bool {
-			comp[a as usize * 8 + ta.bits() as usize][dir].contains(&(b, tb.bits() as u8))
-		};
-		let cseam = |a: u16, ta: Transform, dir: usize, b: u16, tb: Transform| -> usize {
-			admits(a, ta, dir, b, tb) as usize + admits(b, tb, opp(dir), a, ta) as usize
-		};
+		let cseam = |a: u16, ta: Transform, dir: usize, b: u16, tb: Transform| comp_cseam(&comp, a, ta, dir, b, tb);
 
 		let mut snap = snapshot_cells(self, &name_idx);
 		let rect = region_rect(region, w, h);
@@ -1044,18 +1046,9 @@ impl Project {
 				Cell::Ruled { .. } | Cell::Plain => Nb::Hard,
 			}
 		};
-		// The law: water edges face water, sea-only edges never face LAND —
+		// The law: water edges face water, sea-only edges never face LAND -
 		// but between band tiles anything goes (originals legally press
 		// water-only edges against band neighbors in double-thick corners).
-		let dir_ok = |fam: &Family, t: Transform, dir: usize, nb: Nb| {
-			let rule = &fam.dirs[base_dir(dir, t)];
-			match nb {
-				Nb::Edge | Nb::Pending | Nb::Shore(..) => true,
-				Nb::OpenWater => rule.water,
-				Nb::Hard => !rule.water_only,
-			}
-		};
-
 		let no_picks: Vec<Option<(u16, Transform)>> = Vec::new();
 		let no_targets: Vec<i32> = vec![-1; (w * h) as usize];
 		for y in y0..=y1 {
@@ -1081,7 +1074,7 @@ impl Project {
 			}
 		}
 		// Chain-closers: water diagonal to land, both flanks band-or-target,
-		// at least one flank NEWLY GROWN (water becoming shore) — a painted
+		// at least one flank NEWLY GROWN (water becoming shore) - a painted
 		// ring closes its corners, but pristine coastline (where diagonal
 		// contact is legal) never grows, not even around re-resolving cells.
 		let mut corners = Vec::new();
@@ -1119,7 +1112,7 @@ impl Project {
 			return (0, 0);
 		}
 		// The edit's blast radius: a law-valid band cell next to a target may
-		// no longer *continue* into the reworked coast — let it re-resolve
+		// no longer *continue* into the reworked coast - let it re-resolve
 		// (keep-current-on-tie protects it unless something strictly fits
 		// better). Pristine maps have no targets, so nothing ever churns.
 		let mut fringe = Vec::new();
@@ -1146,18 +1139,23 @@ impl Project {
 			targets.push(Target { x, y, candidates: Vec::new(), original: Some((fam, t)), near_land });
 		}
 
+		#[cfg(feature = "shore-instrument")]
 		let stamp = std::env::var("SHORE_TIME").is_ok();
+		#[cfg(feature = "shore-instrument")]
 		let mut t0 = std::time::Instant::now();
+		#[cfg(feature = "shore-instrument")]
 		let mut mark = |label: &str| {
 			if stamp {
 				eprintln!("  {label}: {:?}", t0.elapsed());
 				t0 = std::time::Instant::now();
 			}
 		};
+		#[cfg(not(feature = "shore-instrument"))]
+		let mark = |_label: &str| {};
 		mark("detect");
 
 		// ---- Static candidates (the law doesn't move in sweeps) ------------
-		// Water targets that nothing fits stay water — and once one does,
+		// Water targets that nothing fits stay water - and once one does,
 		// its neighbors see open water there, so their candidates recompute
 		// (the loop converges: targets only ever drop out). Candidates sort
 		// richest-first: ties seed the generic pieces.
@@ -1168,20 +1166,7 @@ impl Project {
 					continue; // dropped earlier
 				}
 				let views: [Nb; 4] = std::array::from_fn(|d| view(x, y, d, &tat, &no_picks));
-				let mut candidates = Vec::new();
-				for (fi, fam) in families.iter().enumerate() {
-					if !fam.band {
-						continue; // auto-shore places band tiles only
-					}
-					for rot in 0..4u8 {
-						for mirror in [false, true] {
-							let t = Transform { rot, mirror };
-							if (0..4).all(|d| dir_ok(fam, t, d, views[d])) {
-								candidates.push((fi as u16, t));
-							}
-						}
-					}
-				}
+				let mut candidates = lawful_band_transforms(&families, &views);
 				candidates.sort_by_key(|&(fi, t)| (std::cmp::Reverse(families[fi as usize].richness), fi, t.bits()));
 				targets[i].candidates = candidates;
 			}
@@ -1200,7 +1185,7 @@ impl Project {
 
 		mark("candidates");
 		// ---- Sweeps: maximize unbroken seams -------------------------------
-		// A law-breaking original must not survive on tie — start it from
+		// A law-breaking original must not survive on tie - start it from
 		// nothing so the sweep is forced to choose a legal candidate.
 		let mut picks: Vec<Option<(u16, Transform)>> =
 			targets.iter().map(|t| t.original.filter(|o| t.candidates.contains(o))).collect();
@@ -1212,7 +1197,7 @@ impl Project {
 			}
 		}
 		// Edge semantics + continuations. A `__LAND__` edge against land is
-		// worth a seam-pair — that separates straights from corner pieces
+		// worth a seam-pair - that separates straights from corner pieces
 		// long before continuations resolve (corner families never list
 		// `__LAND__`). Matched continuations stack on top, so unbroken
 		// chains win every tie that matters. Sea-only edges facing shore
@@ -1267,7 +1252,7 @@ impl Project {
 				// One set of neighbor views serves every candidate.
 				let vs: [Nb; 4] = std::array::from_fn(|d| view(x, y, d, &tat, picks.as_slice()));
 				let current = picks[i];
-				// An empty pick always loses — water targets must dress.
+				// An empty pick always loses - water targets must dress.
 				let current_score = current.map(|(f, t)| score_views(&vs, f, t)).unwrap_or(i32::MIN);
 				let mut best = current;
 				let mut best_score = current_score;
@@ -1287,16 +1272,16 @@ impl Project {
 			changed
 		};
 		// Pair moves: a broken seam two single-cell argmaxes can't fix (the
-		// chain must bend on BOTH sides at once — e.g. a ravine cap whose
+		// chain must bend on BOTH sides at once - e.g. a ravine cap whose
 		// approach piece must change with it) re-picks the two cells
-		// jointly. Sweeps settle, pairs unlock, sweeps settle again — the
+		// jointly. Sweeps settle, pairs unlock, sweeps settle again - the
 		// "multi iterations".
 		let pair_once = |picks: &mut Vec<Option<(u16, Transform)>>, dirty: &mut Vec<bool>| -> bool {
 			let mut changed = false;
 			for i in 0..targets.len() {
 				let (x, y) = (targets[i].x, targets[i].y);
 				for dir in [1usize, 2] {
-					// E and S — each adjacent pair visited once.
+					// E and S - each adjacent pair visited once.
 					let (dx, dy) = RING[dir];
 					let (nx, ny) = (x + dx, y + dy);
 					if nx < 0 || ny < 0 || nx >= w || ny >= h {
@@ -1321,7 +1306,7 @@ impl Project {
 							score(x, y, a.0, a.1, picks.as_slice()) + score(nx, ny, b.0, b.1, picks.as_slice())
 						};
 					// Only pairs that actually CONNECT across this seam can
-					// beat the broken pair — enumerate them through the
+					// beat the broken pair - enumerate them through the
 					// pre-composed lists instead of the full cross
 					// product (the speed of the whole pass lives here).
 					let mut pairs: Vec<((u16, Transform), (u16, Transform))> = Vec::new();
@@ -1361,7 +1346,7 @@ impl Project {
 			}
 			changed
 		};
-		// Settle, unlock pairs, settle again — always END sweep-stable.
+		// Settle, unlock pairs, settle again - always END sweep-stable.
 		for _round in 0..3 {
 			for _sweep in 0..MAX_SWEEPS {
 				if !sweep_once(&mut picks, &mut dirty) {
@@ -1435,30 +1420,30 @@ impl Project {
 	/// Auto-shore, the loop-walk variant (`shore alt`): instead of the
 	/// sweeps' argmax, trace every land/water boundary loop, seed each at
 	/// one cell, and walk the loop placing a **random** tile among the
-	/// candidates that continue the chain (transform-composed) — one die
+	/// candidates that continue the chain (transform-composed) - one die
 	/// roll per cell, so straight runs vary instead of repeating.
 	///
-	/// Same law, same landfill, same anatomy as `auto_shore` — only the
+	/// Same law, same landfill, same anatomy as `auto_shore` - only the
 	/// placement strategy differs. The walk dresses only what the strict
 	/// pass would target (water touching land, law-breaking band, corner
 	/// closers gated on newly grown flanks), so pristine coastline stays
 	/// untouched and a second run changes nothing. Existing valid shore on
 	/// the path is a fixed constraint the chain knits into; per cell the
-	/// candidate pool narrows in tiers — matches every settled shore
-	/// neighbor, else matches the walk predecessor, else law-valid — then
+	/// candidate pool narrows in tiers - matches every settled shore
+	/// neighbor, else matches the walk predecessor, else law-valid - then
 	/// keeps the best land-edge fit (corner pieces at corners, straights on
 	/// straights) and rolls the die among what's left. Deterministic:
 	/// per-cell splitmix64 streams, row-major loop discovery.
 	///
 	/// The walk is single-pass, so it can leave a discontinuity where a
 	/// cell matched its predecessor but stranded its successor. It does NOT
-	/// repair them — `fix_shore` (`shore fix`) is the separate, deliberate,
+	/// repair them - `fix_shore` (`shore fix`) is the separate, deliberate,
 	/// hard-bounded pass for that, so no paint stroke can hang on a
 	/// pathological tileset. The count of those open seams is returned for
 	/// the caller to report.
 	///
 	/// Orphaned shore in open water sits on no boundary loop and is left
-	/// alone — run the plain pass to dissolve it. Returns
+	/// alone - run the plain pass to dissolve it. Returns
 	/// `(cells changed, seams without a listed continuation)`.
 	pub fn auto_shore_alt(&mut self, region: Option<(u16, u16, u16, u16)>) -> (usize, usize) {
 		const SALT: u64 = 0x414c_5453_484f_5245; // "ALTSHORE"
@@ -1467,23 +1452,23 @@ impl Project {
 		if families.iter().all(|f| !f.band) {
 			return (0, 0);
 		}
+		#[cfg(feature = "shore-instrument")]
 		let stamp = std::env::var("SHORE_TIME").is_ok();
+		#[cfg(feature = "shore-instrument")]
 		let mut t0 = std::time::Instant::now();
+		#[cfg(feature = "shore-instrument")]
 		let mut mark = |label: &str| {
 			if stamp {
 				eprintln!("  alt/{label}: {:?}", t0.elapsed());
 				t0 = std::time::Instant::now();
 			}
 		};
+		#[cfg(not(feature = "shore-instrument"))]
+		let mark = |_label: &str| {};
 		let name_idx: HashMap<&str, u16> =
 			families.iter().enumerate().map(|(i, f)| (f.name.as_str(), i as u16)).collect();
 		let comp = build_comp(&families);
-		let admits = |a: u16, ta: Transform, dir: usize, b: u16, tb: Transform| -> bool {
-			comp[a as usize * 8 + ta.bits() as usize][dir].contains(&(b, tb.bits() as u8))
-		};
-		let cseam = |a: u16, ta: Transform, dir: usize, b: u16, tb: Transform| -> usize {
-			admits(a, ta, dir, b, tb) as usize + admits(b, tb, opp(dir), a, ta) as usize
-		};
+		let cseam = |a: u16, ta: Transform, dir: usize, b: u16, tb: Transform| comp_cseam(&comp, a, ta, dir, b, tb);
 
 		let mut snap = snapshot_cells(self, &name_idx);
 		let rect = region_rect(region, w, h);
@@ -1519,7 +1504,7 @@ impl Project {
 		// ---- Trace the boundary loops --------------------------------------
 		// Directed edges (land cell, dir → not-land); each edge has one
 		// successor walking clockwise around the land (counterclockwise
-		// around lakes — the same turn rule), so orbits are closed loops.
+		// around lakes - the same turn rule), so orbits are closed loops.
 		// The not-land cell alongside each edge is a path slot; a convex
 		// turn contributes its diagonal as the chain-closing corner slot.
 		struct Slot {
@@ -1578,7 +1563,7 @@ impl Project {
 						}
 					}
 					// A concave corner is two consecutive visits of one water
-					// cell — collapse them (and the cyclic wrap-around).
+					// cell - collapse them (and the cyclic wrap-around).
 					slots.dedup_by(|a, b| match (&a, &b) {
 						(Some(a), Some(b)) => (a.x, a.y) == (b.x, b.y),
 						(None, None) => true,
@@ -1602,7 +1587,7 @@ impl Project {
 
 		// ---- Classify the slots --------------------------------------------
 		enum Kind {
-			/// Off-map, out of region, or a gate-failed corner — stays as is,
+			/// Off-map, out of region, or a gate-failed corner - stays as is,
 			/// and the chain link resets across it.
 			Gap,
 			/// Valid shore on the path: a fixed constraint to knit into.
@@ -1620,7 +1605,7 @@ impl Project {
 						match at(s.x, s.y).unwrap() {
 							Cell::Water if !in_rect(s.x, s.y) => Kind::Gap,
 							Cell::Water if s.corner => {
-								// Corners close only off a newly grown flank —
+								// Corners close only off a newly grown flank -
 								// pristine diagonal contact never grows.
 								let flank = |j: usize| {
 									matches!(&slots[j], Some(f) if !f.corner
@@ -1660,10 +1645,10 @@ impl Project {
 		}
 
 		// Fringe: a kept boundary tile orthogonally adjacent to a target
-		// re-resolves too, so edits knit into the old coast — but it keeps
+		// re-resolves too, so edits knit into the old coast - but it keeps
 		// its own tile unless something now fits strictly better (the
 		// keep-if-valid rule in the walk). One ring only (decided off the
-		// original frees), so pristine maps — which have no frees — never
+		// original frees), so pristine maps - which have no frees - never
 		// promote and never churn.
 		let mut promote: Vec<(usize, usize, usize, (u16, Transform))> = Vec::new();
 		for (li, (slots, kinds)) in loops.iter().zip(&plans).enumerate() {
@@ -1697,7 +1682,7 @@ impl Project {
 			match state[i] {
 				ST_DECIDED => match choice[i] {
 					Some((f, t)) => Nb::Shore(f, t),
-					None => Nb::OpenWater, // nothing fit — stays water
+					None => Nb::OpenWater, // nothing fit - stays water
 				},
 				ST_FREE => Nb::Pending,
 				_ => match cell {
@@ -1739,29 +1724,16 @@ impl Project {
 					Kind::Free => {
 						let ci = (s.y * w + s.x) as usize;
 						if state[ci] == ST_DECIDED {
-							// Settled from another loop — a fixed link now.
+							// Settled from another loop - a fixed link now.
 							prev = choice[ci].is_some().then_some((s.x, s.y));
 							continue;
 						}
 						let views: [Nb; 4] = std::array::from_fn(|d| nb_run(s.x, s.y, d, &state, &choice));
-						let mut lawful: Vec<(u16, Transform)> = Vec::new();
-						for (fi, fam) in families.iter().enumerate() {
-							if !fam.band {
-								continue;
-							}
-							for rot in 0..4u8 {
-								for mirror in [false, true] {
-									let t = Transform { rot, mirror };
-									if (0..4).all(|d| dir_ok(fam, t, d, views[d])) {
-										lawful.push((fi as u16, t));
-									}
-								}
-							}
-						}
+						let lawful = lawful_band_transforms(&families, &views);
 						// Tiers, strongest first. Two facts drive the pool:
 						// settled shore neighbors must be MATCHED (cseam), and
 						// the loop's own predecessor/successor slots WILL be
-						// shore — toward a still-pending one the tile must
+						// shore - toward a still-pending one the tile must
 						// present a continuation edge (else a corner picks a
 						// water-sided tip and the next cell can't connect).
 						let shore_dirs: Vec<(usize, u16, Transform)> = (0..4)
@@ -1771,7 +1743,7 @@ impl Project {
 							})
 							.collect();
 						// Loop-link directions (prev/next slot), if orthogonal
-						// and not a gap — those neighbors are or become shore.
+						// and not a gap - those neighbors are or become shore.
 						let link_dir = |j: usize| -> Option<usize> {
 							if matches!(kinds[j], Kind::Gap) {
 								return None;
@@ -1799,7 +1771,7 @@ impl Project {
 							})
 							.collect();
 						// Keep-if-valid: a re-resolved old tile that still sits
-						// in the strongest tier stays put — no coastline churn,
+						// in the strongest tier stays put - no coastline churn,
 						// and idempotence falls out. Fresh water (no original)
 						// always rolls, so straights vary.
 						if let Some(orig) = original[ci].filter(|o| pool.contains(o)) {
@@ -1862,7 +1834,7 @@ impl Project {
 
 		// Seams the walk couldn't close (the sweeps' report semantics).
 		// A discontinuity the single-pass walk strands here is closed by the
-		// separate `fix_shore` pass — run it deliberately (`shore fix`); it
+		// separate `fix_shore` pass - run it deliberately (`shore fix`); it
 		// is not chained on automatically, so a pathological tileset can
 		// never make a paint stroke hang.
 		let mut unresolved = 0;
@@ -1919,17 +1891,17 @@ impl Project {
 
 	/// Fix-shore (`shore fix`): a deliberate, **separate** pass that re-tiles
 	/// existing shore to remove the discontinuities the single-pass walks
-	/// (or hand-editing, or a user's own tileset) leave behind — where two
+	/// (or hand-editing, or a user's own tileset) leave behind - where two
 	/// adjacent shore tiles don't continue across their seam. It is NOT
 	/// chained onto `auto_shore`/`auto_shore_alt`, so no paint stroke can
 	/// ever hang on a pathological tileset; the cost lives only here, and is
 	/// hard-bounded.
 	///
-	/// Only the **band (shore) cells** in `region` are re-tileable — land,
+	/// Only the **band (shore) cells** in `region` are re-tileable - land,
 	/// water, and off-region coast are fixed constraints, never touched. For
 	/// each broken seam it gathers a small SPATIAL window of shore cells
 	/// (BFS, ≤`WMAX`) and re-solves it with branch-and-bound on the *exact*
-	/// broken-seam count — spatial (not 1-D) so a coastline step, where two
+	/// broken-seam count - spatial (not 1-D) so a coastline step, where two
 	/// columns of shore touch and the breaks are 2-D, is fixable. Two hard
 	/// caps guarantee termination on ANY tile data: a per-window node cap
 	/// (`PER_WIN`, bounds proving an impossible spot unfixable) and a total
@@ -1942,14 +1914,18 @@ impl Project {
 		// Drive the resumable session to convergence in one shot. The total
 		// budget scales with the break count and hard-bounds the work on any
 		// tileset; `SHORE_REPAIR_BUDGET` overrides, `SHORE_TIME=1` times it.
+		#[cfg(feature = "shore-instrument")]
 		let stamp = std::env::var("SHORE_TIME").is_ok();
+		#[cfg(feature = "shore-instrument")]
 		let t0 = std::time::Instant::now();
 		let mut session = FixSession::new(self, region, FixStrength::Shore);
 		let found = session.found();
-		let mut budget: i64 = std::env::var("SHORE_REPAIR_BUDGET")
-			.ok()
-			.and_then(|v| v.parse().ok())
-			.unwrap_or_else(|| (found as i64 * 100_000).clamp(500_000, 20_000_000));
+		let default_budget = (found as i64 * 100_000).clamp(500_000, 20_000_000);
+		#[cfg(feature = "shore-instrument")]
+		let mut budget: i64 =
+			std::env::var("SHORE_REPAIR_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(default_budget);
+		#[cfg(not(feature = "shore-instrument"))]
+		let mut budget: i64 = default_budget;
 		while !session.is_done() && budget > 0 {
 			let spent = session.step(budget);
 			budget -= spent;
@@ -1958,6 +1934,7 @@ impl Project {
 			}
 		}
 		let remaining = session.remaining();
+		#[cfg(feature = "shore-instrument")]
 		if stamp {
 			eprintln!("  fix_shore: {found} broken -> {remaining} in {:?}", t0.elapsed());
 		}
@@ -1971,7 +1948,7 @@ mod tests {
 	use super::*;
 
 	fn assets_root() -> std::path::PathBuf {
-		std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets")
+		std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks")
 	}
 
 	/// Hand-computed direction table: a feature on the base tile's N edge
@@ -2018,14 +1995,14 @@ mod tests {
 		// One-directional: GSi's W does not list GSh.
 		assert!(!continues(&families, gsi, id, 3, gsh, id));
 		assert_eq!(seam_score(&families, gsh, id, 1, gsi, id), 1);
-		// `GSe:!` is GSe MIRRORED — it must not admit plain GSe (the parse
+		// `GSe:!` is GSe MIRRORED - it must not admit plain GSe (the parse
 		// regression behind the saw-pattern bug).
 		let m = Transform { rot: 0, mirror: true };
 		assert!(continues(&families, gse, id, 1, gse, m), "GSe lists GSe:! eastward");
 		assert!(!continues(&families, gse, id, 1, gse, id), "but not plain GSe");
 	}
 
-	/// Paint a 3×3 island into open water — the shore grows on the WATER
+	/// Paint a 3×3 island into open water - the shore grows on the WATER
 	/// ring around it (16 cells incl. corners), the land stays untouched,
 	/// every seam along the ring is unbroken, and the pass settles.
 	#[test]
@@ -2102,7 +2079,7 @@ mod tests {
 		}
 		p.auto_shore(None);
 		// Mid-run shore cells (away from map edges) all share one family
-		// and one transform — uniform, not alternating.
+		// and one transform - uniform, not alternating.
 		let mut seen = std::collections::HashSet::new();
 		for x in 3..13u16 {
 			let top = p.cell(x, 3).unwrap()[LAYER_GROUND].expect("shore");
@@ -2112,7 +2089,7 @@ mod tests {
 		assert_eq!(seen.len(), 1, "uniform straight run, got {seen:?}");
 	}
 
-	/// A 1-wide notch is unshoreable (no family takes land on 3 sides) —
+	/// A 1-wide notch is unshoreable (no family takes land on 3 sides) -
 	/// it closes into the terrain and the coast runs straight over it.
 	#[test]
 	fn impossible_notch_closes_into_terrain() {
@@ -2159,7 +2136,7 @@ mod tests {
 		assert_eq!(p.auto_shore(None).0, 0, "and settles");
 	}
 
-	/// The loop walk dresses the same 16-cell ring as the sweeps — every
+	/// The loop walk dresses the same 16-cell ring as the sweeps - every
 	/// seam a listed continuation, one undo unit, idempotent.
 	#[test]
 	fn alt_shores_the_island_ring() {
@@ -2212,7 +2189,7 @@ mod tests {
 
 	/// The walk's whole point: a long straight run VARIES (several distinct
 	/// family/transform picks) while every seam stays a listed continuation
-	/// — where the sweeps version pins one uniform tile.
+	/// - where the sweeps version pins one uniform tile.
 	#[test]
 	fn alt_straight_runs_vary_but_connect() {
 		let root = assets_root();
@@ -2295,7 +2272,7 @@ mod tests {
 	/// `fix_shore` closes the discontinuities the greedy walk leaves on a
 	/// steep coast. This `sin(x/3)·8` coastline is fully expressible, but
 	/// the single-pass `auto_shore_alt` strands 3 broken seams at its folds
-	/// (it no longer auto-repairs — `unresolved == 3`); the separate
+	/// (it no longer auto-repairs - `unresolved == 3`); the separate
 	/// `fix_shore` pass re-tiles those local windows down to zero. It is one
 	/// undo unit and idempotent (a second pass changes nothing).
 	#[test]
@@ -2329,7 +2306,7 @@ mod tests {
 	}
 
 	/// The resumable session reaches the same result as `fix_shore`,
-	/// stepping in tiny budget slices — what the Auto Fix Shore modal does
+	/// stepping in tiny budget slices - what the Auto Fix Shore modal does
 	/// frame by frame (live found/fixed/remaining, then apply as one unit).
 	#[test]
 	fn fix_session_steps_to_the_same_result() {
@@ -2365,7 +2342,7 @@ mod tests {
 
 	/// Destructive mode sees and resolves what the band-only modes cannot:
 	/// a lone shore tile stranded in open water has no band neighbors, so
-	/// Shore/Mangle find nothing — Destructive counts its seams against the
+	/// Shore/Mangle find nothing - Destructive counts its seams against the
 	/// fixed water and flattens the orphan back into the sea.
 	#[test]
 	fn destructive_resolves_what_band_modes_cannot_see() {
@@ -2396,7 +2373,7 @@ mod tests {
 	}
 
 	/// The destructive escalation: blasting claims a 3×3 into the re-tile
-	/// set as open water (region-clamped), each cell at most once — and the
+	/// set as open water (region-clamped), each cell at most once - and the
 	/// session still converges to a seam-free result afterwards.
 	#[test]
 	fn destructive_blast_claims_water_once_then_regrows() {
@@ -2423,7 +2400,7 @@ mod tests {
 		}
 		assert!(!s.blast(6, 12), "each cell blasts at most once");
 
-		// The session was born clean (done) — waking it after the manual
+		// The session was born clean (done) - waking it after the manual
 		// blast mirrors the real flow, where blast happens mid-run.
 		s.done = false;
 
@@ -2440,7 +2417,7 @@ mod tests {
 	}
 
 	/// `fix_shore` leaves a clean coast alone: shoring an island, then
-	/// fixing it, changes nothing (no churn) — it only ever applies strict
+	/// fixing it, changes nothing (no churn) - it only ever applies strict
 	/// improvements.
 	#[test]
 	fn fix_shore_leaves_clean_coast_alone() {
@@ -2459,7 +2436,7 @@ mod tests {
 		assert_eq!(p.hash(), clean);
 	}
 
-	/// Orphaned shore — the island it hugged is gone — dissolves to water.
+	/// Orphaned shore - the island it hugged is gone - dissolves to water.
 	#[test]
 	fn orphaned_shore_dissolves() {
 		let root = assets_root();
@@ -2487,5 +2464,53 @@ mod tests {
 		let (changed, _) = p.auto_shore(Some((2, 2, 4, 5)));
 		assert!(changed > 0, "left stub shored");
 		assert_eq!(right_before, snapshot(&p), "right stub untouched");
+	}
+
+	#[test]
+	fn mangle_fix_converges_and_a_region_fix_stays_local() {
+		let root = assets_root();
+		let (w, h) = (48u16, 36u16);
+		// A steep sine coastline that the loop-walk strands broken seams along.
+		let steep = || {
+			let mut p = Project::new(w, h, &["GREEN".to_string()], &root, 5).unwrap();
+			let land = p.resolve_ref("GLa000").unwrap().0;
+			for x in 0..w {
+				let top = (h as f64 / 2.0 + 8.0 * (x as f64 / 3.0).sin()).round() as u16;
+				for y in top.min(h)..h {
+					p.place(x, y, LAYER_GROUND, Some(land));
+				}
+			}
+			p.auto_shore_alt(None);
+			p
+		};
+
+		// Mangle (re-tiles band tiles + keeps a cell's own tile as an option, no
+		// destructive water) sees the stranded seams, converges, and rewrites.
+		let mut p = steep();
+		let mut s = p.fix_session(None, FixStrength::Mangle);
+		let found = s.found();
+		assert!(found > 0, "mangle sees the stranded seams");
+		let mut guard = 0;
+		while !s.is_done() {
+			s.step(2_000);
+			guard += 1;
+			assert!(guard < 100_000, "mangle must converge");
+		}
+		assert!(s.apply(&mut p) > 0, "mangle rewrote tiles");
+		assert!(p.fix_session(None, FixStrength::Mangle).found() < found, "a second mangle pass finds fewer seams");
+
+		// A region-limited fix only writes inside its (halo-expanded) rect: cells
+		// far from the region stay byte-for-byte unchanged.
+		let mut p = steep();
+		let far = |p: &Project| -> Vec<String> {
+			(30..w).flat_map(|x| (0..h).map(move |y| (x, y))).map(|(x, y)| p.cell_spec(x, y).unwrap()).collect()
+		};
+		let before = far(&p);
+		let mut s = p.fix_session(Some((0, 0, 10, h - 1)), FixStrength::Mangle);
+		while !s.is_done() {
+			s.step(2_000);
+		}
+		s.apply(&mut p);
+		assert_eq!(before, far(&p), "cells far outside the region are untouched");
 	}
 }

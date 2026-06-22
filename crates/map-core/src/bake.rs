@@ -1,7 +1,7 @@
 //! WRL export bake: flatten a project's cell stacks into a
-//! flat WRL — `compose_cell` per cell, byte-identical tiles deduplicated,
+//! flat WRL - `compose_cell` per cell, byte-identical tiles deduplicated,
 //! pass from the stack-top tile's pack data, minimap from the composed
-//! center pixel (the original game's own derivation is unknown — see
+//! center pixel (the original game's own derivation is unknown - see
 //! `docs/design/tileset-contract.md` §4).
 
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use max_assets::wrl::{TILE_DATA_SIZE, WrlFile};
 
 use crate::project::{LAYER_GROUND, LAYER_WATER, Project, TileRef, Transform};
 
-/// `"WRL" 1 0` — the header all retail maps carry (demo maps use `DMO`).
+/// `"WRL" 1 0` - the header all retail maps carry (demo maps use `DMO`).
 pub const WRL_HEADER: [u8; 5] = [b'W', b'R', b'L', 1, 0];
 
 /// Tile budget: bigmap indices and `tile_count` are u16.
@@ -29,7 +29,7 @@ pub fn bake(project: &Project) -> Result<WrlFile, String> {
 	let mut minimap = Vec::with_capacity(cell_count);
 
 	// Water-phase canonicalization: under a ground tile's cut-outs, any sea
-	// phase is visually equivalent (animated noise) — the originals bake
+	// phase is visually equivalent (animated noise) - the originals bake
 	// exactly one phase per shore art. Re-pointing the water layer at the
 	// water pack's tile 0 before composing keeps the dedup as tight as
 	// Interplay's. Open-water cells keep their per-cell pattern tiles.

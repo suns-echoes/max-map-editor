@@ -9,7 +9,7 @@ use crate::color::indexed_to_color;
 pub struct IndexedFrame {
 	pub width: u32,
 	pub height: u32,
-	/// Signed — MAX sprites may anchor above/left of the sprite rectangle,
+	/// Signed - MAX sprites may anchor above/left of the sprite rectangle,
 	/// which needs a negative value; an unsigned cast of `i16` wraps and
 	/// flings the frame off-screen.
 	pub hot_spot_x: i32,
@@ -52,8 +52,12 @@ pub fn parse_multi_image_all_frames(data: &[u8]) -> Result<Option<Vec<ImageData>
 	}
 
 	for i in 1..image_count as usize {
-		let offset =
-			i32::from_le_bytes(data[2 + i * 4..2 + (i + 1) * 4].try_into().map_err(|_| "Invalid frame offset")?);
+		let offset = i32::from_le_bytes(
+			data.get(2 + i * 4..2 + (i + 1) * 4)
+				.ok_or("truncated frame offset table")?
+				.try_into()
+				.map_err(|_| "Invalid frame offset")?,
+		);
 		frames_offsets.push(offset);
 	}
 
@@ -88,7 +92,7 @@ fn parse_frames(data: &[u8], offset: usize) -> Option<ImageData> {
 	let mut row_offsets: Vec<i32> = Vec::new();
 	for i in 0..height {
 		let start_offset = offset + 8 + i as usize * 4;
-		let row_offset = i32::from_le_bytes(data[start_offset..start_offset + 4].try_into().ok()?);
+		let row_offset = i32::from_le_bytes(data.get(start_offset..start_offset + 4)?.try_into().ok()?);
 		row_offsets.push(row_offset);
 	}
 
@@ -122,7 +126,7 @@ fn decode_shadow_frame(
 		}
 
 		loop {
-			let transparent_count = data[data_offset] as usize;
+			let transparent_count = *data.get(data_offset)? as usize;
 			data_offset += 1;
 
 			if transparent_count == 0xff {
@@ -134,7 +138,7 @@ fn decode_shadow_frame(
 			out_offset += transparent_count;
 			remaining_row_length -= transparent_count;
 
-			let shadow_count = data[data_offset] as usize;
+			let shadow_count = *data.get(data_offset)? as usize;
 			data_offset += 1;
 
 			if shadow_count == 0 {
@@ -188,7 +192,7 @@ fn decode_image_frame(
 		}
 
 		loop {
-			let transparent_count = data[data_offset] as usize;
+			let transparent_count = *data.get(data_offset)? as usize;
 			data_offset += 1;
 
 			if transparent_count == 0xff {
@@ -200,7 +204,7 @@ fn decode_image_frame(
 			out_offset += transparent_count;
 			remaining_row_length -= transparent_count;
 
-			let pixel_count = data[data_offset] as usize;
+			let pixel_count = *data.get(data_offset)? as usize;
 			data_offset += 1;
 
 			if pixel_count == 0 {
@@ -241,7 +245,7 @@ fn decode_image_frame(
 
 /// Decodes every frame of a multi-image and keeps pixels in palette-index
 /// form. Use this when the consumer is going to sample against the game's
-/// own palette (unit sprites, tileset overlays) — no color-space conversion
+/// own palette (unit sprites, tileset overlays) - no color-space conversion
 /// happens here, so palette cycling "just works" downstream.
 pub fn decode_multi_image_indexed(data: &[u8]) -> Result<Vec<IndexedFrame>, String> {
 	if data.len() < 20 {
@@ -259,7 +263,12 @@ pub fn decode_multi_image_indexed(data: &[u8]) -> Result<Vec<IndexedFrame>, Stri
 	offsets.push(first_offset as i32);
 	for i in 1..image_count as usize {
 		let start = 2 + i * 4;
-		let off = i32::from_le_bytes(data[start..start + 4].try_into().map_err(|_| "invalid frame offset")?);
+		let off = i32::from_le_bytes(
+			data.get(start..start + 4)
+				.ok_or("truncated frame offset table")?
+				.try_into()
+				.map_err(|_| "invalid frame offset")?,
+		);
 		offsets.push(off);
 	}
 
@@ -278,28 +287,34 @@ pub fn decode_multi_image_indexed(data: &[u8]) -> Result<Vec<IndexedFrame>, Stri
 }
 
 /// Decodes a single frame as palette-indexed pixels. Unlike `parse_frames`,
-/// this never falls back to the shadow-color path — shadows are a separate
+/// this never falls back to the shadow-color path - shadows are a separate
 /// visual layer handled by their own decode pass.
-fn decode_frame_indexed(data: &[u8], offset: usize) -> Option<IndexedFrame> {
+/// Parse a multi-image frame header at `offset`: the 8-byte
+/// `(width, height, hot_spot_x, hot_spot_y)` block (dims validated `> 0` and
+/// within the max), then the `height`-entry row-offset table. `None` on a
+/// short / out-of-range / truncated header. Shared by the indexed body and
+/// shadow decoders, whose row-RLE bodies differ but whose headers are identical.
+fn read_multi_header(data: &[u8], offset: usize) -> Option<(i16, i16, i32, i32, Vec<i32>)> {
 	if data.len() < offset + 8 {
 		return None;
 	}
-
 	let width = i16::from_le_bytes(data[offset..offset + 2].try_into().ok()?);
 	let height = i16::from_le_bytes(data[offset + 2..offset + 4].try_into().ok()?);
 	let hot_spot_x = i16::from_le_bytes(data[offset + 4..offset + 6].try_into().ok()?) as i32;
 	let hot_spot_y = i16::from_le_bytes(data[offset + 6..offset + 8].try_into().ok()?) as i32;
-
 	if width <= 0 || height <= 0 || width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT {
 		return None;
 	}
-
 	let mut row_offsets: Vec<i32> = Vec::with_capacity(height as usize);
 	for i in 0..height {
 		let s = offset + 8 + i as usize * 4;
-		row_offsets.push(i32::from_le_bytes(data[s..s + 4].try_into().ok()?));
+		row_offsets.push(i32::from_le_bytes(data.get(s..s + 4)?.try_into().ok()?));
 	}
+	Some((width, height, hot_spot_x, hot_spot_y, row_offsets))
+}
 
+fn decode_frame_indexed(data: &[u8], offset: usize) -> Option<IndexedFrame> {
+	let (width, height, hot_spot_x, hot_spot_y, row_offsets) = read_multi_header(data, offset)?;
 	let mut pixels: Vec<u8> = vec![0; width as usize * height as usize];
 	let mut data_offset: usize = row_offsets[0] as usize;
 	let mut out_offset: usize = 0;
@@ -312,7 +327,7 @@ fn decode_frame_indexed(data: &[u8], offset: usize) -> Option<IndexedFrame> {
 		}
 
 		loop {
-			let transparent = data[data_offset] as usize;
+			let transparent = *data.get(data_offset)? as usize;
 			data_offset += 1;
 
 			if transparent == 0xff {
@@ -324,7 +339,7 @@ fn decode_frame_indexed(data: &[u8], offset: usize) -> Option<IndexedFrame> {
 			out_offset += transparent;
 			remaining -= transparent;
 
-			let pixel_count = data[data_offset] as usize;
+			let pixel_count = *data.get(data_offset)? as usize;
 			data_offset += 1;
 
 			if pixel_count == 0 {
@@ -353,7 +368,7 @@ fn decode_frame_indexed(data: &[u8], offset: usize) -> Option<IndexedFrame> {
 }
 
 /// Palette index used to mark "shadow pixel" in decoded shadow frames.
-/// Chosen to match the original RES-extractor convention — any non-zero
+/// Chosen to match the original RES-extractor convention - any non-zero
 /// value works downstream since the shadow pipeline only tests for opacity.
 const SHADOW_MARKER: u8 = 20;
 
@@ -377,7 +392,12 @@ pub fn decode_multi_image_shadow_indexed(data: &[u8]) -> Result<Vec<IndexedFrame
 	offsets.push(first_offset as i32);
 	for i in 1..image_count as usize {
 		let start = 2 + i * 4;
-		let off = i32::from_le_bytes(data[start..start + 4].try_into().map_err(|_| "invalid frame offset")?);
+		let off = i32::from_le_bytes(
+			data.get(start..start + 4)
+				.ok_or("truncated frame offset table")?
+				.try_into()
+				.map_err(|_| "invalid frame offset")?,
+		);
 		offsets.push(off);
 	}
 
@@ -396,25 +416,7 @@ pub fn decode_multi_image_shadow_indexed(data: &[u8]) -> Result<Vec<IndexedFrame
 }
 
 fn decode_frame_shadow_indexed(data: &[u8], offset: usize) -> Option<IndexedFrame> {
-	if data.len() < offset + 8 {
-		return None;
-	}
-
-	let width = i16::from_le_bytes(data[offset..offset + 2].try_into().ok()?);
-	let height = i16::from_le_bytes(data[offset + 2..offset + 4].try_into().ok()?);
-	let hot_spot_x = i16::from_le_bytes(data[offset + 4..offset + 6].try_into().ok()?) as i32;
-	let hot_spot_y = i16::from_le_bytes(data[offset + 6..offset + 8].try_into().ok()?) as i32;
-
-	if width <= 0 || height <= 0 || width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT {
-		return None;
-	}
-
-	let mut row_offsets: Vec<i32> = Vec::with_capacity(height as usize);
-	for i in 0..height {
-		let s = offset + 8 + i as usize * 4;
-		row_offsets.push(i32::from_le_bytes(data[s..s + 4].try_into().ok()?));
-	}
-
+	let (width, height, hot_spot_x, hot_spot_y, row_offsets) = read_multi_header(data, offset)?;
 	let mut pixels: Vec<u8> = vec![0; width as usize * height as usize];
 	let mut data_offset: usize = row_offsets[0] as usize;
 	let mut out_offset: usize = 0;
@@ -427,7 +429,7 @@ fn decode_frame_shadow_indexed(data: &[u8], offset: usize) -> Option<IndexedFram
 		}
 
 		loop {
-			let transparent = data[data_offset] as usize;
+			let transparent = *data.get(data_offset)? as usize;
 			data_offset += 1;
 
 			if transparent == 0xff {
@@ -439,7 +441,7 @@ fn decode_frame_shadow_indexed(data: &[u8], offset: usize) -> Option<IndexedFram
 			out_offset += transparent;
 			remaining -= transparent;
 
-			let shadow_count = data[data_offset] as usize;
+			let shadow_count = *data.get(data_offset)? as usize;
 			data_offset += 1;
 
 			if shadow_count == 0 {
@@ -459,4 +461,60 @@ fn decode_frame_shadow_indexed(data: &[u8], offset: usize) -> Option<IndexedFram
 	}
 
 	Some(IndexedFrame { width: width as u32, height: height as u32, hot_spot_x, hot_spot_y, pixels })
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// A minimal but structurally valid single-frame multi-image:
+	/// image_count = 1, one 2x1 body row encoded as (0 transparent, 2 pixels, end).
+	fn valid_single_frame_blob() -> Vec<u8> {
+		let mut d = Vec::new();
+		d.extend_from_slice(&1i16.to_le_bytes()); // image_count
+		d.extend_from_slice(&6i32.to_le_bytes()); // first frame offset (= 2 + 4*1)
+		d.extend_from_slice(&2i16.to_le_bytes()); // width
+		d.extend_from_slice(&1i16.to_le_bytes()); // height
+		d.extend_from_slice(&0i16.to_le_bytes()); // hot_spot_x
+		d.extend_from_slice(&0i16.to_le_bytes()); // hot_spot_y
+		let rle_pos = d.len() + 4; // one row-offset entry precedes the RLE
+		d.extend_from_slice(&(rle_pos as i32).to_le_bytes()); // row 0 offset
+		d.push(0); // transparent run = 0
+		d.push(2); // literal run = 2 pixels
+		d.push(10);
+		d.push(11);
+		d.push(0xff); // end of row
+		d
+	}
+
+	#[test]
+	fn decodes_valid_blob() {
+		assert!(parse_multi_image(&valid_single_frame_blob()).unwrap().is_some());
+	}
+
+	#[test]
+	fn truncating_at_every_length_never_panics() {
+		let d = valid_single_frame_blob();
+		for len in 0..=d.len() {
+			let s = &d[..len];
+			let _ = parse_multi_image(s);
+			let _ = parse_multi_image_all_frames(s);
+			let _ = decode_multi_image_indexed(s);
+			let _ = decode_multi_image_shadow_indexed(s);
+		}
+	}
+
+	#[test]
+	fn oversized_image_count_does_not_over_read() {
+		// Header passes (first_offset == 2 + 4*image_count) but the claimed
+		// 1000-entry offset table runs far past the 40-byte buffer.
+		let mut d = Vec::new();
+		d.extend_from_slice(&1000i16.to_le_bytes());
+		d.extend_from_slice(&4002i32.to_le_bytes());
+		d.resize(40, 0);
+		let _ = parse_multi_image(&d);
+		let _ = parse_multi_image_all_frames(&d);
+		let _ = decode_multi_image_indexed(&d);
+		let _ = decode_multi_image_shadow_indexed(&d);
+	}
 }

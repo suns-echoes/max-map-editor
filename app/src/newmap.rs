@@ -2,16 +2,18 @@
 //! Two stages: the main dialog (preset, W×H fields, fill note, tile-set
 //! summary, Abort/Create) and the tile-set picker (a checkbox per installed
 //! pack with a 4-tile preview strip). Create builds a `new W H PACK..`
-//! command — the same path scripts use.
+//! command - the same path scripts use.
 //!
 //! Pure state/geometry here; previews are CPU-composed RGBA strips blitted
 //! by the shared [`BlitPass`].
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use map_core::{GAME_PALETTE, Rng, TilePack, apply_game_statics};
 
 use crate::blit::BlitPass;
+use crate::packlist::{self, PackEntry};
+use crate::textinput::{Charset, TextInput};
 use crate::theme;
 use crate::ui::{self, Hot, Rect, UiQuads};
 
@@ -22,7 +24,7 @@ const BTN_H: f32 = 20.0;
 /// Preview strip: 4 tiles at this size.
 const TILE_PREVIEW: f32 = 44.0;
 const PACK_ROW_H: f32 = TILE_PREVIEW + 12.0;
-/// Deterministic "random" previews — stable screenshots, still varied.
+/// Deterministic "random" previews - stable screenshots, still varied.
 const PREVIEW_SEED: u64 = 0xC0FFEE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,24 +33,22 @@ pub enum Field {
 	Height,
 }
 
-pub struct PackEntry {
-	pub name: String,
-	pub selected: bool,
-	pub has_palette: bool,
-	/// WATER fills the bottom layer — always on (the `new` command implies it).
-	pub locked: bool,
-}
-
 pub struct NewMap {
-	pub width: String,
-	pub height: String,
+	width: TextInput,
+	height: TextInput,
 	pub focus: Option<Field>,
+	/// The field being mouse-drag-selected (press..release).
+	drag_field: Option<Field>,
 	pub packs: Vec<PackEntry>,
 	/// Second stage (tile-set picker) open?
 	pub picking: bool,
-	preset: usize,
+	/// Chosen palette-owner pack (the radio column). `None` = the first
+	/// selected palette-capable pack. WATER never owns the palette.
+	palette_owner: Option<String>,
+	/// The size-preset dropdown's open state.
+	preset_open: bool,
 	/// A command button held down, waiting for release-inside
-	/// — dragging off cancels.
+	/// - dragging off cancels.
 	armed: Option<ArmedBtn>,
 	/// Drag offset from centered (draggable by the titlebar).
 	pub(crate) drag_offset: (f32, f32),
@@ -58,11 +58,13 @@ pub struct NewMap {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArmedBtn {
 	Abort,
-	/// Create on the main stage / Done in the pack picker — the same rect.
+	/// Create on the main stage / Done in the pack picker - the same rect.
 	Create,
 }
 
-const PRESETS: [(&str, u16, u16); 2] = [("Classic 112x112", 112, 112), ("MEGA 1024x1024", 1024, 1024)];
+/// Shared map-size presets (also used by the Resize modal).
+pub const SIZE_PRESETS: [(&str, u16, u16); 3] =
+	[("Classic 112x112", 112, 112), ("Mega 224x224", 224, 224), ("Giga 448x448", 448, 448)];
 
 /// What a press resolved to (everything is consumed while a modal is open).
 #[derive(Debug, PartialEq)]
@@ -71,65 +73,80 @@ pub enum Press {
 	Abort,
 	/// Validated `new …` command line, ready to execute.
 	Create(String),
-	/// Validation failed — show this in the console, keep the modal open.
+	/// Validation failed - show this in the console, keep the modal open.
 	Invalid(String),
 }
 
 impl NewMap {
 	/// Scan the assets dir for installed packs (dirs with `tiles-data.bin`).
 	pub fn new(assets_root: &Path) -> Self {
-		let mut packs = Vec::new();
-		if let Ok(entries) = std::fs::read_dir(assets_root) {
-			let mut names: Vec<PathBuf> = entries
-				.filter_map(|e| e.ok())
-				.map(|e| e.path())
-				.filter(|p| p.join("tiles-data.bin").is_file())
-				.collect();
-			names.sort();
-			for path in names {
-				let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-				let locked = name == "WATER";
-				packs.push(PackEntry {
-					selected: locked || name == "GREEN",
-					has_palette: path.join("palette.json").is_file(),
-					locked,
-					name,
-				});
-			}
-		}
+		let packs = packlist::scan(assets_root);
 		Self {
-			width: "112".into(),
-			height: "112".into(),
+			width: TextInput::new("112", 4).charset(Charset::Digits),
+			height: TextInput::new("112", 4).charset(Charset::Digits),
 			focus: None,
+			drag_field: None,
 			packs,
 			picking: false,
-			preset: 0,
+			palette_owner: None,
+			preset_open: false,
 			armed: None,
 			drag_offset: (0.0, 0.0),
 		}
 	}
 
-	/// The selected pack names, WATER first (the `new` command's convention).
+	/// The pack that will own the palette: the radio choice when it's a
+	/// selected palette-capable pack, else the first such pack (scan order).
+	/// WATER never qualifies (no palette).
+	fn effective_owner(&self) -> Option<String> {
+		packlist::effective_owner(&self.packs, &self.palette_owner)
+	}
+
+	/// The selected pack names: WATER (locked) first, then the palette owner -
+	/// `Project::new` makes the first palette-owning pack the owner - then the
+	/// rest in scan order.
 	pub fn selected_packs(&self) -> Vec<String> {
-		let mut out: Vec<String> =
-			self.packs.iter().filter(|p| p.selected && p.locked).map(|p| p.name.clone()).collect();
-		out.extend(self.packs.iter().filter(|p| p.selected && !p.locked).map(|p| p.name.clone()));
-		out
+		packlist::selected(&self.packs, &self.palette_owner)
+	}
+
+	fn field_mut(&mut self, f: Field) -> &mut TextInput {
+		match f {
+			Field::Width => &mut self.width,
+			Field::Height => &mut self.height,
+		}
+	}
+
+	fn field_ref(&self, f: Field) -> &TextInput {
+		match f {
+			Field::Width => &self.width,
+			Field::Height => &self.height,
+		}
+	}
+
+	/// The preset whose dimensions match the current W×H fields, if any.
+	fn preset_match(&self) -> Option<usize> {
+		let (w, h) = (self.width.text(), self.height.text());
+		SIZE_PRESETS.iter().position(|&(_, pw, ph)| w == pw.to_string().as_str() && h == ph.to_string().as_str())
+	}
+
+	/// The dropdown's value label: the matching preset's name, else `Custom`.
+	fn preset_label(&self) -> &'static str {
+		self.preset_match().map(|i| SIZE_PRESETS[i].0).unwrap_or("Custom")
 	}
 
 	/// Build the `new` command, or explain what's missing.
 	pub fn create_command(&self) -> Result<String, String> {
-		let width: u16 = self.width.parse().map_err(|_| "width is not a number".to_string())?;
-		let height: u16 = self.height.parse().map_err(|_| "height is not a number".to_string())?;
+		let width: u16 = self.width.text().parse().map_err(|_| "width is not a number".to_string())?;
+		let height: u16 = self.height.text().parse().map_err(|_| "height is not a number".to_string())?;
 		if !(1..=1024).contains(&width) || !(1..=1024).contains(&height) {
 			return Err(format!("bad size {width}x{height} (1..=1024)"));
 		}
 		let packs = self.selected_packs();
-		if !self.packs.iter().any(|p| p.selected && p.has_palette) {
+		if !packlist::has_palette_owner(&self.packs) {
 			return Err("select at least one palette-owning tileset (e.g. GREEN)".into());
 		}
 		// Force (`new!`): the modal IS the confirmation surface, so it must
-		// not trip the unsaved-changes guard — that bug made Create work only
+		// not trip the unsaved-changes guard - that bug made Create work only
 		// once (consistent with Quick Load's `open!`).
 		Ok(format!("new! {width} {height} {}", packs.join(" ")))
 	}
@@ -140,7 +157,7 @@ impl NewMap {
 	pub fn dialog_rect(&self, w: f32, h: f32) -> Rect {
 		let r = if self.picking {
 			let ph = TITLE_H + 10.0 + self.packs.len() as f32 * PACK_ROW_H + BTN_H + 18.0;
-			Rect::centered(w, h, 380.0, ph)
+			Rect::centered(w, h, 440.0, ph)
 		} else {
 			Rect::centered(w, h, 360.0, 204.0)
 		};
@@ -151,7 +168,8 @@ impl NewMap {
 		d.y + TITLE_H + 8.0 + row as f32 * (ROW_H + 4.0)
 	}
 
-	/// Main dialog controls. Rows: 0 preset, 1 size, 2 fill, 3 tile sets.
+	/// Main dialog controls. Rows: 0 preset, 1 size, 2 fill, 3 tile sets. The
+	/// preset is a [`select`](crate::select) dropdown.
 	fn preset_rect(d: Rect) -> Rect {
 		Rect::new(d.x + 110.0, Self::row_y(d, 0), 170.0, BTN_H)
 	}
@@ -181,10 +199,16 @@ impl NewMap {
 		Rect::new(d.x + 10.0, d.y + TITLE_H + 6.0 + i as f32 * PACK_ROW_H, d.w - 20.0, PACK_ROW_H)
 	}
 
-	/// The 4-tile preview strip inside a pack row.
+	/// The 4-tile preview strip inside a pack row (left of the radio column).
 	pub fn preview_rect(d: Rect, i: usize) -> Rect {
 		let r = Self::pack_row(d, i);
-		Rect::new(r.x + r.w - 4.0 * TILE_PREVIEW - 4.0, r.y + 4.0, 4.0 * TILE_PREVIEW, TILE_PREVIEW)
+		Rect::new(r.x + r.w - 4.0 * TILE_PREVIEW - 32.0, r.y + 4.0, 4.0 * TILE_PREVIEW, TILE_PREVIEW)
+	}
+
+	/// The palette-owner radio toggle on the far right of a pack row.
+	fn radio_rect(d: Rect, i: usize) -> Rect {
+		let r = Self::pack_row(d, i);
+		Rect::new(r.x + r.w - 18.0, r.y + (r.h - 14.0) / 2.0, 14.0, 14.0)
 	}
 
 	// ----- events --------------------------------------------------------------
@@ -192,6 +216,15 @@ impl NewMap {
 	pub fn on_press(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
 		let d = self.dialog_rect(w, h);
 		if self.picking {
+			// Palette-owner radio (far-right column) - palette-capable, non-WATER
+			// rows only. Owning the palette implies the pack is selected.
+			for i in 0..self.packs.len() {
+				if self.packs[i].has_palette && !self.packs[i].locked && Self::radio_rect(d, i).contains(x, y) {
+					self.palette_owner = Some(self.packs[i].name.clone());
+					self.packs[i].selected = true;
+					return Press::Consumed;
+				}
+			}
 			for i in 0..self.packs.len() {
 				let r = Self::pack_row(d, i);
 				if r.contains(x, y) && !self.packs[i].locked {
@@ -209,16 +242,32 @@ impl NewMap {
 			return Press::Consumed;
 		}
 
-		if Self::preset_rect(d).contains(x, y) {
-			self.preset = (self.preset + 1) % PRESETS.len();
-			let (_, pw, ph) = PRESETS[self.preset];
-			self.width = pw.to_string();
-			self.height = ph.to_string();
-			return Press::Consumed;
+		// Size-preset dropdown: the box toggles; an option rewrites the fields.
+		match crate::select::hit(Self::preset_rect(d), self.preset_open, SIZE_PRESETS.len(), false, x, y) {
+			Some(crate::select::Hit::Box) => {
+				self.preset_open = !self.preset_open;
+				return Press::Consumed;
+			}
+			Some(crate::select::Hit::Option(i)) => {
+				let (_, pw, ph) = SIZE_PRESETS[i];
+				self.width.set_text(&pw.to_string());
+				self.height.set_text(&ph.to_string());
+				self.preset_open = false;
+				return Press::Consumed;
+			}
+			None if self.preset_open => {
+				// A click off an open list closes it (and is consumed).
+				self.preset_open = false;
+				return Press::Consumed;
+			}
+			None => {}
 		}
 		for f in [Field::Width, Field::Height] {
-			if Self::field_rect(d, f).contains(x, y) {
+			let r = Self::field_rect(d, f);
+			if r.contains(x, y) {
 				self.focus = Some(f);
+				self.drag_field = Some(f);
+				self.field_mut(f).on_press(x, y, r);
 				return Press::Consumed;
 			}
 		}
@@ -242,6 +291,7 @@ impl NewMap {
 	/// Fire the armed command button if the release is still on it;
 	/// a release anywhere else just disarms.
 	pub fn on_release(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
+		self.drag_field = None;
 		let d = self.dialog_rect(w, h);
 		match self.armed.take() {
 			Some(ArmedBtn::Abort) if !self.picking && self.abort_rect(d).contains(x, y) => Press::Abort,
@@ -261,28 +311,35 @@ impl NewMap {
 		}
 	}
 
-	/// Keyboard while the modal is open. Returns false for Esc (close).
-	pub fn on_key(&mut self, ch: Option<char>, backspace: bool, tab: bool) -> bool {
-		if tab {
-			self.focus = Some(match self.focus {
-				Some(Field::Width) => Field::Height,
-				_ => Field::Width,
-			});
-			return true;
+	/// The focused W/H field's edit state (none while the pack picker is open).
+	pub fn edit_context(&self) -> Option<crate::modal::EditContext> {
+		if self.picking {
+			return None;
 		}
-		let Some(f) = self.focus else { return true };
-		let field = match f {
-			Field::Width => &mut self.width,
-			Field::Height => &mut self.height,
-		};
-		if backspace {
-			field.pop();
-		} else if let Some(c) = ch {
-			if c.is_ascii_digit() && field.len() < 4 {
-				field.push(c);
-			}
+		let f = self.field_ref(self.focus?);
+		Some(f.edit_context())
+	}
+
+	/// Route an editing key to the focused size field.
+	pub fn key(&mut self, key: &crate::modal::ModalKey) {
+		let Some(f) = self.focus else { return };
+		self.field_mut(f).on_key(key);
+	}
+
+	/// Tab: toggle focus between the two size fields.
+	pub fn focus_next(&mut self) {
+		self.focus = Some(match self.focus {
+			Some(Field::Width) => Field::Height,
+			_ => Field::Width,
+		});
+	}
+
+	/// Mouse drag extends the active field's selection (after a press on it).
+	pub fn on_drag(&mut self, x: f32, y: f32, w: f32, h: f32) {
+		if let Some(f) = self.drag_field {
+			let r = Self::field_rect(self.dialog_rect(w, h), f);
+			self.field_mut(f).on_drag(x, y, r);
 		}
-		true
 	}
 
 	// ----- drawing --------------------------------------------------------------
@@ -290,7 +347,7 @@ impl NewMap {
 	pub fn view(&self, w: f32, h: f32, hot: Hot) -> UiQuads {
 		let d = self.dialog_rect(w, h);
 		let mut q = UiQuads::with_steel_map(ui::SteelMap::anchored(d));
-		// Dim everything beneath — it's a modal.
+		// Dim everything beneath - it's a modal.
 		ui::modal_scrim(&mut q, w, h);
 		let title = if self.picking { "Select Tile Sets" } else { "Create New Map" };
 		ui::modal_frame(&mut q, d, title, TITLE_H, w, h);
@@ -330,7 +387,25 @@ impl NewMap {
 				q.label(&label, cb.x + 20.0, r.y + (r.h - 12.0) / 2.0, crate::ui::FONT_SMALL, w, h, ink);
 				// The preview strip area is an inset well; tiles blit beneath.
 				q.field(Self::preview_rect(d, i), w, h);
+				// Palette-owner radio (palette-capable, non-WATER rows only).
+				if p.has_palette && !p.locked {
+					let rr = Self::radio_rect(d, i);
+					q.field(rr, w, h);
+					if self.effective_owner().as_deref() == Some(p.name.as_str()) {
+						q.rect(Rect::new(rr.x + 3.0, rr.y + 3.0, 8.0, 8.0), w, h, theme::ACCENT);
+					}
+				}
 			}
+			// Header for the radio column ("palette owner").
+			q.label_in(
+				"palette",
+				Rect::new(d.x + d.w - 76.0, d.y, 66.0, TITLE_H),
+				0.0,
+				crate::ui::FONT_SMALL,
+				w,
+				h,
+				theme::INK_DIM,
+			);
 			q.button_primary(self.create_rect(d), w, h, hot);
 			q.label_in("Done", self.create_rect(d), 8.0, crate::ui::FONT_SMALL, w, h, theme::INK);
 			return q;
@@ -342,21 +417,15 @@ impl NewMap {
 			q.label(name, label_x, Self::row_y(d, row) + 4.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
 		}
 
-		let preset = Self::preset_rect(d);
-		q.button(preset, w, h, hot);
-		q.label_in(PRESETS[self.preset].0, preset, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
+		crate::select::draw_box(&mut q, Self::preset_rect(d), self.preset_label(), self.preset_open, w, h, hot);
 
-		for (f, text) in [(Field::Width, &self.width), (Field::Height, &self.height)] {
+		// The size fields' wells + focus borders; their text is drawn clipped by
+		// the shell (see `field_contents`).
+		for f in [Field::Width, Field::Height] {
 			let r = Self::field_rect(d, f);
 			q.field(r, w, h);
-			let focused = self.focus == Some(f);
-			if focused {
+			if self.focus == Some(f) {
 				q.border(r, w, h, theme::INK);
-			}
-			q.label_in(text, r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
-			if focused {
-				let tw = crate::text::label_width(text, crate::ui::FONT_SMALL);
-				q.rect(Rect::new(r.x + 6.0 + tw + 1.0, r.y + 3.0, 2.0, r.h - 6.0), w, h, theme::INK);
 			}
 		}
 		let x_label = Rect::new(Self::field_rect(d, Field::Width).x + FIELD_W + 4.0, Self::row_y(d, 1), 12.0, BTN_H);
@@ -382,6 +451,37 @@ impl NewMap {
 		q.button_primary(self.create_rect(d), w, h, hot);
 		q.label_in("Create", self.create_rect(d), 8.0, crate::ui::FONT_SMALL, w, h, theme::INK);
 		q
+	}
+
+	/// The open size-preset dropdown, as its own layer. The shell draws this
+	/// *after* `field_contents`, so the floating list (opaque well + border)
+	/// sits above the W/H field text - which is painted last and would otherwise
+	/// bleed through it. `None` when closed or on the pack-picker stage.
+	pub fn popup(&self, w: f32, h: f32, hot: Hot) -> Option<UiQuads> {
+		if self.picking || !self.preset_open {
+			return None;
+		}
+		let d = self.dialog_rect(w, h);
+		let mut q = UiQuads::with_steel_map(ui::SteelMap::anchored(d));
+		let labels: Vec<&str> = SIZE_PRESETS.iter().map(|&(name, _, _)| name).collect();
+		crate::select::draw_popup(&mut q, Self::preset_rect(d), &labels, self.preset_match(), false, w, h, hot);
+		Some(q)
+	}
+
+	/// Each size field's text/caret/selection with its clip rect. Empty on the
+	/// pack-picker stage (no size fields shown there).
+	pub fn field_contents(&self, w: f32, h: f32) -> Vec<(UiQuads, Rect)> {
+		if self.picking {
+			return Vec::new();
+		}
+		let d = self.dialog_rect(w, h);
+		[Field::Width, Field::Height]
+			.into_iter()
+			.map(|f| {
+				let r = Self::field_rect(d, f);
+				(self.field_ref(f).content_quads(r, self.focus == Some(f), w, h), r)
+			})
+			.collect()
 	}
 }
 
@@ -459,6 +559,7 @@ impl Previews {
 		modal: &NewMap,
 		assets_root: &Path,
 		screen: (u32, u32),
+		scale: f32,
 	) {
 		if modal.packs.is_empty() {
 			return;
@@ -470,13 +571,16 @@ impl Previews {
 			self.rows = rows;
 		}
 		let Some(bind_group) = &self.bind_group else { return };
-		let (w, h) = (screen.0 as f32, screen.1 as f32);
+		// The modal lays out in **logical** px (physical / scale) - match its
+		// `view()`/`field_contents()` so the previews land in their wells; `blit`
+		// then projects logical → physical.
+		let (w, h) = (screen.0 as f32 / scale, screen.1 as f32 / scale);
 		let d = modal.dialog_rect(w, h);
 		let n = modal.packs.len() as f32;
 		for i in 0..modal.packs.len() {
 			let dst = NewMap::preview_rect(d, i);
 			let (v0, v1) = (i as f32 / n, (i + 1) as f32 / n);
-			blit.draw(device, encoder, target, bind_group, dst, [0.0, v0, 1.0, v1], dst, screen);
+			blit.draw(device, encoder, target, bind_group, dst, [0.0, v0, 1.0, v1], dst, screen, scale);
 		}
 	}
 }
@@ -484,9 +588,10 @@ impl Previews {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::modal::ModalKey;
 
-	fn assets_root() -> PathBuf {
-		Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/assets")
+	fn assets_root() -> std::path::PathBuf {
+		Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/assets/tilepacks")
 	}
 
 	fn modal() -> NewMap {
@@ -510,18 +615,18 @@ mod tests {
 		let mut m = modal();
 		// `new!` forces past the unsaved-changes guard (the New Map fix).
 		assert_eq!(m.create_command().unwrap(), "new! 112 112 WATER GREEN");
-		m.width = "64".into();
-		m.height = "48".into();
+		m.width.set_text("64");
+		m.height.set_text("48");
 		assert_eq!(m.create_command().unwrap(), "new! 64 48 WATER GREEN");
 		// The command must parse (same contract as menu actions).
 		let line = m.create_command().unwrap();
 		assert!(crate::command::parse_line(&line).unwrap().is_some());
 
-		m.height = "".into();
+		m.height.set_text("");
 		assert!(m.create_command().is_err());
-		m.height = "2000".into();
+		m.height.set_text("2000");
 		assert!(m.create_command().is_err());
-		m.height = "48".into();
+		m.height.set_text("48");
 		// Deselect every palette owner → must complain.
 		for p in &mut m.packs {
 			if !p.locked {
@@ -532,23 +637,43 @@ mod tests {
 	}
 
 	#[test]
+	fn palette_owner_radio_leads_the_pack_order() {
+		let mut m = modal();
+		for p in &mut m.packs {
+			if p.name == "SNOW" {
+				p.selected = true;
+			}
+		}
+		// Default owner = GREEN (first selected palette-capable pack).
+		assert_eq!(m.selected_packs(), ["WATER", "GREEN", "SNOW"]);
+		// Choosing SNOW as owner leads it ahead of the other tilesets, so
+		// `Project::new` (first palette pack wins) makes SNOW the owner.
+		m.palette_owner = Some("SNOW".into());
+		assert_eq!(m.selected_packs(), ["WATER", "SNOW", "GREEN"]);
+		assert_eq!(m.create_command().unwrap(), "new! 112 112 WATER SNOW GREEN");
+		// An owner choice that isn't selected falls back to the first owner.
+		m.palette_owner = Some("DESERT".into());
+		assert_eq!(m.selected_packs()[1], "GREEN");
+	}
+
+	#[test]
 	fn typing_edits_the_focused_field() {
 		let mut m = modal();
 		m.focus = Some(Field::Width);
-		m.width.clear();
+		m.width.set_text("");
 		for c in "256".chars() {
-			m.on_key(Some(c), false, false);
+			m.key(&ModalKey::Char(c));
 		}
-		assert_eq!(m.width, "256");
-		m.on_key(None, true, false); // backspace
-		assert_eq!(m.width, "25");
-		m.on_key(Some('x'), false, false); // non-digit ignored
-		assert_eq!(m.width, "25");
-		m.on_key(Some('1'), false, false);
-		m.on_key(Some('2'), false, false);
-		m.on_key(Some('9'), false, false); // 5th digit ignored (cap 4)
-		assert_eq!(m.width, "2512");
-		m.on_key(None, false, true); // tab → height
+		assert_eq!(m.width.text(), "256");
+		m.key(&ModalKey::Backspace);
+		assert_eq!(m.width.text(), "25");
+		m.key(&ModalKey::Char('x')); // non-digit ignored
+		assert_eq!(m.width.text(), "25");
+		m.key(&ModalKey::Char('1'));
+		m.key(&ModalKey::Char('2'));
+		m.key(&ModalKey::Char('9')); // 5th digit ignored (cap 4)
+		assert_eq!(m.width.text(), "2512");
+		m.focus_next(); // tab → height
 		assert_eq!(m.focus, Some(Field::Height));
 	}
 
@@ -561,12 +686,24 @@ mod tests {
 		let f = NewMap::field_rect(d, Field::Width);
 		assert_eq!(m.on_press(f.x + 2.0, f.y + 2.0, w, h), Press::Consumed);
 		assert_eq!(m.focus, Some(Field::Width));
-		// Preset cycles and rewrites the fields.
-		let p = NewMap::preset_rect(d);
-		m.on_press(p.x + 2.0, p.y + 2.0, w, h);
-		assert_eq!((m.width.as_str(), m.height.as_str()), ("1024", "1024"));
-		m.on_press(p.x + 2.0, p.y + 2.0, w, h);
-		assert_eq!(m.width, "112");
+		// Size preset is a dropdown: clicking the box opens the list, clicking an
+		// option rewrites the fields and closes it.
+		let pbox = NewMap::preset_rect(d);
+		m.on_press(pbox.x + 2.0, pbox.y + 2.0, w, h);
+		assert!(m.preset_open, "the box click opens the list");
+		let mega = crate::select::option_rect(pbox, 1, SIZE_PRESETS.len(), false);
+		m.on_press(mega.x + 2.0, mega.y + 2.0, w, h);
+		assert_eq!((m.width.text(), m.height.text()), ("224", "224"));
+		assert!(!m.preset_open, "picking an option closes the list");
+		m.on_press(pbox.x + 2.0, pbox.y + 2.0, w, h); // reopen
+		let giga = crate::select::option_rect(pbox, 2, SIZE_PRESETS.len(), false);
+		m.on_press(giga.x + 2.0, giga.y + 2.0, w, h);
+		assert_eq!((m.width.text(), m.height.text()), ("448", "448"));
+		// Back to Classic (112) for the Create assertion below.
+		m.on_press(pbox.x + 2.0, pbox.y + 2.0, w, h); // reopen
+		let classic = crate::select::option_rect(pbox, 0, SIZE_PRESETS.len(), false);
+		m.on_press(classic.x + 2.0, classic.y + 2.0, w, h);
+		assert_eq!((m.width.text(), m.height.text()), ("112", "112"));
 		// Open the picker, toggle SNOW on, WATER refuses, Done closes.
 		let pb = NewMap::packs_btn_rect(d);
 		m.on_press(pb.x + 2.0, pb.y + 2.0, w, h);

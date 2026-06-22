@@ -1,4 +1,4 @@
-/// Lightweight header view — enough to render a minimap without decoding tiles.
+/// Lightweight header view - enough to render a minimap without decoding tiles.
 #[derive(Debug, Clone)]
 pub struct WrlHeader {
 	pub width: u16,

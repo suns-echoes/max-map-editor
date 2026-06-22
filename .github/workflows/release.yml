@@ -2,14 +2,14 @@
 #
 # Triggered by a v*.*.* tag (or manually, which builds the zips as artifacts
 # without creating a release). Only first-party actions + the preinstalled
-# `gh` CLI are used — no third-party actions (supply-chain policy).
+# `gh` CLI are used - no third-party actions (supply-chain policy).
 #
-# Zip layout (the portable install — settings live beside the binary):
+# Zip layout (the portable install - settings live beside the binary):
 #   max-map-editor[.exe]
 #   config/mme.ini
 #   resources/...
 #   MANUAL.md, LICENSE
-#   install.sh (Linux only — optional desktop integration)
+#   install.sh (Linux only - optional desktop integration)
 
 name: release
 
@@ -118,5 +118,5 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
             --title "$GITHUB_REF_NAME" \
-            --notes "Draft — release notes are written by hand before publishing." \
+            --notes "Draft - release notes are written by hand before publishing." \
             dist/*.zip

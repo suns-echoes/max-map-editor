@@ -10,9 +10,9 @@
 
 #[derive(Debug, Clone, Copy)]
 pub enum CycleDirection {
-	/// Shift colors so the first entry wraps to the last — "dark to light".
+	/// Shift colors so the first entry wraps to the last - "dark to light".
 	Backward,
-	/// Shift colors so the last entry wraps to the first — "light to dark".
+	/// Shift colors so the last entry wraps to the first - "light to dark".
 	Forward,
 }
 
@@ -69,11 +69,11 @@ impl PaletteCycler {
 		Self { rgba, ranges, last_advance_s, dirty: true, ingame: false, masked: Vec::new() }
 	}
 
-	/// `bgra` must be 256*4 bytes laid out as `[B, G, R, A]` per entry —
+	/// `bgra` must be 256*4 bytes laid out as `[B, G, R, A]` per entry -
 	/// MAX's FRAMEPIC palette convention. The sampler expects RGBA, so each
 	/// entry's blue/red bytes are swapped on the way in. Index 0 alpha is
 	/// forced to 0 to match the transparent-slot contract.
-	/// (Unused here so far — kept in sync with the re-MAX original.)
+	/// (Unused here so far - kept in sync with the re-MAX original.)
 	#[allow(dead_code)]
 	pub fn from_bgra(bgra: &[u8]) -> Self {
 		assert_eq!(bgra.len(), 256 * 4, "palette must be 256*4 bgra bytes");

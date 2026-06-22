@@ -1,0 +1,36 @@
+{
+	"version": "1",
+	"name": "Mountain 6",
+	"width": 4,
+	"height": 3,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "GREEN",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR02,GMa056",
+			"WATR03,GMa037",
+			"",
+			""
+		],
+		[
+			"WATR06,GMa057",
+			"WATR04,GMa058",
+			"WATR10,GMa059",
+			""
+		],
+		[
+			"",
+			"WATR03,GMa060",
+			"WATR06,GMa061",
+			"WATR06,GMa151"
+		]
+	]
+}

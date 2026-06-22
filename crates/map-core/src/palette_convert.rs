@@ -1,4 +1,4 @@
-//! Palette compatibility conversion — the planning half of
+//! Palette compatibility conversion - the planning half of
 //! [`crate::Project::convert_to_compatible_palette`].
 //!
 //! A WRL's internal palette can say anything; the game ignores every static
@@ -6,9 +6,9 @@
 //! it color-cycles the animated ranges (9-31 system effects, 96-127 water
 //! cycles). The plan keeps the look as close as possible under the contract:
 //!
-//! 1. Only colors **actually used** by tile pixels matter — unused slots are
+//! 1. Only colors **actually used** by tile pixels matter - unused slots are
 //!    skipped entirely.
-//! 2. Pixels on the game-animated slots (9-31) always move off — the engine
+//! 2. Pixels on the game-animated slots (9-31) always move off - the engine
 //!    cycles its own colors there, so those slots are never trusted and
 //!    never used as remap targets.
 //! 3. The water cycles (96-127) are map-owned: with
@@ -16,19 +16,20 @@
 //!    exactly as the map says (the default); without it their pixels are
 //!    flattened to static approximations like everything else.
 //! 4. Used dynamic non-animated slots (64-95, 128-159) already hold
-//!    map-owned, game-legal colors — they stay pinned and double as targets.
+//!    map-owned, game-legal colors - they stay pinned and double as targets.
 //! 5. Every color that has to move reuses an in-game static color when one
 //!    matches; the rest are approximated into the **unused** dynamic slots,
 //!    refined with a weighted k-means pass (fixed centroids = the reusable
 //!    colors, free centroids = the unused dynamic slots) so heavy colors
-//!    pull their slot toward them — the lossy best-approximation part.
+//!    pull their slot toward them - the lossy best-approximation part.
 //!
 //! Slot 0 is the art pipeline's transparent index: it never remaps and is
 //! never a remap target. Everything is deterministic (stable orderings, no
 //! RNG) so converting the same WRL twice gives identical bytes.
 
 use crate::game_palette::GAME_PALETTE;
-use crate::project::DYNAMIC_SLOTS;
+use crate::palette::slot_rgb;
+use crate::project::{ANIMATED_SLOTS, DYNAMIC_SLOTS, WATER_SLOTS};
 
 /// Refinement passes over the free-slot centroids (k-means with the fixed
 /// game/static colors participating in assignment only).
@@ -49,7 +50,7 @@ impl Default for ConvertOptions {
 	}
 }
 
-/// What the conversion did — the console line's raw material.
+/// What the conversion did - the console line's raw material.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ConvertReport {
 	/// Used slots whose pixels moved and whose color survives exactly.
@@ -72,12 +73,12 @@ pub struct Plan {
 /// Is a slot color-cycled by the game engine (9-31)? Never trusted, never a
 /// remap target.
 fn game_animated(slot: u8) -> bool {
-	(9..=31).contains(&slot)
+	ANIMATED_SLOTS.contains(&slot)
 }
 
 /// Is a slot in a water cycle block (96-127)? Map-owned but cycled in-game.
 fn water(slot: u8) -> bool {
-	(96..=127).contains(&slot)
+	WATER_SLOTS.contains(&slot)
 }
 
 /// A slot the plan may fill with a new color when unused: dynamic, not cycled.
@@ -91,12 +92,7 @@ fn target(slot: u8) -> bool {
 	slot != 0 && !game_animated(slot) && !water(slot)
 }
 
-fn rgb(palette: &[u8], slot: u8) -> [u8; 3] {
-	let at = slot as usize * 3;
-	[palette[at], palette[at + 1], palette[at + 2]]
-}
-
-/// Perceptually weighted squared RGB distance ("redmean") — cheap, decent.
+/// Perceptually weighted squared RGB distance ("redmean") - cheap, decent.
 fn dist(a: [u8; 3], b: [u8; 3]) -> u64 {
 	let rmean = (a[0] as i64 + b[0] as i64) / 2;
 	let dr = a[0] as i64 - b[0] as i64;
@@ -116,7 +112,7 @@ fn must_move(slot: u8, internal: &[u8], opts: ConvertOptions) -> bool {
 		return false; // transparency contract
 	}
 	if game_animated(slot) {
-		return true; // the engine cycles its own colors here — never use
+		return true; // the engine cycles its own colors here - never use
 	}
 	if water(slot) {
 		return !opts.preserve_water;
@@ -124,13 +120,13 @@ fn must_move(slot: u8, internal: &[u8], opts: ConvertOptions) -> bool {
 	if DYNAMIC_SLOTS.contains(&slot) {
 		return false; // map-owned, game-legal as-is
 	}
-	// A static slot renders as the game color — off-spec content must move.
-	rgb(internal, slot) != rgb(&GAME_PALETTE, slot)
+	// A static slot renders as the game color - off-spec content must move.
+	slot_rgb(internal, slot) != slot_rgb(&GAME_PALETTE, slot)
 }
 
 /// Plan the conversion of `internal` (the document's internal 256×RGB
 /// palette) given per-slot pixel `usage`. `None` when no used slot has to
-/// move — the palette is already compatible under `opts`.
+/// move - the palette is already compatible under `opts`.
 pub fn plan(internal: &[u8], usage: &[u64; 256], opts: ConvertOptions) -> Option<Plan> {
 	assert_eq!(internal.len(), 768, "palette must be 256*3 bytes");
 	let used = |s: u8| usage[s as usize] > 0;
@@ -142,7 +138,7 @@ pub fn plan(internal: &[u8], usage: &[u64; 256], opts: ConvertOptions) -> Option
 	// The colors that need a compatible home, weighted by pixel count.
 	let mut weight: Vec<([u8; 3], u64)> = Vec::new();
 	for &slot in &moving {
-		let color = rgb(internal, slot);
+		let color = slot_rgb(internal, slot);
 		match weight.iter_mut().find(|(c, _)| *c == color) {
 			Some((_, w)) => *w += usage[slot as usize],
 			None => weight.push((color, usage[slot as usize])),
@@ -155,7 +151,7 @@ pub fn plan(internal: &[u8], usage: &[u64; 256], opts: ConvertOptions) -> Option
 		.filter(|&s| target(s) && (!assignable(s) || used(s)))
 		.map(|s| {
 			let pal = if assignable(s) { internal } else { &GAME_PALETTE[..] };
-			(rgb(pal, s), s)
+			(slot_rgb(pal, s), s)
 		})
 		.collect();
 	// The free slots new colors may claim: *unused* dynamic non-animated.
@@ -201,7 +197,8 @@ pub fn plan(internal: &[u8], usage: &[u64; 256], opts: ConvertOptions) -> Option
 		for k in 0..centroids.len() {
 			if wsum[k] > 0.0 {
 				let nc = [sum[k][0] / wsum[k], sum[k][1] / wsum[k], sum[k][2] / wsum[k]];
-				moved += (nc[0] - centroids[k][0]).abs() + (nc[1] - centroids[k][1]).abs() + (nc[2] - centroids[k][2]).abs();
+				moved +=
+					(nc[0] - centroids[k][0]).abs() + (nc[1] - centroids[k][1]).abs() + (nc[2] - centroids[k][2]).abs();
 				centroids[k] = nc;
 			}
 		}
@@ -211,7 +208,7 @@ pub fn plan(internal: &[u8], usage: &[u64; 256], opts: ConvertOptions) -> Option
 	}
 
 	// The compatible palette: game statics over the internal palette (the
-	// dynamic slots — water cycles included — keep the map's colors), then
+	// dynamic slots - water cycles included - keep the map's colors), then
 	// the free slots take the refined centroids.
 	let mut palette = internal.to_vec();
 	crate::game_palette::apply_game_statics(&mut palette);
@@ -224,14 +221,14 @@ pub fn plan(internal: &[u8], usage: &[u64; 256], opts: ConvertOptions) -> Option
 	}
 
 	// Remap every moving slot to its nearest stable home (lowest slot on a
-	// tie); everything else — animated kept ranges included — stays put.
+	// tie); everything else - animated kept ranges included - stays put.
 	let mut map = [0u8; 256];
 	for s in 0..=255u16 {
 		map[s as usize] = s as u8;
 	}
 	let mut report = ConvertReport::default();
 	for &slot in &moving {
-		let want = rgb(internal, slot);
+		let want = slot_rgb(internal, slot);
 		let (best, d) = targets
 			.iter()
 			.map(|&(c, s)| (s, dist(want, c)))
@@ -295,14 +292,14 @@ mod tests {
 
 	#[test]
 	fn game_animated_pixels_always_move_off_their_cycle() {
-		// Slot 20 (game-cycled) used — even with the palette byte matching
+		// Slot 20 (game-cycled) used - even with the palette byte matching
 		// the game's, the engine cycles there, so pixels must move.
 		let p = compatible();
 		let plan = plan(&p, &usage_on(&[20]), KEEP).expect("9-31 in use forces a plan");
 		let to = plan.map[20];
 		assert_ne!(to, 20);
 		assert!(target(to), "moved to a stable slot, got {to}");
-		assert_eq!(rgb(&plan.palette, to), rgb(&p, 20), "the cycle's rest color survives");
+		assert_eq!(slot_rgb(&plan.palette, to), slot_rgb(&p, 20), "the cycle's rest color survives");
 		assert_eq!(plan.report.de_animated, 1);
 		// And nothing ever remaps ONTO 9-31 or 96-127.
 		assert!((0..256).all(|i| !game_animated(plan.map[i]) && !water(plan.map[i]) || plan.map[i] == i as u8));
@@ -312,28 +309,28 @@ mod tests {
 	fn water_preservation_is_the_callers_choice() {
 		let mut p = compatible();
 		p[100 * 3..100 * 3 + 3].copy_from_slice(&[4, 5, 6]);
-		// Preserved: used water stays put — no plan needed at all.
+		// Preserved: used water stays put - no plan needed at all.
 		assert!(plan(&p, &usage_on(&[100]), KEEP).is_none());
 		// Dropped: water pixels flatten to a static approximation.
 		let dropped = plan(&p, &usage_on(&[100]), DROP).expect("water in use, not preserved");
 		let to = dropped.map[100];
 		assert!(to != 100 && target(to), "water flattened to a stable slot, got {to}");
-		assert_eq!(rgb(&dropped.palette, to), [4, 5, 6]);
+		assert_eq!(slot_rgb(&dropped.palette, to), [4, 5, 6]);
 		assert_eq!(dropped.report.de_animated, 1);
 	}
 
 	#[test]
 	fn off_spec_static_reuses_game_colors_or_claims_a_free_slot() {
 		let mut p = compatible();
-		// Slot 40 claims the exact color of game slot 45 — reuse, no slot spent.
+		// Slot 40 claims the exact color of game slot 45 - reuse, no slot spent.
 		p[40 * 3..40 * 3 + 3].copy_from_slice(&GAME_PALETTE[45 * 3..45 * 3 + 3]);
-		// Slot 41 claims hot pink — nothing close in the game ramps.
+		// Slot 41 claims hot pink - nothing close in the game ramps.
 		p[41 * 3..41 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]);
 		let plan = plan(&p, &usage_on(&[40, 41]), KEEP).expect("off-spec statics");
 		assert_eq!(plan.map[40], 45, "in-game static color reused");
 		let to = plan.map[41];
 		assert!(assignable(to), "pink claimed a free dynamic slot, got {to}");
-		assert_eq!(rgb(&plan.palette, to), [0xff, 0x00, 0xee]);
+		assert_eq!(slot_rgb(&plan.palette, to), [0xff, 0x00, 0xee]);
 		assert_eq!(plan.report.exact, 2);
 		assert_eq!(plan.report.approximated, 0);
 	}
@@ -346,7 +343,7 @@ mod tests {
 		p[40 * 3..40 * 3 + 3].copy_from_slice(&[10, 200, 30]);
 		let plan = plan(&p, &usage_on(&[40, 70]), KEEP).expect("plan");
 		assert_eq!(plan.map[70], 70, "a used dynamic slot never moves");
-		assert_eq!(rgb(&plan.palette, 70), [10, 200, 30], "and keeps its color");
+		assert_eq!(slot_rgb(&plan.palette, 70), [10, 200, 30], "and keeps its color");
 		assert_eq!(plan.map[40], 70, "the static's pixels reuse it");
 	}
 
@@ -369,8 +366,8 @@ mod tests {
 		for &slot in &slots {
 			assert!(target(plan.map[slot as usize]), "{slot} → stable");
 		}
-		let heavy = rgb(&p, slots[0]);
-		let landed = rgb(&plan.palette, plan.map[slots[0] as usize]);
+		let heavy = slot_rgb(&p, slots[0]);
+		let landed = slot_rgb(&plan.palette, plan.map[slots[0] as usize]);
 		assert!(dist(heavy, landed) <= 64, "the dominant color lands near-exactly: {heavy:?} → {landed:?}");
 		assert_eq!(plan.report.exact + plan.report.approximated, slots.len());
 	}
@@ -400,5 +397,19 @@ mod tests {
 		let plan = plan(&p, &usage, KEEP).expect("plan");
 		assert_eq!(plan.map[0], 0);
 		assert!((1..256).all(|i| plan.map[i] != 0), "nothing remaps onto transparency");
+	}
+
+	#[test]
+	fn plans_with_no_free_slots_to_claim() {
+		// Every assignable (dynamic non-animated) slot is in use, so the `free`
+		// list is empty - a moving color must land on an existing fixed color
+		// rather than a fresh centroid. The planner must still succeed (no panic,
+		// no empty-slice / zero-centroid math going wrong).
+		let p = compatible();
+		let assignable: Vec<u8> = (0..=255u8).filter(|&s| (64..=95).contains(&s) || (128..=159).contains(&s)).collect();
+		let mut used = assignable;
+		used.push(20); // a game-animated slot in use forces at least one move
+		let plan = plan(&p, &usage_on(&used), KEEP).expect("a forced move still plans with zero free slots");
+		assert!(target(plan.map[20]), "slot 20's pixels land on a stable slot, got {}", plan.map[20]);
 	}
 }

@@ -1,7 +1,7 @@
 # Create New Map modal: both stages + the command it builds.
 # Run: cargo run -- --script scripts/newmap-modal.script --headless
 
-open! resources/templates/GREEN_1.json
+open! resources/assets/maps/GREEN_1.json
 new-map
 screenshot temp/newmap-dialog.png
 new-map packs

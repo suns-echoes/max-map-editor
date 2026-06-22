@@ -1,0 +1,21 @@
+{
+	"version": "1",
+	"name": "Mountain 23",
+	"width": 1,
+	"height": 1,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "GREEN",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR05,GMa035"
+		]
+	]
+}

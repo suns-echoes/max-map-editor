@@ -1,0 +1,39 @@
+{
+	"version": "1",
+	"name": "Mountain D-1B",
+	"width": 5,
+	"height": 3,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR04,SMC003",
+			"WATR04,SMC004",
+			"WATR09,SMC005",
+			"WATR02,SMC006",
+			"WATR06,SMC007"
+		],
+		[
+			"WATR10,SMC008",
+			"WATR06,SMC009",
+			"WATR07,SMC010",
+			"WATR01,SMC011",
+			"WATR07,SMC012"
+		],
+		[
+			"WATR00,SMC033",
+			"WATR00,SMC034",
+			"WATR07,SMC035",
+			"WATR07,SMC036",
+			"WATR09,SMC037"
+		]
+	]
+}

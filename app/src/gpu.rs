@@ -1,5 +1,5 @@
 //! GPU bring-up: windowed (surface + swapchain) and headless (device only,
-//! used by `--screenshot`). Trimmed from re-max's `GpuContext` — no offscreen
+//! used by `--screenshot`). Trimmed from re-max's `GpuContext` - no offscreen
 //! scene buffers yet, the tile pass renders straight to the target.
 
 use std::sync::Arc;
@@ -53,7 +53,7 @@ impl WindowGpu {
 	}
 }
 
-/// Device + queue without a window — the `--screenshot` path.
+/// Device + queue without a window - the `--screenshot` path.
 pub async fn headless() -> (wgpu::Device, wgpu::Queue) {
 	let instance =
 		wgpu::Instance::new(&wgpu::InstanceDescriptor { backends: wgpu::Backends::all(), ..Default::default() });
@@ -62,14 +62,21 @@ pub async fn headless() -> (wgpu::Device, wgpu::Queue) {
 }
 
 async fn pick_adapter(instance: &wgpu::Instance, surface: Option<&wgpu::Surface<'_>>) -> wgpu::Adapter {
-	instance
-		.request_adapter(&wgpu::RequestAdapterOptions {
-			power_preference: wgpu::PowerPreference::HighPerformance,
-			compatible_surface: surface,
-			force_fallback_adapter: false,
-		})
-		.await
-		.expect("no compatible GPU adapter found")
+	let options = |force_fallback_adapter| wgpu::RequestAdapterOptions {
+		power_preference: wgpu::PowerPreference::HighPerformance,
+		compatible_surface: surface,
+		force_fallback_adapter,
+	};
+	// Prefer a real GPU, but fall back to a software rasterizer (lavapipe / WARP)
+	// when there's no hardware adapter - so the headless path (`--headless` /
+	// `--screenshot`) still renders on a GPU-less CI box.
+	match instance.request_adapter(&options(false)).await {
+		Ok(adapter) => adapter,
+		Err(_) => instance
+			.request_adapter(&options(true))
+			.await
+			.expect("no GPU adapter found (hardware or software fallback)"),
+	}
 }
 
 async fn request_device(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {

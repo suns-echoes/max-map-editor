@@ -140,6 +140,13 @@ impl INISection {
 		self.0.remove(key);
 	}
 
+	/// Overlay `other`'s entries onto this section, overriding any duplicate key
+	/// (the same last-wins layering that re-opening a `[section]` provides). Used
+	/// to merge a user config over shipped defaults.
+	pub fn overlay(&mut self, other: INISection) {
+		self.0.extend(other.0);
+	}
+
 	pub fn is_empty(&self) -> bool {
 		self.0.is_empty()
 	}
@@ -170,7 +177,7 @@ impl fmt::Display for INIValue {
 				if let Some(v) = self.1.downcast_ref::<f64>() {
 					let s = v.to_string();
 					// parse_ini tries i64 before f64, so a whole-number float
-					// ("12") would re-parse as Integer — force a decimal point.
+					// ("12") would re-parse as Integer - force a decimal point.
 					if s.contains('.') || s.contains('e') || s.contains('E') || s.contains("inf") || s.contains("NaN") {
 						return f.write_str(&s);
 					}

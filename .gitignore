@@ -3,10 +3,9 @@
 /temp/
 /testdata/
 /private/
-/resources/maps/
 /CLAUDE.md
 .claude
 dist/
-target
+target/
 node_modules/
 resources/user/

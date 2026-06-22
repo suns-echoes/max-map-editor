@@ -25,7 +25,7 @@ impl INI {
 
 	// `from_str` is the crate's established constructor (the app and the
 	// pillar-world upstream both call `INI::from_str`), so it stays an
-	// inherent method rather than the `FromStr` trait — which would force
+	// inherent method rather than the `FromStr` trait - which would force
 	// callers through `.parse()` for no gain.
 	#[allow(clippy::should_implement_trait)]
 	pub fn from_str(ini_content: &str) -> Result<Self, String> {
@@ -59,6 +59,21 @@ impl INI {
 
 	pub fn insert_section(&mut self, section_name: String, section: INISection) {
 		self.0.insert(section_name, section);
+	}
+
+	/// Overlay `other` onto self: merge every section's entries, overriding any
+	/// duplicate key and adding new sections. The programmatic equivalent of
+	/// concatenating the two files with `other` last (later wins) - used to layer
+	/// a user override config over the shipped defaults.
+	pub fn overlay(&mut self, other: INI) {
+		for (name, section) in other.0 {
+			match self.0.get_mut(&name) {
+				Some(existing) => existing.overlay(section),
+				None => {
+					self.0.insert(name, section);
+				}
+			}
+		}
 	}
 
 	pub fn delete_section(&mut self, section_name: &str) {
@@ -127,6 +142,20 @@ mod tests {
 		let mut ini = INI::new();
 		ini.insert_section("Section1".to_string(), section);
 		ini
+	}
+
+	#[test]
+	fn overlay_overrides_keys_and_adds_sections() {
+		// Base (shipped) defaults.
+		let mut base = INI::from_str("[A]\nx=1\ny=2\n[B]\nk=base\n").unwrap();
+		// Override (user): change one key, add a key, add a whole section.
+		let over = INI::from_str("[A]\ny=20\nz=3\n[C]\nnew=yes\n").unwrap();
+		base.overlay(over);
+		assert_eq!(base.get_entry::<i64>("A", "x"), Some(1), "untouched key survives");
+		assert_eq!(base.get_entry::<i64>("A", "y"), Some(20), "duplicate key is overridden");
+		assert_eq!(base.get_entry::<i64>("A", "z"), Some(3), "new key in an existing section is added");
+		assert_eq!(base.get_entry::<String>("B", "k"), Some("base".to_string()), "untouched section survives");
+		assert_eq!(base.get_entry::<bool>("C", "new"), Some(true), "a new section is added wholesale");
 	}
 
 	#[test]
@@ -252,7 +281,7 @@ mod tests {
 
 	#[test]
 	fn test_from_file() {
-		// Arrange — a unique path under the system temp dir (no stray dirs in
+		// Arrange - a unique path under the system temp dir (no stray dirs in
 		// the working tree, no collision with a parallel test run).
 		let ini_content = "[SectionB]\nkey=value\n";
 		let ini_file_path = std::env::temp_dir().join(format!("mme-ini-from-file-{}.ini", std::process::id()));

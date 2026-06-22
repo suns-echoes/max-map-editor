@@ -2,7 +2,7 @@
 //!
 //! Header = 4-byte id + `i32` index offset + `i32` index size.
 //! Index table = array of 8-byte tag + `i32` data offset + `i32` data size.
-//! Entries are raw blobs — the caller decides how to decode each one based on
+//! Entries are raw blobs - the caller decides how to decode each one based on
 //! the `A_` / `D_` / `F_` / `I_` / `P_` / `S_` / `V_` tag prefix.
 
 pub mod manifest;
@@ -56,7 +56,7 @@ pub fn read_res_index(source_file: &Path) -> io::Result<ResArchive> {
 		let data_size = i32::from_le_bytes(data_size_bytes);
 
 		// A negative offset/size in a malformed archive would become a huge
-		// `usize` at the `vec![0u8; data_size as usize]` reads below — reject
+		// `usize` at the `vec![0u8; data_size as usize]` reads below - reject
 		// it here so consumers can trust these fields.
 		if data_offset < 0 || data_size < 0 {
 			return Err(io::Error::new(io::ErrorKind::InvalidData, "RES entry has a negative offset or size"));

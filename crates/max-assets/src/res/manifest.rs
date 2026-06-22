@@ -1,4 +1,4 @@
-//! Loader for `apps/game/assets/config/res.ini` — the per-tag manifest
+//! Loader for `apps/game/assets/config/res.ini` - the per-tag manifest
 //! describing which MAX.RES entries the game should load and (for
 //! simple-images) what palette index to treat as transparent.
 //!
@@ -44,7 +44,7 @@ impl ResManifest {
 }
 
 /// Reads `res.ini` from disk and returns just the `[simple_image]`
-/// section parsed into `ResManifest`. Other sections are ignored — they
+/// section parsed into `ResManifest`. Other sections are ignored - they
 /// remain inventory documentation for now.
 pub fn load_res_manifest(path: &Path) -> std::io::Result<ResManifest> {
 	let text = fs::read_to_string(path)?;

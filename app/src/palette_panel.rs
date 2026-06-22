@@ -2,12 +2,12 @@
 //! contract (`docs/design/tileset-contract.md` §1): labeled sections (the
 //! label ink + an amber tick mark the editable dynamic slots, 64–159),
 //! animated classes dotted, duplicate colors in the dynamic range flagged.
-//! Swatches are always opaque — they show the true palette colour.
-//! All 256 slots are always visible (no scroll — the design's rule); the
+//! Swatches are always opaque - they show the true palette colour.
+//! All 256 slots are always visible (no scroll - the design's rule); the
 //! grid is pure rects + labels on the UI quad layer, no GPU pass.
 //!
 //! Single click selects (`color N`); the editor strip below the grid edits
-//! the selected **dynamic** slot in HSL — and for water cycle slots a
+//! the selected **dynamic** slot in HSL - and for water cycle slots a
 //! second bar row re-tints the whole animated block (`hsl-block`). Edits
 //! land as project palette overrides (map-specific colors), undoable.
 
@@ -16,7 +16,7 @@ use map_core::{WATER_CYCLES, rgb_to_hsl};
 use crate::theme;
 use crate::ui::{Hot, Rect, SteelMap, UiQuads};
 
-const COLS: u16 = 8; // 8 swatches per line — a water-cycle block reads as one row
+const COLS: u16 = 8; // 8 swatches per line - a water-cycle block reads as one row
 const PAD: f32 = 4.0;
 const LABEL_H: f32 = 13.0;
 const GAP: f32 = 1.0;
@@ -41,7 +41,7 @@ pub struct Section {
 /// The palette slot contract, §1. Dynamic slots 64–159 belong to the
 /// tileset; everything else is the game's. Animated = color-cycled in game
 /// (9–31 system sparkle/sea, 96–127 the per-planet water colors). Each
-/// water cycle block gets its own labeled line — one block = one gradient,
+/// water cycle block gets its own labeled line - one block = one gradient,
 /// reading it as a row is the point.
 pub const SECTIONS: [Section; 11] = [
 	Section { label: "system 0-8", start: 0, end: 8, editable: false, animated: false },
@@ -97,7 +97,7 @@ fn grid_height(body: Rect) -> f32 {
 }
 
 /// Panel chrome: the full Color Palette (toolbar with grid/saved tabs +
-/// Save/Load) or the bare WRL Internal Palette (no toolbar, read-only) —
+/// Save/Load) or the bare WRL Internal Palette (no toolbar, read-only) -
 /// same grid, header, and editor-strip layout otherwise.
 #[derive(Clone, Copy, PartialEq)]
 enum Chrome {
@@ -106,7 +106,7 @@ enum Chrome {
 }
 
 /// The grid's visible window (between the pinned header and editor strip)
-/// — also the scissor rect for the scrolled quads.
+/// - also the scissor rect for the scrolled quads.
 pub fn grid_area(body: Rect) -> Rect {
 	grid_area_at(body, Chrome::Full)
 }
@@ -129,7 +129,7 @@ fn tab_bar(body: Rect) -> Rect {
 	body.strip_top(TAB_H)
 }
 
-/// The content area below the toolbar (the bare panel has none) — where the
+/// The content area below the toolbar (the bare panel has none) - where the
 /// grid or the saved list lives.
 fn inner_body(body: Rect, chrome: Chrome) -> Rect {
 	let tab_h = match chrome {
@@ -139,15 +139,21 @@ fn inner_body(body: Rect, chrome: Chrome) -> Rect {
 	Rect::new(body.x, body.y + tab_h, body.w, (body.h - tab_h).max(0.0))
 }
 
-/// Toolbar hit rects: `(grid tab, saved tab, Save, Load)`.
-fn tab_rects(body: Rect) -> (Rect, Rect, Rect, Rect) {
+/// The grid / saved tab hit rects (left of the toolbar).
+fn tab_rects(body: Rect) -> (Rect, Rect) {
 	let (y, hh) = (body.y + 2.0, TAB_H - 4.0);
-	(
-		Rect::new(body.x + 2.0, y, 50.0, hh),
-		Rect::new(body.x + 54.0, y, 52.0, hh),
-		Rect::new(body.x + body.w - 92.0, y, 44.0, hh),
-		Rect::new(body.x + body.w - 46.0, y, 44.0, hh),
-	)
+	(Rect::new(body.x + 2.0, y, 44.0, hh), Rect::new(body.x + 48.0, y, 46.0, hh))
+}
+
+/// Action-button width.
+const ABW: f32 = 36.0;
+
+/// The five manager buttons `[Save, Edit, Delete, Import, Export]`, right-aligned.
+fn action_btns(body: Rect) -> [Rect; 5] {
+	let (y, hh) = (body.y + 2.0, TAB_H - 4.0);
+	let total = 5.0 * ABW + 4.0;
+	let x0 = body.x + body.w - 2.0 - total;
+	std::array::from_fn(|i| Rect::new(x0 + i as f32 * (ABW + 1.0), y, ABW, hh))
 }
 
 /// Row `i` of the saved-palettes list within the content area.
@@ -155,23 +161,32 @@ fn saved_row(inner: Rect, i: usize) -> Rect {
 	Rect::new(inner.x + PAD, inner.y + PAD + i as f32 * SAVED_ROW, inner.w - 2.0 * PAD, SAVED_ROW - 1.0)
 }
 
-/// Draw the toolbar: grid/saved tabs (left) + Save/Load buttons (right).
-fn draw_tab_bar(q: &mut UiQuads, body: Rect, show_saved: bool, w: f32, h: f32, hot: Hot) {
+/// Draw the toolbar: grid/saved tabs (left) + Save/Edit/Delete/Import/Export
+/// (right). Edit/Delete are greyed unless a user palette is selected.
+fn draw_tab_bar(q: &mut UiQuads, body: Rect, show_saved: bool, sel_is_user: bool, w: f32, h: f32, hot: Hot) {
 	q.material(tab_bar(body), w, h, theme::TITLE);
-	let (grid, saved, save, load) = tab_rects(body);
+	let (grid, saved) = tab_rects(body);
 	let ink = |on: bool| if on { theme::ACCENT } else { theme::INK_DIM };
 	q.button_active(grid, w, h, !show_saved, hot);
 	q.label_in("grid", grid, 6.0, crate::ui::FONT_SMALL, w, h, ink(!show_saved));
 	q.button_active(saved, w, h, show_saved, hot);
 	q.label_in("saved", saved, 6.0, crate::ui::FONT_SMALL, w, h, ink(show_saved));
-	q.button(save, w, h, hot);
-	q.label_in("save", save, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
-	q.button(load, w, h, hot);
-	q.label_in("load", load, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
+	// Save/Import/Export are always live; Edit/Delete need a selected user palette.
+	let labels = ["save", "edit", "del", "imp", "exp"];
+	let enabled = [true, sel_is_user, sel_is_user, true, true];
+	for ((r, label), on) in action_btns(body).iter().zip(labels).zip(enabled) {
+		if on {
+			q.button(*r, w, h, hot);
+		} else {
+			q.button_disabled(*r, w, h);
+		}
+		q.label_in(label, *r, 5.0, crate::ui::FONT_SMALL, w, h, if on { theme::INK } else { theme::INK_DIM });
+	}
 }
 
-/// Draw the saved-palettes list (one clickable row per palette file).
-fn draw_saved_list(q: &mut UiQuads, saved: &[String], inner: Rect, w: f32, h: f32, hot: Hot) {
+/// Draw the saved-palettes list (one clickable row per palette file); the
+/// selected row (Edit/Delete target) is ringed.
+fn draw_saved_list(q: &mut UiQuads, saved: &[String], sel: Option<usize>, inner: Rect, w: f32, h: f32, hot: Hot) {
 	q.material(inner, w, h, theme::PANEL);
 	if saved.is_empty() {
 		q.label(
@@ -194,11 +209,14 @@ fn draw_saved_list(q: &mut UiQuads, saved: &[String], inner: Rect, w: f32, h: f3
 		if hot.hover(r) {
 			q.rect(r, w, h, if hot.pressed(r) { theme::PRESS } else { theme::HOVER });
 		}
+		if Some(i) == sel {
+			q.border(r, w, h, theme::ACCENT);
+		}
 		q.label_fit(name, r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
 	}
 }
 
-/// Header buttons: `[cycle]` `[static]` — wired to the global palette
+/// Header buttons: `[cycle]` `[static]` - wired to the global palette
 /// animation (`animate on|off`).
 fn header_buttons(body: Rect, chrome: Chrome) -> (Rect, Rect) {
 	let c = inner_body(body, chrome);
@@ -240,7 +258,7 @@ fn bar_rects_at(body: Rect, row: usize, chrome: Chrome) -> [Rect; 3] {
 }
 
 /// Screen rect of a slot's swatch within the body, at a given scroll.
-/// (Geometry probe — the click path goes through `slot_rect_at`; tests use it.)
+/// (Geometry probe - the click path goes through `slot_rect_at`; tests use it.)
 #[allow(dead_code)]
 pub fn slot_rect(body: Rect, scroll: f32, index: u16) -> Rect {
 	slot_rect_at(body, scroll, index, Chrome::Full)
@@ -294,15 +312,19 @@ pub enum Action {
 	},
 	/// Switch the panel's tab: false = the grid, true = the saved-palettes list.
 	ShowSaved(bool),
-	/// Toolbar buttons: open the file dialog to save / load a palette.
+	/// Toolbar buttons: Save (name modal), Edit (rename the selected saved
+	/// palette), Delete it, Import a file, Export the working palette.
 	Save,
-	Load,
-	/// Click a row in the saved-palettes list — load that palette.
+	Edit,
+	Delete,
+	Import,
+	Export,
+	/// Click a row in the saved-palettes list - load + select it.
 	LoadSaved(usize),
 }
 
 /// Hit-test a click: header buttons, then the editor sliders/bars (when the
-/// selection can take palette edits — projects only; flat WRL docs are read-
+/// selection can take palette edits - projects only; flat WRL docs are read-
 /// only here), then the swatch grid. `sel_end` is the shift-click range end;
 /// `shift` extends the selection on a grid click.
 #[allow(clippy::too_many_arguments)]
@@ -318,19 +340,19 @@ pub fn click(
 	show_saved: bool,
 	saved_len: usize,
 ) -> Option<Action> {
-	// Toolbar (topmost): grid/saved tabs + Save/Load.
-	let (grid_tab, saved_tab, save, load) = tab_rects(body);
+	// Toolbar (topmost): grid/saved tabs + the five manager buttons.
+	let (grid_tab, saved_tab) = tab_rects(body);
 	if grid_tab.contains(x, y) {
 		return Some(Action::ShowSaved(false));
 	}
 	if saved_tab.contains(x, y) {
 		return Some(Action::ShowSaved(true));
 	}
-	if save.contains(x, y) {
-		return Some(Action::Save);
-	}
-	if load.contains(x, y) {
-		return Some(Action::Load);
+	let actions = [Action::Save, Action::Edit, Action::Delete, Action::Import, Action::Export];
+	for (r, a) in action_btns(body).iter().zip(actions) {
+		if r.contains(x, y) {
+			return Some(a);
+		}
 	}
 	if show_saved {
 		let inner = inner_body(body, Chrome::Full);
@@ -341,7 +363,15 @@ pub fn click(
 
 /// [`click`] for the bare (WRL Internal Palette) panel: no toolbar, no saved
 /// list, read-only (selection + cycle buttons only).
-pub fn click_bare(body: Rect, active: Option<u16>, sel_end: Option<u16>, scroll: f32, x: f32, y: f32, shift: bool) -> Option<Action> {
+pub fn click_bare(
+	body: Rect,
+	active: Option<u16>,
+	sel_end: Option<u16>,
+	scroll: f32,
+	x: f32,
+	y: f32,
+	shift: bool,
+) -> Option<Action> {
 	click_at(body, active, sel_end, false, scroll, x, y, shift, Chrome::Bare)
 }
 
@@ -399,13 +429,9 @@ fn click_at(
 	Some(if shift && active.is_some() { Action::SelectTo(hit) } else { Action::Select(hit) })
 }
 
-/// sRGB byte → linear float (the UI pipeline works in linear).
-fn srgb_to_linear(b: u8) -> f32 {
-	let c = b as f32 / 255.0;
-	if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
-}
+use crate::theme::srgb_to_linear;
 
-/// Slot colors that repeat within the **dynamic** range (64–159) — wasted
+/// Slot colors that repeat within the **dynamic** range (64–159) - wasted
 /// editable slots, flagged per the design.
 pub fn dynamic_duplicates(palette: &[u8]) -> Vec<u16> {
 	let mut out = Vec::new();
@@ -430,18 +456,21 @@ pub struct PaletteView {
 /// Build the panel. `display` colors the swatches (the live cycled palette
 /// while cycling is on); `base` is the stored palette the editor strip and
 /// duplicate detection read. `can_edit` = palette edits possible (project
-/// open) — without it the strip is read-only (no sliders).
+/// open) - without it the strip is read-only (no sliders).
 #[allow(clippy::too_many_arguments)]
 pub fn view(
 	display: &[u8],
 	base: &[u8],
 	active: Option<u16>,
 	sel_end: Option<u16>,
+	multi: &[u16],
 	scroll: f32,
 	cycling: bool,
 	can_edit: bool,
 	show_saved: bool,
 	saved: &[String],
+	sel: Option<usize>,
+	sel_is_user: bool,
 	body: Rect,
 	w: f32,
 	h: f32,
@@ -449,23 +478,24 @@ pub fn view(
 	hot: Hot,
 ) -> PaletteView {
 	let mut chrome = UiQuads::with_steel_map(map);
-	draw_tab_bar(&mut chrome, body, show_saved, w, h, hot);
+	draw_tab_bar(&mut chrome, body, show_saved, sel_is_user, w, h, hot);
 	if show_saved {
 		let inner = inner_body(body, Chrome::Full);
-		draw_saved_list(&mut chrome, saved, inner, w, h, hot);
+		draw_saved_list(&mut chrome, saved, sel, inner, w, h, hot);
 		return PaletteView { grid: UiQuads::default(), chrome, scissor: inner };
 	}
-	view_at(display, base, active, sel_end, scroll, cycling, can_edit, body, w, h, hot, chrome, Chrome::Full)
+	view_at(display, base, active, sel_end, multi, scroll, cycling, can_edit, body, w, h, hot, chrome, Chrome::Full)
 }
 
 /// [`view`] for the bare (WRL Internal Palette) panel: the same grid, header,
-/// and editor strip, but no toolbar and no editing — pure inspection.
+/// and editor strip, but no toolbar and no editing - pure inspection.
 #[allow(clippy::too_many_arguments)]
 pub fn view_bare(
 	display: &[u8],
 	base: &[u8],
 	active: Option<u16>,
 	sel_end: Option<u16>,
+	multi: &[u16],
 	scroll: f32,
 	cycling: bool,
 	body: Rect,
@@ -475,7 +505,7 @@ pub fn view_bare(
 	hot: Hot,
 ) -> PaletteView {
 	let chrome = UiQuads::with_steel_map(map);
-	view_at(display, base, active, sel_end, scroll, cycling, false, body, w, h, hot, chrome, Chrome::Bare)
+	view_at(display, base, active, sel_end, multi, scroll, cycling, false, body, w, h, hot, chrome, Chrome::Bare)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -484,6 +514,7 @@ fn view_at(
 	base: &[u8],
 	active: Option<u16>,
 	sel_end: Option<u16>,
+	multi: &[u16],
 	scroll: f32,
 	cycling: bool,
 	can_edit: bool,
@@ -522,7 +553,7 @@ fn view_at(
 			let i = index - s.start;
 			let r = Rect::new(body.x + PAD + (i % COLS) as f32 * (b + GAP), y + (i / COLS) as f32 * (b + GAP), b, b);
 			let p = index as usize * 3;
-			// Swatches are always opaque — they show the true colour; the
+			// Swatches are always opaque - they show the true colour; the
 			// editable/fixed distinction is carried by the section label + tick.
 			let color =
 				[srgb_to_linear(palette[p]), srgb_to_linear(palette[p + 1]), srgb_to_linear(palette[p + 2]), 1.0];
@@ -536,8 +567,12 @@ fn view_at(
 				// Duplicate color in the dynamic range: a warning corner.
 				q.rect(Rect::new(r.x + r.w - 3.0, r.y + 1.0, 2.0, 2.0), w, h, theme::CLOSE_INK);
 			}
-			if sel.is_some_and(|(lo, hi)| (lo..=hi).contains(&index)) {
-				q.border(Rect::new(r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0), w, h, theme::INK);
+			let in_range = sel.is_some_and(|(lo, hi)| (lo..=hi).contains(&index));
+			let in_multi = multi.contains(&index);
+			if in_range || in_multi {
+				// Ctrl-built multi-selection rings accent green; a plain range silver.
+				let c = if in_multi { theme::ACCENT } else { theme::INK };
+				q.border(Rect::new(r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0), w, h, c);
 			}
 		}
 		y += rows(s) as f32 * (b + GAP);
@@ -618,7 +653,7 @@ fn draw_editor(
 		if s.editable && chrome == Chrome::Full {
 			// A project slot without a project open: say why there are no
 			// sliders (a flat WRL is read-only here). Fitted to the strip.
-			// The bare panel is read-only by design — no note needed.
+			// The bare panel is read-only by design - no note needed.
 			let note = crate::text::fit_label(
 				"read-only - open a project (.json) to edit",
 				crate::ui::FONT_SMALL,
@@ -691,7 +726,7 @@ mod tests {
 				let r = slot_rect(body, scroll, i);
 				let g = grid_area(body);
 				if r.y < g.y || r.y + r.h > g.y + g.h {
-					continue; // scrolled out of the window — not clickable
+					continue; // scrolled out of the window - not clickable
 				}
 				match click(body, None, None, true, scroll, r.x + 1.0, r.y + 1.0, false, false, 0) {
 					Some(Action::Select(got)) => assert_eq!(got, i, "slot {i} @ {scroll}"),
@@ -806,17 +841,23 @@ mod tests {
 		assert_eq!(grid_area_bare(body).y, body.y + HEADER_H);
 		assert_eq!(grid_area(body).y, body.y + TAB_H + HEADER_H);
 		assert_eq!(max_scroll(body) - max_scroll_bare(body), TAB_H.min(max_scroll(body)));
-		// Swatches hit one toolbar row higher too — and round-trip to Select.
+		// Swatches hit one toolbar row higher too - and round-trip to Select.
 		let r = slot_rect_at(body, 0.0, 0, Chrome::Bare);
 		assert_eq!(r.y, slot_rect(body, 0.0, 0).y - TAB_H);
 		assert!(matches!(click_bare(body, None, None, 0.0, r.x + 1.0, r.y + 1.0, false), Some(Action::Select(0))));
 		assert!(matches!(click_bare(body, Some(5), None, 0.0, r.x + 1.0, r.y + 1.0, true), Some(Action::SelectTo(0))));
 		// The cycle/static header buttons live where the toolbar tabs sit in
-		// the full panel — here they're the header.
+		// the full panel - here they're the header.
 		let (cycle, fixed) = header_buttons(body, Chrome::Bare);
-		assert!(matches!(click_bare(body, None, None, 0.0, cycle.x + 2.0, cycle.y + 2.0, false), Some(Action::Cycle(true))));
-		assert!(matches!(click_bare(body, None, None, 0.0, fixed.x + 2.0, fixed.y + 2.0, false), Some(Action::Cycle(false))));
-		// No sliders/bars ever — even with an editable slot selected, the
+		assert!(matches!(
+			click_bare(body, None, None, 0.0, cycle.x + 2.0, cycle.y + 2.0, false),
+			Some(Action::Cycle(true))
+		));
+		assert!(matches!(
+			click_bare(body, None, None, 0.0, fixed.x + 2.0, fixed.y + 2.0, false),
+			Some(Action::Cycle(false))
+		));
+		// No sliders/bars ever - even with an editable slot selected, the
 		// rects that would be the R slider / block bars hit nothing.
 		for row in 0..3 {
 			let r = bar_rects_at(body, row, Chrome::Bare)[0];
@@ -825,7 +866,20 @@ mod tests {
 		// And the view builds without the toolbar (chrome quads still exist:
 		// header + editor strip), with the bare scissor.
 		let palette = vec![128u8; 768];
-		let v = view_bare(&palette, &palette, Some(64), None, 0.0, false, body, 1280.0, 800.0, SteelMap::Stretch, Hot::NONE);
+		let v = view_bare(
+			&palette,
+			&palette,
+			Some(64),
+			None,
+			&[],
+			0.0,
+			false,
+			body,
+			1280.0,
+			800.0,
+			SteelMap::Stretch,
+			Hot::NONE,
+		);
 		assert!(!v.grid.verts.is_empty());
 		assert!(!v.chrome.verts.is_empty());
 		assert_eq!(v.scissor, grid_area_bare(body));
@@ -858,9 +912,9 @@ mod tests {
 		use crate::state::EditorState;
 		use crate::workspace::Press;
 		use map_core::Project;
-		let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/assets");
-		let project = Project::new(8, 8, &["GREEN".to_string()], &root, 42).unwrap();
-		let mut editor = EditorState::new(project, (1280, 800), None, root.clone());
+		let resources = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources");
+		let project = Project::new(8, 8, &["GREEN".to_string()], &resources.join("assets/tilepacks"), 42).unwrap();
+		let mut editor = EditorState::new(project, (1280, 800), None, resources);
 		editor.active_color = Some(100);
 
 		let (w, h) = (1280.0, 800.0);
@@ -900,11 +954,14 @@ mod tests {
 			&palette,
 			Some(64),
 			None,
+			&[],
 			0.0,
 			false,
 			true,
 			false,
 			&[],
+			None,
+			false,
 			body,
 			1280.0,
 			800.0,
@@ -920,11 +977,14 @@ mod tests {
 			&palette,
 			Some(64),
 			None,
+			&[],
 			max_scroll(body),
 			false,
 			true,
 			false,
 			&[],
+			None,
+			false,
 			body,
 			1280.0,
 			800.0,

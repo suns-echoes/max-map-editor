@@ -1,7 +1,7 @@
 //! Cell selection: a per-cell mask over the map with the set operations the
 //! select tools need (replace/add/subtract, by cell or rectangle, plus
 //! all/clear/invert/similar) and the boundary-edge walk that draws the thick
-//! outline. Selection is **editor state, not document state** — it never
+//! outline. Selection is **editor state, not document state** - it never
 //! enters the undo journal; copy/cut/paste and template capture read it.
 
 use crate::project::{LAYER_GROUND, Project};
@@ -80,7 +80,7 @@ impl Selection {
 		}
 	}
 
-	/// Apply one cell of a select gesture. `Replace` only ever adds here —
+	/// Apply one cell of a select gesture. `Replace` only ever adds here -
 	/// the gesture's first cell clears the selection (the tool routing calls
 	/// [`Self::clear`] on press when the mode is Replace).
 	pub fn apply_cell(&mut self, x: u16, y: u16, mode: SelectMode) {
@@ -101,6 +101,33 @@ impl Selection {
 	pub fn clear(&mut self) {
 		self.mask.fill(false);
 		self.count = 0;
+	}
+
+	/// Shift every selected cell by `(dx, dy)`; cells pushed off the map are
+	/// dropped. Returns whether the mask changed. The marquee-move primitive
+	/// (Alt+drag) - selection only, never the document.
+	pub fn translate(&mut self, dx: i32, dy: i32) -> bool {
+		if (dx == 0 && dy == 0) || self.count == 0 {
+			return false;
+		}
+		let (w, h) = (self.w as i32, self.h as i32);
+		let mut moved = vec![false; self.mask.len()];
+		let mut count = 0;
+		for y in 0..h {
+			for x in 0..w {
+				if !self.mask[(y * w + x) as usize] {
+					continue;
+				}
+				let (nx, ny) = (x + dx, y + dy);
+				if (0..w).contains(&nx) && (0..h).contains(&ny) {
+					moved[(ny * w + nx) as usize] = true;
+					count += 1;
+				}
+			}
+		}
+		self.mask = moved;
+		self.count = count;
+		true
 	}
 
 	pub fn select_all(&mut self) {
@@ -152,7 +179,7 @@ impl Selection {
 	}
 
 	/// The selection's bounding box `(x0, y0, x1, y1)` (inclusive), or `None`
-	/// when nothing is selected — the capture window for copy and templates.
+	/// when nothing is selected - the capture window for copy and templates.
 	pub fn bounds(&self) -> Option<(u16, u16, u16, u16)> {
 		if self.is_empty() {
 			return None;
@@ -171,8 +198,8 @@ impl Selection {
 		Some((x0, y0, x1, y1))
 	}
 
-	/// Every boundary edge — a selected cell's side whose neighbour is not
-	/// selected — within the inclusive cell window `(x0, y0)..=(x1, y1)`.
+	/// Every boundary edge - a selected cell's side whose neighbour is not
+	/// selected - within the inclusive cell window `(x0, y0)..=(x1, y1)`.
 	/// These segments form the thick outline around each selected region
 	/// (regions need not be contiguous); the window keeps the walk
 	/// viewport-sized however large the map is.
@@ -239,6 +266,22 @@ mod tests {
 	}
 
 	#[test]
+	fn translate_shifts_the_mask_and_drops_offmap_cells() {
+		let mut s = Selection::new(6, 6);
+		s.apply_rect(1, 1, 2, 2, SelectMode::Add); // 4 cells
+		assert!(s.translate(2, 1));
+		assert_eq!(s.bounds(), Some((3, 2, 4, 3)), "block moved +2,+1");
+		assert_eq!(s.count(), 4);
+		// Shoving it toward the right edge drops the columns that fall off
+		// (cells at x=3,4 → x=5,6; the x=6 column is off a width-6 map).
+		assert!(s.translate(2, 0));
+		assert_eq!(s.count(), 2, "one column fell off the map");
+		assert!(s.contains(5, 2) && s.contains(5, 3));
+		// A no-op delta reports no change.
+		assert!(!s.translate(0, 0));
+	}
+
+	#[test]
 	fn bounds_wrap_disjoint_regions() {
 		let mut s = Selection::new(10, 10);
 		s.apply_cell(2, 3, SelectMode::Add);
@@ -272,5 +315,43 @@ mod tests {
 		// Every border cell exposes its map-edge sides.
 		let edges = s.boundary_edges(0, 0, 2, 2);
 		assert_eq!(edges.len(), 12, "3×3 fully selected = 12 perimeter edges");
+	}
+
+	#[test]
+	fn select_similar_grows_by_ground_tile() {
+		use crate::project::{TileRef, Transform};
+		fn assets_root() -> std::path::PathBuf {
+			std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks")
+		}
+		let mut p = Project::new(4, 4, &["GREEN".to_string()], &assets_root(), 1).unwrap();
+		let green = 1u8; // pack 0 = WATER, 1 = GREEN
+		let t = |tile| TileRef { pack: green, tile, transform: Transform::default() };
+		// Ground tile 3 ("A") at three cells, tile 7 ("B") at two.
+		p.place_many(&[
+			(0, 0, LAYER_GROUND, Some(t(3))),
+			(2, 0, LAYER_GROUND, Some(t(3))),
+			(1, 1, LAYER_GROUND, Some(t(3))),
+			(1, 0, LAYER_GROUND, Some(t(7))),
+			(3, 3, LAYER_GROUND, Some(t(7))),
+		]);
+
+		// From one A cell, similar grows to every A cell, never the B cells.
+		let mut sel = Selection::new(4, 4);
+		sel.set(0, 0, true);
+		sel.select_similar(&p, None);
+		assert_eq!(sel.count(), 3, "all three tile-A cells selected");
+		assert!(sel.contains(2, 0) && sel.contains(1, 1), "the other A cells joined");
+		assert!(!sel.contains(1, 0) && !sel.contains(3, 3), "B cells excluded");
+
+		// Empty selection + a fallback key (the active brush) selects by that key.
+		let mut sel2 = Selection::new(4, 4);
+		sel2.select_similar(&p, Some((green, 7)));
+		assert_eq!(sel2.count(), 2, "both tile-B cells via fallback");
+		assert!(sel2.contains(1, 0) && sel2.contains(3, 3));
+
+		// Empty selection and no fallback is a no-op.
+		let mut sel3 = Selection::new(4, 4);
+		sel3.select_similar(&p, None);
+		assert_eq!(sel3.count(), 0, "nothing to match -> no-op");
 	}
 }

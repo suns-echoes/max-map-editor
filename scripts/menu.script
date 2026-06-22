@@ -1,7 +1,7 @@
 # Main menu bar: dropdowns (live items bright, placeholders dim).
 # Run: cargo run -- --script scripts/menu.script --headless
 
-open! resources/templates/GREEN_1.json
+open! resources/assets/maps/GREEN_1.json
 menu file
 screenshot temp/menu-file.png
 menu tools

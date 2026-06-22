@@ -10,5 +10,11 @@ publish = { workspace = true }
 json       = { workspace = true }
 max-assets = { workspace = true }
 
+[features]
+# Opt-in shore-solver instrumentation: SHORE_TIME=1 stderr timing and the
+# SHORE_REPAIR_BUDGET override. Off by default so the library stays headless
+# (no env reads / stderr writes). Build with `--features map-core/shore-instrument`.
+shore-instrument = []
+
 [lints]
 workspace = true

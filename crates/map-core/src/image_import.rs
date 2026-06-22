@@ -1,6 +1,6 @@
 //! Image → map conversion: quantize an imported image into the
 //! palette and reblock it into 64×64 tiles, producing a `WrlFile` the editor
-//! opens via [`Project::from_wrl`](crate::Project::from_wrl) — so an import
+//! opens via [`Project::from_wrl`](crate::Project::from_wrl) - so an import
 //! rides the same synthetic-pack path as a `.WRL` open.
 //!
 //! Palette policy (tileset-contract §1): the game-static slots are **preserved**
@@ -10,7 +10,7 @@
 //! 128..=159) via k-means over the image's colour histogram; each pixel is then
 //! Floyd–Steinberg dithered to the nearest emittable slot.
 //!
-//! The work is exposed as a resumable [`ConvertSession`] — `step` does a bounded
+//! The work is exposed as a resumable [`ConvertSession`] - `step` does a bounded
 //! slice and reports `progress`/`stage`, so the editor's New-from-Image modal
 //! can drive it per frame (progress bar, ETA, Abort) without freezing the UI.
 //! [`image_to_wrl`] is the run-to-completion convenience over that session.
@@ -20,11 +20,13 @@ use std::collections::HashMap;
 use max_assets::wrl::{TILE_DATA_SIZE, TILE_SIZE, WrlFile};
 
 use crate::game_palette::GAME_PALETTE;
+use crate::palette::{set_slot_rgb, slot_rgb};
+use crate::project::{ANIMATED_SLOTS, WATER_SLOTS};
 
 /// The dynamic, non-animated palette slots image colours quantize into.
 const K: usize = 64; // 64..=95 (32) + 128..=159 (32)
 const KMEANS_ITERS: usize = 10;
-/// Max per-pixel RGB Euclidean distance (sqrt(3)·255) — relaxed-dedupe scale.
+/// Max per-pixel RGB Euclidean distance (sqrt(3)·255) - relaxed-dedupe scale.
 const MAX_PX_DIST: f32 = 441.672_94;
 
 /// How the source image is mapped onto the chosen map dimensions.
@@ -79,7 +81,7 @@ impl ConvertOpts {
 
 /// Whether a slot lies in an animated colour-cycle range (never emitted).
 fn is_animated(slot: u8) -> bool {
-	(9..=31).contains(&slot) || (96..=127).contains(&slot)
+	ANIMATED_SLOTS.contains(&slot) || WATER_SLOTS.contains(&slot)
 }
 
 /// The 64 dynamic, non-animated slots, in fill order.
@@ -120,7 +122,7 @@ pub struct ConvertSession {
 	buf: Vec<f32>, // tw*th*3 dither working buffer
 	indices: Vec<u8>,
 	/// Per-target-pixel forced palette index (0 = free). Pinned pixels skip
-	/// the histogram and the quantizer — the map-rasterize path uses this to
+	/// the histogram and the quantizer - the map-rasterize path uses this to
 	/// keep water pixels on their (animated) cycle slots. Empty = no pins.
 	pins: Vec<u8>,
 
@@ -153,13 +155,7 @@ impl ConvertSession {
 		let mut palette = GAME_PALETTE.to_vec();
 		let emit: Vec<u8> = (0u8..=255).filter(|&s| !is_animated(s)).collect();
 		// Palette dynamic slots are filled after Cluster; emit_rgb is rebuilt then.
-		let emit_rgb = emit
-			.iter()
-			.map(|&s| {
-				let at = s as usize * 3;
-				[palette[at] as f32, palette[at + 1] as f32, palette[at + 2] as f32]
-			})
-			.collect();
+		let emit_rgb = emit.iter().map(|&s| slot_rgb(&palette, s).map(|b| b as f32)).collect();
 		palette.truncate(768);
 
 		Ok(Self {
@@ -195,7 +191,7 @@ impl ConvertSession {
 	/// Pin target pixels to fixed palette indices: `pins[i] != 0` forces
 	/// `indices[i]` to that slot, keeps the pixel out of the color histogram
 	/// (pinned colors must not spend dynamic slots), and writes the pinned
-	/// slots' colors (`palette`) into the output palette — the map-rasterize
+	/// slots' colors (`palette`) into the output palette - the map-rasterize
 	/// path keeps water pixels animated this way. Call before any `step`.
 	pub fn pin(&mut self, pins: Vec<u8>, palette: &[(u8, [u8; 3])]) -> Result<(), String> {
 		if self.phase != Phase::Resample || self.cursor != 0 {
@@ -205,8 +201,7 @@ impl ConvertSession {
 			return Err(format!("pin: {} pins, want {} ({}×{})", pins.len(), self.tw * self.th, self.tw, self.th));
 		}
 		for &(slot, rgb) in palette {
-			let at = slot as usize * 3;
-			self.palette[at..at + 3].copy_from_slice(&rgb);
+			set_slot_rgb(&mut self.palette, slot, rgb);
 		}
 		self.pins = pins;
 		Ok(())
@@ -242,7 +237,7 @@ impl ConvertSession {
 		}
 	}
 
-	/// Do bounded work — at least one chunk, then more until ~`budget` pixel-
+	/// Do bounded work - at least one chunk, then more until ~`budget` pixel-
 	/// equivalent units are processed. Returns when the budget is spent or the
 	/// conversion finishes/errors.
 	pub fn step(&mut self, budget: usize) {
@@ -300,7 +295,7 @@ impl ConvertSession {
 				self.target[at] = r;
 				self.target[at + 1] = g;
 				self.target[at + 2] = b;
-				// Pinned pixels keep their slot — their color must not pull
+				// Pinned pixels keep their slot - their color must not pull
 				// the clustering (it would waste a dynamic slot on it).
 				if self.pins.get(px).copied().unwrap_or(0) == 0 {
 					*self.hist.entry([r, g, b]).or_insert(0) += 1;
@@ -407,19 +402,9 @@ impl ConvertSession {
 
 	fn enter_dither(&mut self) {
 		for (slot, c) in fill_slots().zip(self.centroids.iter()) {
-			let at = slot as usize * 3;
-			self.palette[at] = round_u8(c[0]);
-			self.palette[at + 1] = round_u8(c[1]);
-			self.palette[at + 2] = round_u8(c[2]);
+			set_slot_rgb(&mut self.palette, slot, [round_u8(c[0]), round_u8(c[1]), round_u8(c[2])]);
 		}
-		self.emit_rgb = self
-			.emit
-			.iter()
-			.map(|&s| {
-				let at = s as usize * 3;
-				[self.palette[at] as f32, self.palette[at + 1] as f32, self.palette[at + 2] as f32]
-			})
-			.collect();
+		self.emit_rgb = self.emit.iter().map(|&s| slot_rgb(&self.palette, s).map(|b| b as f32)).collect();
 		self.buf = self.target.iter().map(|&b| b as f32).collect();
 		self.cursor = 0;
 		self.phase = Phase::Dither;
@@ -441,8 +426,7 @@ impl ConvertSession {
 				let pin = self.pins.get(y * w + x).copied().unwrap_or(0);
 				let chosen = if pin != 0 {
 					self.indices[y * w + x] = pin;
-					let at = pin as usize * 3;
-					[self.palette[at] as f32, self.palette[at + 1] as f32, self.palette[at + 2] as f32]
+					slot_rgb(&self.palette, pin).map(|b| b as f32)
 				} else {
 					let ei = nearest(&old, &self.emit_rgb);
 					self.indices[y * w + x] = self.emit[ei];
@@ -472,9 +456,7 @@ impl ConvertSession {
 
 	fn enter_reblock(&mut self) {
 		self.buf = Vec::new(); // free the dither buffer
-		self.pal_rgb = (0..256)
-			.map(|s| [self.palette[s * 3] as f32, self.palette[s * 3 + 1] as f32, self.palette[s * 3 + 2] as f32])
-			.collect();
+		self.pal_rgb = (0..=255u8).map(|s| slot_rgb(&self.palette, s).map(|b| b as f32)).collect();
 		self.cursor = 0;
 		self.phase = Phase::Reblock;
 	}
@@ -517,7 +499,7 @@ impl ConvertSession {
 	/// tiles; relaxed merges a tile into an existing group only when it
 	/// uses the **same colours** (within a small margin), its **edge/wall ring**
 	/// matches the group's (so a shore isn't merged with ground, nor two shores
-	/// facing different ways), and the body is within the threshold — and the
+	/// facing different ways), and the body is within the threshold - and the
 	/// group's representative becomes the per-pixel **median (mode)** of its
 	/// members.
 	fn add_tile(&mut self, tile: &[u8; TILE_DATA_SIZE]) -> Result<u16, String> {
@@ -557,11 +539,11 @@ impl ConvertSession {
 		let budget = margin * TILE_DATA_SIZE as f32;
 		for gid in 0..self.groups.len() {
 			// Mean-colour prefilter: dist(means) ≤ mean-of-distances (a far mean
-			// can never satisfy the body check) — no false skips.
+			// can never satisfy the body check) - no false skips.
 			if dist_sq(&mean, &self.groups[gid].mean).sqrt() > margin {
 				continue;
 			}
-			// Same colours (within the margin) — never mixes distinct palettes.
+			// Same colours (within the margin) - never mixes distinct palettes.
 			if !colors_compatible(&colors, &self.groups[gid].colors, &self.pal_rgb, margin) {
 				continue;
 			}
@@ -703,7 +685,7 @@ fn edge_ring_dist(a: &[u8], b: &[u8], pal_rgb: &[[f32; 3]]) -> f32 {
 	sum / (4 * n) as f32
 }
 
-/// Per-pixel median (mode) across a group's member tiles — the relaxed-dedupe
+/// Per-pixel median (mode) across a group's member tiles - the relaxed-dedupe
 /// representative. Ties break to the lowest index (deterministic).
 fn per_pixel_mode(members: &[[u8; TILE_DATA_SIZE]]) -> [u8; TILE_DATA_SIZE] {
 	if members.len() == 1 {
@@ -868,5 +850,50 @@ mod tests {
 		}
 		assert_eq!(s.progress(), 1.0);
 		assert!(s.finish().is_ok());
+	}
+
+	#[test]
+	fn new_rejects_degenerate_dimensions_and_buffers() {
+		// Empty source.
+		assert!(
+			ConvertSession::new(Vec::new(), 0, 64, ConvertOpts::fit_source(64, 64)).err().unwrap().contains("empty")
+		);
+		// rgba buffer length must match w×h×4.
+		let short = ConvertSession::new(vec![0u8; 10], 64, 64, ConvertOpts::fit_source(64, 64));
+		assert!(short.err().unwrap().contains("rgba is"));
+		// Map size out of the 1..=1024 tile range.
+		let big = ConvertOpts { width_tiles: 2000, ..ConvertOpts::fit_source(64, 64) };
+		assert!(ConvertSession::new(vec![0u8; 64 * 64 * 4], 64, 64, big).err().unwrap().contains("map size"));
+	}
+
+	#[test]
+	fn pin_after_the_conversion_has_started_is_rejected() {
+		let (rgba, w, h) = solid_blocks(1, 1, |_, _| [40, 80, 120]);
+		let mut s = ConvertSession::new(rgba, w, h, ConvertOpts::fit_source(w, h)).unwrap();
+		s.step(10_000); // leave the Resample/cursor-0 state
+		assert!(s.pin(Vec::new(), &[]).err().unwrap().contains("already started"));
+	}
+
+	#[test]
+	fn single_colour_image_converts_without_panicking() {
+		// A degenerate one-colour histogram (the `colors.len().max(1)` path):
+		// it must still produce a valid single-tile map.
+		let (rgba, w, h) = solid_blocks(2, 2, |_, _| [77, 133, 88]);
+		let wrl = image_to_wrl(&rgba, w, h).unwrap();
+		assert_eq!(wrl.tile_count, 1, "one colour collapses to one tile");
+		assert_eq!(wrl.bigmap, vec![0, 0, 0, 0]);
+	}
+
+	#[test]
+	fn crop_and_fill_coverage_reach_the_requested_size() {
+		// A 2×2-tile source mapped onto a 4×4-tile map under the non-default
+		// coverage modes - both must resample to the requested dimensions.
+		let (rgba, w, h) = solid_blocks(2, 2, |tx, ty| [(tx * 100) as u8 + 20, (ty * 100) as u8 + 20, 70]);
+		for coverage in [Coverage::Crop, Coverage::Fill] {
+			let opts = ConvertOpts { width_tiles: 4, height_tiles: 4, coverage, ..ConvertOpts::fit_source(w, h) };
+			let wrl = run(&rgba, w, h, opts);
+			assert_eq!((wrl.width, wrl.height), (4, 4), "{coverage:?} reaches 4×4");
+			assert_eq!(wrl.bigmap.len(), 16);
+		}
 	}
 }

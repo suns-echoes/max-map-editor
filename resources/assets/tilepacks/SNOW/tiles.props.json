@@ -1,0 +1,126 @@
+{
+	"SCa": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"SLa": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": true
+	},
+	"SLb": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": "invert"
+	},
+	"SLc": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": "invert"
+	},
+	"SMa": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"SMb": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"SMc": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"SMd": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"SSa": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSb": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSc": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSd": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSe": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSf": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSg": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSh": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSi": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSj": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSk": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"SSl": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	}
+}

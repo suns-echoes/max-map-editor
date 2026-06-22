@@ -2,7 +2,7 @@
 //! tile atlas + palette LUT, drawn by `project.wgsl`. The GPU path mirrors
 //! `map_core`'s CPU `compose_cell` (verified against all original WRLs by
 //! the equivalence test). Also owns the Tile Explorer grid pass (
-//! `picker.wgsl`) — same atlas + palette, screen-space quads.
+//! `picker.wgsl`) - same atlas + palette, screen-space quads.
 
 use map_core::{LAYER_GROUND, LAYER_WATER, Project};
 use max_assets::wrl::TILE_DATA_SIZE;
@@ -13,10 +13,10 @@ use crate::render::Uniforms;
 use crate::ui::Rect;
 
 /// Tiles per atlas layer: 16×16 on a 1024×1024 layer. 65 536 tiles (the
-/// engine cap) = 256 layers — comfortably inside GPU array limits.
+/// engine cap) = 256 layers - comfortably inside GPU array limits.
 const ATLAS_LAYER_TILES: u32 = 256;
 const ATLAS_LAYER_PX: u32 = 1024;
-const TILE_PX: u32 = 64;
+use crate::render::TILE_PX;
 
 pub struct ProjectRenderer {
 	pipeline: wgpu::RenderPipeline,
@@ -30,7 +30,7 @@ pub struct ProjectRenderer {
 	overlay_buffer: wgpu::Buffer,
 	/// Global atlas base index per pack (parallel to `project.packs`).
 	pack_base: Vec<u32>,
-	/// Tile Explorer grid pass — shares the atlas + palette.
+	/// Tile Explorer grid pass - shares the atlas + palette.
 	picker_pipeline: wgpu::RenderPipeline,
 	picker_bind_group: wgpu::BindGroup,
 }
@@ -44,7 +44,7 @@ struct PickerVertex {
 	uv: [f32; 2],
 	index: u32,
 	transform: u32,
-	/// Whole-quad opacity — 1.0 for panels, <1 for the ghost-stamp preview.
+	/// Whole-quad opacity - 1.0 for panels, <1 for the ghost-stamp preview.
 	alpha: f32,
 }
 
@@ -170,13 +170,41 @@ impl ProjectRenderer {
 			wgpu::Extent3d { width: 256, height: 1, depth_or_array_layers: 1 },
 		);
 
+		// --- Per-tile transparency mask (R16Uint, atlas-indexed) -------
+		// `0` = opaque family; else the family's mask color + 1. The shader
+		// reads it for the ground tile to decide which pixels fall through. A
+		// 256-wide table mirrors the atlas slot/layer split (index -> x=idx&255,
+		// y=idx>>8), so it's never updated per-edit (masks are pack data).
+		let mask_data = build_tile_mask_data(project);
+		let mask_h = (mask_data.len() / MASK_W) as u32;
+		let tile_mask_texture = device.create_texture(&wgpu::TextureDescriptor {
+			label: Some("project.tile_mask"),
+			size: wgpu::Extent3d { width: MASK_W as u32, height: mask_h, depth_or_array_layers: 1 },
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			format: wgpu::TextureFormat::R16Uint,
+			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+			view_formats: &[],
+		});
+		queue.write_texture(
+			tile_mask_texture.as_image_copy(),
+			bytemuck::cast_slice(&mask_data),
+			wgpu::TexelCopyBufferLayout {
+				offset: 0,
+				bytes_per_row: Some(MASK_W as u32 * 2),
+				rows_per_image: Some(mask_h),
+			},
+			wgpu::Extent3d { width: MASK_W as u32, height: mask_h, depth_or_array_layers: 1 },
+		);
+
 		let uniforms_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 			label: Some("project.uniforms"),
 			size: std::mem::size_of::<Uniforms>() as u64,
 			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
-		// Pass-overlay enable flag (16 bytes — uniform min size).
+		// Pass-overlay enable flag (16 bytes - uniform min size).
 		let overlay_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 			label: Some("project.overlay"),
 			size: 16,
@@ -247,6 +275,16 @@ impl ProjectRenderer {
 					},
 					count: None,
 				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 6,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						sample_type: wgpu::TextureSampleType::Uint,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						multisampled: false,
+					},
+					count: None,
+				},
 			],
 		});
 		let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -276,6 +314,10 @@ impl ProjectRenderer {
 					resource: wgpu::BindingResource::TextureView(&pass_texture.create_view(&Default::default())),
 				},
 				wgpu::BindGroupEntry { binding: 5, resource: overlay_buffer.as_entire_binding() },
+				wgpu::BindGroupEntry {
+					binding: 6,
+					resource: wgpu::BindingResource::TextureView(&tile_mask_texture.create_view(&Default::default())),
+				},
 			],
 		});
 
@@ -334,6 +376,16 @@ impl ProjectRenderer {
 					},
 					count: None,
 				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 2,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						sample_type: wgpu::TextureSampleType::Uint,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						multisampled: false,
+					},
+					count: None,
+				},
 			],
 		});
 		let picker_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -352,6 +404,10 @@ impl ProjectRenderer {
 				wgpu::BindGroupEntry {
 					binding: 1,
 					resource: wgpu::BindingResource::TextureView(&palette_texture.create_view(&Default::default())),
+				},
+				wgpu::BindGroupEntry {
+					binding: 2,
+					resource: wgpu::BindingResource::TextureView(&tile_mask_texture.create_view(&Default::default())),
 				},
 			],
 		});
@@ -410,7 +466,7 @@ impl ProjectRenderer {
 
 	/// Draw the Tile Explorer grid: one quad per visible tile, clipped to
 	/// the panel body via the scissor rect.
-	/// `alpha` scales every quad's opacity — 1.0 for panel content, lower for
+	/// `alpha` scales every quad's opacity - 1.0 for panel content, lower for
 	/// the ghost-stamp preview riding under the cursor.
 	#[allow(clippy::too_many_arguments)]
 	pub fn draw_picker(
@@ -421,22 +477,27 @@ impl ProjectRenderer {
 		tiles: &[TileQuad],
 		scissor: Rect,
 		screen: (u32, u32),
+		scale: f32,
 		alpha: f32,
 	) {
 		if tiles.is_empty() {
 			return;
 		}
+		// Panel tiles are laid out in **logical** px; project from the logical size
+		// (physical / scale) and convert the scissor to **physical** px for the GPU.
+		// Map-space callers (the ghost stamp) pass `scale = 1.0` → the original path.
 		let (w, h) = (screen.0 as f32, screen.1 as f32);
-		let sx = scissor.x.clamp(0.0, w) as u32;
-		let sy = scissor.y.clamp(0.0, h) as u32;
-		let sw = (scissor.x + scissor.w).clamp(0.0, w) as u32 - sx;
-		let sh = (scissor.y + scissor.h).clamp(0.0, h) as u32 - sy;
+		let (lw, lh) = (w / scale, h / scale);
+		let sx = (scissor.x * scale).clamp(0.0, w) as u32;
+		let sy = (scissor.y * scale).clamp(0.0, h) as u32;
+		let sw = ((scissor.x + scissor.w) * scale).clamp(0.0, w) as u32 - sx;
+		let sh = ((scissor.y + scissor.h) * scale).clamp(0.0, h) as u32 - sy;
 		if sw == 0 || sh == 0 {
 			return;
 		}
 
-		let nx = |x: f32| x / w * 2.0 - 1.0;
-		let ny = |y: f32| 1.0 - y / h * 2.0;
+		let nx = |x: f32| x / lw * 2.0 - 1.0;
+		let ny = |y: f32| 1.0 - y / lh * 2.0;
 		let mut verts = Vec::with_capacity(tiles.len() * 6);
 		for t in tiles {
 			let (x0, y0, x1, y1) = (t.rect.x, t.rect.y, t.rect.x + t.rect.w, t.rect.y + t.rect.h);
@@ -456,18 +517,7 @@ impl ProjectRenderer {
 			usage: wgpu::BufferUsages::VERTEX,
 		});
 
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("picker.pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: target,
-				resolve_target: None,
-				ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-		});
+		let mut pass = crate::render::load_pass(encoder, target, "picker.pass");
 		pass.set_scissor_rect(sx, sy, sw, sh);
 		pass.set_pipeline(&self.picker_pipeline);
 		pass.set_bind_group(0, &self.picker_bind_group, &[]);
@@ -475,7 +525,7 @@ impl ProjectRenderer {
 		pass.draw(0..verts.len() as u32, 0..1);
 	}
 
-	/// Re-upload the cell-stack texture after edits (full upload — partial
+	/// Re-upload the cell-stack texture after edits (full upload - partial
 	/// dirty-rect upload is a future dirty-rect optimization).
 	pub fn update_cells(&self, queue: &wgpu::Queue, project: &Project) {
 		let (w, h) = (project.width as u32, project.height as u32);
@@ -510,24 +560,14 @@ impl ProjectRenderer {
 		target: &wgpu::TextureView,
 		uniforms: Uniforms,
 		pass_overlay: bool,
+		layer_mask: u32,
 	) {
 		queue.write_buffer(&self.uniforms_buffer, 0, bytemuck::bytes_of(&uniforms));
-		let overlay: [u32; 4] = [pass_overlay as u32, 0, 0, 0];
+		let overlay: [u32; 4] = [pass_overlay as u32, layer_mask, 0, 0];
 		queue.write_buffer(&self.overlay_buffer, 0, bytemuck::cast_slice(&overlay));
-		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("project.pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: target,
-				resolve_target: None,
-				// Load (not Clear): the app-background steel is drawn first and the
-				// shader discards out-of-map fragments, so it shows through.
-				ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-		});
+		// Load (not Clear): the app-background steel is drawn first and the
+		// shader discards out-of-map fragments, so it shows through.
+		let mut pass = crate::render::load_pass(encoder, target, "project.pass");
 		pass.set_pipeline(&self.pipeline);
 		pass.set_bind_group(0, &self.bind_group, &[]);
 		pass.draw(0..3, 0..1);
@@ -545,6 +585,26 @@ fn build_pass_data(project: &Project) -> Vec<u8> {
 		}
 	}
 	out
+}
+
+/// Width of the per-tile mask table (also its index split: x = idx & 255,
+/// y = idx >> 8 - the same slot/layer split the atlas uses).
+const MASK_W: usize = 256;
+
+/// The per-tile transparency mask table in global atlas-index order: `0` for an
+/// opaque family, else its mask color + 1. Padded to a full `MASK_W`-wide grid.
+fn build_tile_mask_data(project: &Project) -> Vec<u16> {
+	let total: usize = project.packs.iter().map(|p| p.tile_count() as usize).sum();
+	let height = total.div_ceil(MASK_W).max(1);
+	let mut data = vec![0u16; MASK_W * height];
+	let mut gi = 0usize;
+	for pack in &project.packs {
+		for tile in 0..pack.tile_count() {
+			data[gi] = pack.tile_mask(tile).map_or(0, |m| m as u16 + 1);
+			gi += 1;
+		}
+	}
+	data
 }
 
 fn build_cell_data(project: &Project, pack_base: &[u32]) -> Vec<u16> {

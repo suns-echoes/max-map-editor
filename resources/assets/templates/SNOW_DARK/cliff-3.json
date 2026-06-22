@@ -1,0 +1,128 @@
+{
+	"version": "1",
+	"name": "Cliff 3",
+	"width": 9,
+	"height": 10,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"",
+			"",
+			"",
+			"",
+			"WATR05,SCA024",
+			"WATR05,SCA064",
+			"WATR03,SCA038",
+			"WATR03,SCA039"
+		],
+		[
+			"",
+			"",
+			"",
+			"",
+			"WATR02,SCA001",
+			"WATR07,SCA026",
+			"WATR00,SCA027",
+			"WATR02,SCA107",
+			"WATR06,SCA108"
+		],
+		[
+			"",
+			"",
+			"",
+			"",
+			"WATR11,SCA109",
+			"WATR10,SCA110",
+			"",
+			"WATR07,SCA018",
+			"WATR11,SCA019"
+		],
+		[
+			"",
+			"",
+			"WATR09,SCA024",
+			"WATR01,SCA025",
+			"WATR05,SCA058",
+			"WATR08,SCA059",
+			"WATR02,SCA020",
+			"WATR03,SCA111",
+			"WATR04,SCA112"
+		],
+		[
+			"",
+			"WATR00,SCA000",
+			"WATR01,SCA029",
+			"WATR10,SCA113",
+			"WATR11,SCA059",
+			"WATR11,SCA114",
+			"WATR02,SCA111",
+			"WATR05,SCA115",
+			""
+		],
+		[
+			"WATR01,SCA001",
+			"WATR09,SCA002",
+			"WATR01,SCA059",
+			"WATR00,SCA116",
+			"WATR09,SCA045",
+			"WATR03,SCA046",
+			"WATR06,SCA047",
+			"",
+			""
+		],
+		[
+			"WATR11,SCA117",
+			"WATR00,SCA118",
+			"WATR02,SCA119",
+			"WATR11,SCA126",
+			"WATR00,SCA078",
+			"WATR05,SCA049",
+			"WATR01,SCA050",
+			"",
+			""
+		],
+		[
+			"WATR01,SCA120",
+			"WATR02,SCA121",
+			"WATR00,SCA122",
+			"WATR04,SCA123",
+			"",
+			"",
+			"",
+			"",
+			""
+		],
+		[
+			"WATR02,SCA034",
+			"WATR07,SCA124",
+			"WATR02,SCA046",
+			"WATR04,SCA047",
+			"",
+			"",
+			"",
+			"",
+			""
+		],
+		[
+			"",
+			"WATR00,SCA127",
+			"WATR08,SCA049",
+			"WATR10,SCA050",
+			"",
+			"",
+			"",
+			"",
+			""
+		]
+	]
+}

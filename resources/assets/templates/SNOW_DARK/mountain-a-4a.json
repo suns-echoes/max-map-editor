@@ -1,0 +1,33 @@
+{
+	"version": "1",
+	"name": "Mountain A-4A",
+	"width": 3,
+	"height": 3,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR02,SMA004",
+			"WATR08,SMA005",
+			"WATR03,SMA014"
+		],
+		[
+			"WATR06,SMA015",
+			"WATR05,SMA016",
+			"WATR02,SMA017"
+		],
+		[
+			"WATR03,SMA018",
+			"WATR09,SMA019",
+			"WATR11,SMA020"
+		]
+	]
+}

@@ -1,0 +1,30 @@
+{
+	"version": "1",
+	"name": "Mountain E-1A",
+	"width": 2,
+	"height": 3,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR03,SMB000",
+			"WATR02,SMB014"
+		],
+		[
+			"WATR02,SMB001",
+			"WATR05,SMB015"
+		],
+		[
+			"WATR10,SMB044",
+			"WATR09,SMB016"
+		]
+	]
+}

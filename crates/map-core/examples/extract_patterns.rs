@@ -3,7 +3,7 @@
 //! describe obstruction adjacency in `tiles.match.json` were never authored,
 //! so the originals are the ground truth: every connected formation of one
 //! family (same 3-char id prefix; `tiles.props.json` types are definitive)
-//! becomes a pattern — irregular shapes keep `null` holes, duplicates
+//! becomes a pattern - irregular shapes keep `null` holes, duplicates
 //! collapse.
 //!
 //! Usage: `cargo run -p map-core --example extract_patterns [ORIGINALS_DIR]`
@@ -27,10 +27,10 @@ struct Pattern {
 fn main() {
 	let originals = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("testdata/originals"));
 	if !originals.is_dir() {
-		eprintln!("no originals at {} — run tools/fetch-testdata.sh first", originals.display());
+		eprintln!("no originals at {} - run tools/fetch-testdata.sh first", originals.display());
 		std::process::exit(2);
 	}
-	let assets = Path::new("resources/assets");
+	let assets = Path::new("resources/assets/tilepacks");
 	for (pack_name, originals_prefix) in
 		[("CRATER", "CRATER"), ("DESERT", "DESERT"), ("GREEN", "GREEN"), ("SNOW", "SNOW"), ("SNOW_DARK", "SNOW")]
 	{
@@ -50,7 +50,7 @@ fn extract_pack(assets: &Path, originals: &Path, pack_name: &str, originals_pref
 	}
 
 	// Families worth patterns: typed OBSTRUCTION or LAND, *without*
-	// variants (hasVariants families are interchangeable singles — the
+	// variants (hasVariants families are interchangeable singles - the
 	// randomizer's pool, not formations).
 	let wanted = |family: &str| -> bool {
 		pack.props
@@ -88,7 +88,7 @@ fn extract_pack(assets: &Path, originals: &Path, pack_name: &str, originals_pref
 			})
 			.collect();
 
-		// 8-connected components per family — a formation is what reads as
+		// 8-connected components per family - a formation is what reads as
 		// one visual cluster, diagonal contact included.
 		let mut comp_seen = vec![false; w * h];
 		for start in 0..w * h {
@@ -143,7 +143,7 @@ fn extract_pack(assets: &Path, originals: &Path, pack_name: &str, originals_pref
 		}
 	}
 
-	// Stable order: by family, then size, then cell content — re-runs and
+	// Stable order: by family, then size, then cell content - re-runs and
 	// map-iteration order can't shuffle the file.
 	patterns.sort_by(|a, b| {
 		let fam = |p: &Pattern| p.cells.iter().flatten().next().map(|id| family_of(id).to_string()).unwrap_or_default();

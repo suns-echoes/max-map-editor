@@ -1,10 +1,10 @@
-//! Embed the app icon into the Windows executable — hand-rolled, no build
+//! Embed the app icon into the Windows executable - hand-rolled, no build
 //! dependencies (house rule). On any other target this script is a no-op.
 //!
 //! How: write a one-line `.rc` referencing `assets/icon.ico`, compile it with
 //! the Windows SDK's `rc.exe` into a `.res`, and hand that to the MSVC linker
 //! (`link.exe` accepts `.res` files as plain linker arguments). If `rc.exe`
-//! can't be found the build still succeeds — just without an icon — so
+//! can't be found the build still succeeds - just without an icon - so
 //! cross-checks and unusual setups never break on this.
 
 use std::path::PathBuf;
@@ -27,13 +27,13 @@ fn main() {
 		.expect("write icon.rc");
 
 	let Some(rc_exe) = find_rc_exe() else {
-		println!("cargo:warning=rc.exe not found — building without an embedded icon");
+		println!("cargo:warning=rc.exe not found - building without an embedded icon");
 		return;
 	};
 	let status = Command::new(&rc_exe).arg("/nologo").arg(format!("/fo{}", res.display())).arg(&rc).status();
 	match status {
 		Ok(s) if s.success() => println!("cargo:rustc-link-arg-bins={}", res.display()),
-		other => println!("cargo:warning=rc.exe failed ({other:?}) — building without an embedded icon"),
+		other => println!("cargo:warning=rc.exe failed ({other:?}) - building without an embedded icon"),
 	}
 }
 

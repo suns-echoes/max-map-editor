@@ -1,14 +1,14 @@
 # Color Palette: sections, selection, block re-tint, overrides.
 # Run: cargo run -- --script scripts/palette.script --headless
 
-open! resources/templates/GREEN_1.json
+open! resources/assets/maps/GREEN_1.json
 assert-hash 0x22c03ffe37bff113
 
 # Select a water-cycle slot; the editor strip shows color + block bars.
 color 100
 screenshot temp/palette-selected.png
 
-# Re-tint one whole water block (+60° hue) — ONE undo step.
+# Re-tint one whole water block (+60° hue) - ONE undo step.
 hsl-block 100 60 0 0
 assert-dirty true
 screenshot temp/palette-retinted.png

@@ -2,7 +2,7 @@
 
 INI parser with two re-MAX extensions on top of the usual `[section]` + `key=value` syntax:
 
-- `[[mod X]]` — include another module, either `X.ini` next to the current file or `X/mod.ini` in a subfolder. Parsed recursively into the same flat namespace, with cycle detection.
+- `[[mod X]]` - include another module, either `X.ini` next to the current file or `X/mod.ini` in a subfolder. Parsed recursively into the same flat namespace, with cycle detection.
 - Re-opening an existing `[section]` is *merge*, not an error: later `key=value` lines append new keys and override duplicates. This is what lets layered mods extend a base config. (Matches the contract documented in `apps/game/assets/config/main.ini`.)
 
 ## Usage

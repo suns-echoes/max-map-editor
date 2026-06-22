@@ -1,13 +1,13 @@
 //! Main menu bar: the ten menus from the design
 //! (`designs/features.drawio`, "Main menu" page) plus the Debug menu. Every leaf is either an
-//! **Action** — a command line through the command parser, exactly like a
-//! keybinding — or a **Todo** placeholder that echoes its backlog ticket
+//! **Action** - a command line through the command parser, exactly like a
+//! keybinding - or a **Todo** placeholder that echoes its backlog ticket
 //! (drawn dim, so the unbuilt surface area is visible but honest).
 //!
-//! Pure geometry/state — the shell routes presses here first (menus are
+//! Pure geometry/state - the shell routes presses here first (menus are
 //! topmost); `menu NAME|off` drives it from scripts for screenshots.
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use crate::text;
 use crate::theme;
@@ -19,7 +19,7 @@ const ITEM_H: f32 = 24.0;
 const SEP_H: f32 = 7.0;
 const FONT: f32 = crate::ui::FONT_BODY; // menu is primary nav → the 16px tier
 const PAD_X: f32 = 10.0;
-/// Left gutter reserved on every dropdown row — holds the toggle checkbox and
+/// Left gutter reserved on every dropdown row - holds the toggle checkbox and
 /// keeps all labels in one aligned column.
 const CHECK_W: f32 = 22.0;
 
@@ -28,7 +28,7 @@ pub enum Item {
 	Action {
 		label: String,
 		command: String,
-		/// Keyboard shortcut label (`"Ctrl+C"`) — drawn right-aligned, dim.
+		/// Keyboard shortcut label (`"Ctrl+C"`) - drawn right-aligned, dim.
 		/// Resolved from the loaded bindings via [`MenuBar::apply_shortcuts`].
 		hint: Option<String>,
 	},
@@ -41,7 +41,7 @@ pub enum Item {
 		/// Keyboard shortcut label, as on [`Item::Action`].
 		hint: Option<String>,
 	},
-	/// Not built yet — echoes the backlog ticket when clicked.
+	/// Not built yet - echoes the backlog ticket when clicked.
 	Todo {
 		label: String,
 		ticket: &'static str,
@@ -71,6 +71,31 @@ fn sub(label: &str, items: Vec<Item>) -> Item {
 	Item::Sub { label: label.into(), items }
 }
 
+/// One Quick Load / Template Maps row: the label, an optional right-aligned
+/// note (Template Maps puts the file name here), and the file it opens.
+pub struct MapEntry {
+	pub label: String,
+	pub note: Option<String>,
+	pub path: PathBuf,
+}
+
+/// A Quick Load-style submenu - one `open!` action per entry, or a single dim
+/// placeholder when the list is empty. A `note` rides the right-aligned hint
+/// column (the file name, for Template Maps).
+fn quick_items(entries: &[MapEntry], empty: &'static str) -> Vec<Item> {
+	if entries.is_empty() {
+		return vec![Item::Todo { label: empty.into(), ticket: "" }];
+	}
+	entries
+		.iter()
+		.map(|e| Item::Action {
+			label: e.label.clone(),
+			command: format!("open! \"{}\"", e.path.display()),
+			hint: e.note.clone(),
+		})
+		.collect()
+}
+
 pub struct Menu {
 	pub title: &'static str,
 	pub items: Vec<Item>,
@@ -85,10 +110,10 @@ pub struct MenuBar {
 	hover: Option<(usize, bool)>, // (item index, inside submenu)
 }
 
-/// What a press did — the shell acts on `Run`/`Todo`.
+/// What a press did - the shell acts on `Run`/`Todo`.
 #[derive(Debug, PartialEq)]
 pub enum Press {
-	/// Not on the menu (and nothing was open) — fall through.
+	/// Not on the menu (and nothing was open) - fall through.
 	None,
 	/// Swallowed (opened/closed/ignored).
 	Consumed,
@@ -143,28 +168,38 @@ fn item_at(items: &[Item], panel: Rect, x: f32, y: f32) -> Option<usize> {
 
 impl MenuBar {
 	/// The full design tree. `maps_dir` feeds the Quick Load submenu.
-	pub fn new(maps_dir: &Path) -> Self {
-		let mut quick = Vec::new();
-		if let Ok(entries) = std::fs::read_dir(maps_dir) {
-			let mut names: Vec<String> = entries
-				.filter_map(|e| e.ok())
-				.filter_map(|e| {
-					let name = e.file_name().to_string_lossy().into_owned();
-					name.ends_with(".json").then_some(name)
-				})
-				.collect();
-			names.sort();
-			for name in names.into_iter().take(24) {
-				quick.push(act(
-					name.trim_end_matches(".json"),
-					&format!("open! \"{}\"", maps_dir.join(&name).display()),
-				));
+	/// Add the developer-only **DEV** menu (last in the bar) when `--dev` is set.
+	/// Called once at startup; idempotent.
+	pub fn set_dev(&mut self, dev: bool) {
+		if !dev || self.menus.iter().any(|m| m.title == "DEV") {
+			return;
+		}
+		self.menus.push(Menu {
+			title: "DEV",
+			items: vec![act("Bake to Asset Packs", "bake"), act("Update Map", "update-map")],
+		});
+	}
+
+	/// Refresh the **Quick Load** submenu with the current recently-opened maps
+	/// (called when a map opens). No-op if the File ▸ Quick Load sub is gone.
+	pub fn set_recent(&mut self, recent: &[MapEntry]) {
+		let items = quick_items(recent, "(no recent maps)");
+		if let Some(file) = self.menus.iter_mut().find(|m| m.title == "File") {
+			for item in &mut file.items {
+				if let Item::Sub { label, items: sub_items } = item {
+					if label == "Quick Load" {
+						*sub_items = items;
+						return;
+					}
+				}
 			}
 		}
-		if quick.is_empty() {
-			quick.push(todo("(no projects found)", "IO-7"));
-		}
+	}
 
+	/// `templates` feeds the **Template Maps** submenu (stock starter maps);
+	/// `recent` feeds **Quick Load** (the user's recently-opened maps, kept in
+	/// sync afterwards via [`Self::set_recent`]).
+	pub fn new(templates: &[MapEntry], recent: &[MapEntry]) -> Self {
 		let menus = vec![
 			Menu {
 				title: "File",
@@ -172,8 +207,8 @@ impl MenuBar {
 					act("New Map...", "new-map"),
 					act("New from Image...", "file-dialog new-from-image"),
 					act("Load Map...", "file-dialog load"),
-					sub("Quick Load", quick),
-					todo("Load Previous", "SHELL-4 (recent maps)"),
+					sub("Quick Load", quick_items(recent, "(no recent maps)")),
+					sub("Template Maps", quick_items(templates, "(no template maps)")),
 					Item::Sep,
 					act("Save Project", "save-project"),
 					act("Save Project As...", "file-dialog save-as"),
@@ -181,11 +216,11 @@ impl MenuBar {
 					act("Close Project", "close-project"),
 					Item::Sep,
 					act("Export to WRL", "export"),
-					todo("Import WRL...", "IO-9"),
+					act("Import WRL...", "file-dialog import-wrl"),
 					Item::Sep,
 					todo("Export as Image...", "IO-5"),
 					Item::Sep,
-					act("Exit", "quit"),
+					act("Exit", "quit-request"),
 				],
 			},
 			Menu {
@@ -199,8 +234,9 @@ impl MenuBar {
 					act("Copy", "copy"),
 					act("Paste", "paste"),
 					act("Clear", "delete"),
+					act("Clear All Layers", "delete-all"),
 					Item::Sep,
-					todo("Preferences...", "SHELL-4"),
+					act("Map Preferences...", "map-preferences"),
 				],
 			},
 			Menu {
@@ -216,9 +252,18 @@ impl MenuBar {
 							todo("Custom...", "UI-7"),
 						],
 					),
+					sub(
+						"UI Scale",
+						vec![
+							toggle("Small", "ui-scale small", "ui-scale:small"),
+							toggle("Medium (125%)", "ui-scale medium", "ui-scale:medium"),
+							toggle("Large (150%)", "ui-scale large", "ui-scale:large"),
+						],
+					),
 					toggle("Show Grid", "grid toggle", "grid"),
 					toggle("Show Pass Overlay", "pass-overlay toggle", "pass-overlay"),
 					toggle("Show Units", "units toggle", "show-units"),
+					toggle("Status Bar", "status-bar toggle", "status-bar"),
 					todo("Fullscreen", "SHELL-7"),
 					todo("Immersive Mode", "SHELL-7"),
 				],
@@ -228,6 +273,7 @@ impl MenuBar {
 				items: vec![
 					toggle("Map Editor", "mode map", "mode:map"),
 					toggle("Pass Table Editor", "mode pass", "mode:pass"),
+					toggle("Local Pass Override Editor", "mode localpass", "mode:localpass"),
 					todo("Tile Pixel Editor", "SHELL-8 / TOOL-7"),
 					Item::Sep,
 					sub(
@@ -236,6 +282,8 @@ impl MenuBar {
 							toggle("Water", "layer water", "layer:water"),
 							toggle("Ground", "layer ground", "layer:ground"),
 							todo("Objects", "SHELL-8 (layer is a v2 format concern)"),
+							Item::Sep,
+							toggle("Show Only Selected", "show-only-layer toggle", "layer:only-selected"),
 						],
 					),
 					Item::Sep,
@@ -303,6 +351,7 @@ impl MenuBar {
 					),
 					Item::Sep,
 					todo("Auto Generate Pass Table...", "TOOL-6"),
+					act("Reset Pass Table to Tileset", "tile-pass-reset"),
 					Item::Sep,
 					sub("Palette", vec![act("Convert to Compatible Palette...", "convert-palette-modal")]),
 					Item::Sep,
@@ -343,20 +392,19 @@ impl MenuBar {
 			Menu {
 				title: "Help",
 				items: vec![
-					todo("Help...", "UI-7"),
-					todo("User Manual", "UI-7"),
+					act("User Manual", "help-manual"),
 					Item::Sep,
-					todo("Go to Website", "UI-7"),
+					act("Go to Website", "open-url https://suns-echoes.github.io/max-map-editor/"),
+					act("Go to Project GitHub", "open-url https://github.com/suns-echoes/max-map-editor"),
 					Item::Sep,
-					todo("Check for Newer Version", "UI-7"),
-					todo("About...", "UI-7"),
+					act("About...", "about"),
 				],
 			},
 		];
 		Self { menus, open: None, sub_open: None, hover: None }
 	}
 
-	/// Open a menu by title (case-insensitive) — the `menu` command.
+	/// Open a menu by title (case-insensitive) - the `menu` command.
 	pub fn open_by_name(&mut self, name: &str) -> Result<(), String> {
 		if name == "off" {
 			self.close();
@@ -389,8 +437,12 @@ impl MenuBar {
 		fn walk(items: &mut [Item], hints: &[(String, String)]) {
 			for item in items {
 				match item {
+					// Only overwrite when the command is actually bound, so a
+					// pre-set hint (e.g. a Template Maps file name) survives.
 					Item::Action { command, hint, .. } | Item::Toggle { command, hint, .. } => {
-						*hint = hints.iter().find(|(line, _)| line == command).map(|(_, label)| label.clone());
+						if let Some((_, label)) = hints.iter().find(|(line, _)| line == command) {
+							*hint = Some(label.clone());
+						}
 					}
 					Item::Sub { items, .. } => walk(items, hints),
 					_ => {}
@@ -427,7 +479,7 @@ impl MenuBar {
 		Rect::new(x, BAR_H, w, items_height(items))
 	}
 
-	/// The open submenu's panel rect (beside its parent item) — flipped to the
+	/// The open submenu's panel rect (beside its parent item) - flipped to the
 	/// parent's left when the right side would leave the viewport.
 	fn submenu_rect(&self, menu: usize, item: usize, vw: f32) -> Option<Rect> {
 		let Item::Sub { items, .. } = &self.menus[menu].items[item] else { return None };
@@ -597,7 +649,7 @@ impl MenuBar {
 	}
 }
 
-/// A small checkbox in a row's left gutter — an inset well, filled with the
+/// A small checkbox in a row's left gutter - an inset well, filled with the
 /// accent when `on`.
 fn checkbox(q: &mut UiQuads, r: Rect, on: bool, w: f32, h: f32) {
 	let bx = Rect::new(r.x + 6.0, r.y + (r.h - 11.0) / 2.0, 11.0, 11.0);
@@ -608,7 +660,7 @@ fn checkbox(q: &mut UiQuads, r: Rect, on: bool, w: f32, h: f32) {
 }
 
 /// A row's shortcut hint, right-aligned and dim. The label's `label_fit`
-/// already leaves room — `items_width` budgets label + gap + hint.
+/// already leaves room - `items_width` budgets label + gap + hint.
 fn draw_hint(q: &mut UiQuads, hint: &Option<String>, r: Rect, w: f32, h: f32) {
 	if let Some(hint) = hint {
 		let hw = text::label_width(hint, FONT);
@@ -616,7 +668,7 @@ fn draw_hint(q: &mut UiQuads, hint: &Option<String>, r: Rect, w: f32, h: f32) {
 	}
 }
 
-/// One dropdown panel — shared by the menu bar's dropdowns/submenus and the
+/// One dropdown panel - shared by the menu bar's dropdowns/submenus and the
 /// right-click context menu. `sub_open` keeps an open submenu's parent row lit.
 #[allow(clippy::too_many_arguments)]
 fn draw_panel(
@@ -652,7 +704,7 @@ fn draw_panel(
 				draw_hint(q, hint, r, w, h);
 			}
 			Item::Todo { label, .. } => {
-				// Placeholders are dim — visible surface, honest state.
+				// Placeholders are dim - visible surface, honest state.
 				if hover == Some(i) {
 					q.rect(r, w, h, theme::HOVER);
 				}
@@ -728,14 +780,33 @@ mod tests {
 	use std::path::PathBuf;
 
 	fn maps_dir() -> PathBuf {
-		Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/templates")
+		PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../resources/assets/maps")
+	}
+
+	/// The shipped maps as Template Maps entries (label = file stem; the real app
+	/// reads each map's name, but the menu structure is all these tests check).
+	fn template_entries() -> Vec<MapEntry> {
+		let mut paths: Vec<PathBuf> = std::fs::read_dir(maps_dir())
+			.unwrap()
+			.filter_map(|e| e.ok())
+			.map(|e| e.path())
+			.filter(|p| p.extension().is_some_and(|x| x == "json"))
+			.collect();
+		paths.sort();
+		paths
+			.into_iter()
+			.map(|path| {
+				let label = path.file_stem().unwrap().to_string_lossy().into_owned();
+				MapEntry { label, note: None, path }
+			})
+			.collect()
 	}
 
 	fn bar() -> MenuBar {
-		MenuBar::new(&maps_dir())
+		MenuBar::new(&template_entries(), &[])
 	}
 
-	/// Every Action in the tree must parse — a typo'd menu command should
+	/// Every Action in the tree must parse - a typo'd menu command should
 	/// fail this test, not a click at runtime (same rule as keybindings).
 	#[test]
 	fn every_action_parses() {
@@ -760,12 +831,26 @@ mod tests {
 	}
 
 	#[test]
-	fn quick_load_lists_projects() {
+	fn template_maps_lists_the_stock_maps() {
 		let b = bar();
 		let file = &b.menus[0];
-		let Item::Sub { items, .. } = &file.items[3] else { panic!("Quick Load submenu") };
+		// items: New(0) NewImage(1) Load(2) QuickLoad(3) TemplateMaps(4) ...
+		let Item::Sub { label, items } = &file.items[4] else { panic!("Template Maps submenu") };
+		assert_eq!(label, "Template Maps");
 		assert!(items.len() >= 24, "the 24 converted stock maps");
 		assert!(matches!(&items[0], Item::Action { command, .. } if command.starts_with("open! ")));
+	}
+
+	#[test]
+	fn quick_load_starts_empty_then_set_recent_fills_it() {
+		let mut b = bar();
+		let Item::Sub { label, items } = &b.menus[0].items[3] else { panic!("Quick Load submenu") };
+		assert_eq!(label, "Quick Load");
+		assert!(matches!(&items[0], Item::Todo { .. }), "empty Quick Load shows a placeholder");
+
+		b.set_recent(&[MapEntry { label: "my.json".into(), note: None, path: PathBuf::from("/maps/my.json") }]);
+		let Item::Sub { items, .. } = &b.menus[0].items[3] else { panic!("Quick Load submenu") };
+		assert!(matches!(&items[0], Item::Action { command, .. } if command == "open! \"/maps/my.json\""));
 	}
 
 	#[test]
@@ -831,8 +916,9 @@ mod tests {
 		let zoom = item_rect(&b.menus[2].items, d.x, d.y, d.w, 0);
 		assert!(b.on_move(zoom.x + 4.0, zoom.y + 4.0, 1280.0));
 		assert_eq!(b.sub_open, Some(0));
-		// Hovering a plain item closes the submenu again.
-		let grid = item_rect(&b.menus[2].items, d.x, d.y, d.w, 1);
+		// Hovering a plain item closes the submenu again (Show Grid - index 2,
+		// after the Zoom and UI Scale submenus).
+		let grid = item_rect(&b.menus[2].items, d.x, d.y, d.w, 2);
 		assert!(b.on_move(grid.x + 4.0, grid.y + 4.0, 1280.0));
 		assert_eq!(b.sub_open, None);
 	}

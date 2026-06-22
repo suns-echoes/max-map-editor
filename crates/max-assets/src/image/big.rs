@@ -3,7 +3,7 @@ use super::palette::FRAMEPIC_PALETTE_BGRA;
 use super::types::{ImageData, MAX_IMAGE_HEIGHT, MAX_IMAGE_WIDTH, MaxType};
 use crate::color::rgb_to_bgra;
 
-/// Decodes a "big image" — header + embedded 256-entry palette + RLE-compressed raster.
+/// Decodes a "big image" - header + embedded 256-entry palette + RLE-compressed raster.
 pub fn parse_big_image(data: &[u8]) -> Option<ImageData> {
 	if data.len() < 8 {
 		return None;
@@ -20,7 +20,7 @@ pub fn parse_big_image(data: &[u8]) -> Option<ImageData> {
 		return None;
 	}
 
-	let palette = rgb_to_bgra(&mut data[8..8 + palette_size].to_owned());
+	let palette = rgb_to_bgra(&mut data.get(8..8 + palette_size)?.to_owned());
 
 	let indexed_image_data = image_rle_decode(&data[8 + palette_size..])
 		.map_err(|e| {
@@ -70,7 +70,7 @@ pub fn parse_big_image_indexed(data: &[u8]) -> Option<IndexedFrame> {
 	if data.len() < 8 + palette_size {
 		return None;
 	}
-	// Embedded palette stored as RGB triples — clone into a local buffer
+	// Embedded palette stored as RGB triples - clone into a local buffer
 	// so we can compute remaps without mutating the caller's data.
 	let embedded_rgb = &data[8..8 + palette_size];
 
@@ -99,7 +99,7 @@ pub fn parse_big_image_indexed(data: &[u8]) -> Option<IndexedFrame> {
 	Some(IndexedFrame { width: width as u32, height: height as u32, hot_spot_x, hot_spot_y, pixels })
 }
 
-/// Squared RGB distance over all 256 FRAMEPIC slots — linear but only
+/// Squared RGB distance over all 256 FRAMEPIC slots - linear but only
 /// runs 256×256 times total for a portrait load (once per LUT entry),
 /// so it's not worth a kd-tree or a perceptual color space.
 fn nearest_framepic_index(r: u8, g: u8, b: u8) -> u8 {
@@ -121,7 +121,7 @@ fn nearest_framepic_index(r: u8, g: u8, b: u8) -> u8 {
 	best_idx
 }
 
-/// RLE decode: a signed `i16` count — positive = copy N literal bytes,
+/// RLE decode: a signed `i16` count - positive = copy N literal bytes,
 /// negative = repeat the next byte N times.
 pub fn image_rle_decode(data: &[u8]) -> Result<Vec<u8>, String> {
 	if data.is_empty() {
@@ -132,20 +132,97 @@ pub fn image_rle_decode(data: &[u8]) -> Result<Vec<u8>, String> {
 	let mut i = 0;
 
 	while i < data.len() {
-		let option: i16 = i16::from_le_bytes(data[i..i + 2].try_into().map_err(|_| "Invalid RLE data")?);
+		let option: i16 = i16::from_le_bytes(
+			data.get(i..i + 2).ok_or("truncated RLE opcode")?.try_into().map_err(|_| "Invalid RLE data")?,
+		);
 		i += 2;
 
 		if option > 0 {
 			let count = option as usize;
-			decoded_data.extend_from_slice(&data[i..i + count]);
+			decoded_data.extend_from_slice(data.get(i..i + count).ok_or("truncated RLE literal run")?);
 			i += count;
 		} else {
-			let count = (-option) as usize;
-			let value = data[i];
+			let count = (-(option as i32)) as usize;
+			let value = *data.get(i).ok_or("truncated RLE repeat run")?;
 			i += 1;
-			decoded_data.extend(std::iter::repeat(value).take(count));
+			decoded_data.extend(std::iter::repeat_n(value, count));
 		}
 	}
 
 	Ok(decoded_data)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn rle_truncated_opcode_is_err() {
+		assert!(image_rle_decode(&[0x05]).is_err()); // 1 byte: no full opcode
+	}
+
+	#[test]
+	fn rle_truncated_literal_run_is_err() {
+		// opcode +4 (copy 4) but only one payload byte follows
+		let mut d = 4i16.to_le_bytes().to_vec();
+		d.push(0xaa);
+		assert!(image_rle_decode(&d).is_err());
+	}
+
+	#[test]
+	fn rle_truncated_repeat_run_is_err() {
+		// opcode -3 (repeat) with no value byte
+		let d = (-3i16).to_le_bytes().to_vec();
+		assert!(image_rle_decode(&d).is_err());
+	}
+
+	#[test]
+	fn rle_min_count_does_not_overflow() {
+		// i16::MIN would overflow `-option` computed as i16; ensure it's handled
+		let mut d = i16::MIN.to_le_bytes().to_vec();
+		d.push(0xcd); // value byte
+		assert_eq!(image_rle_decode(&d).unwrap().len(), 32768);
+	}
+
+	#[test]
+	fn rle_roundtrip_literal_then_repeat() {
+		let mut d = Vec::new();
+		d.extend_from_slice(&2i16.to_le_bytes()); // copy 2
+		d.extend_from_slice(&[1, 2]);
+		d.extend_from_slice(&(-3i16).to_le_bytes()); // repeat 3
+		d.push(9);
+		assert_eq!(image_rle_decode(&d).unwrap(), vec![1, 2, 9, 9, 9]);
+	}
+
+	fn big_blob() -> Vec<u8> {
+		let mut d = Vec::new();
+		d.extend_from_slice(&0i16.to_le_bytes()); // hot_spot_x
+		d.extend_from_slice(&0i16.to_le_bytes()); // hot_spot_y
+		d.extend_from_slice(&2i16.to_le_bytes()); // width
+		d.extend_from_slice(&2i16.to_le_bytes()); // height
+		d.extend_from_slice(&[1u8; 256 * 3]); // embedded palette
+		d.extend_from_slice(&4i16.to_le_bytes()); // RLE: copy 4 indices
+		d.extend_from_slice(&[0, 1, 2, 3]);
+		d
+	}
+
+	#[test]
+	fn big_image_decodes_valid_blob() {
+		assert!(parse_big_image(&big_blob()).is_some());
+	}
+
+	#[test]
+	fn big_image_truncated_palette_is_none() {
+		let d = big_blob();
+		assert!(parse_big_image(&d[..100]).is_none()); // header ok, palette cut short
+	}
+
+	#[test]
+	fn big_image_truncating_never_panics() {
+		let d = big_blob();
+		for len in 0..=d.len() {
+			let _ = parse_big_image(&d[..len]);
+			let _ = parse_big_image_indexed(&d[..len]);
+		}
+	}
 }

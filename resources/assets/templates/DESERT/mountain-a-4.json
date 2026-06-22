@@ -1,0 +1,54 @@
+{
+	"version": "1",
+	"name": "Mountain A-4",
+	"width": 4,
+	"height": 6,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "DESERT",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"",
+			"WATR08,DMa014",
+			"WATR08,DMa015"
+		],
+		[
+			"",
+			"WATR02,DMa011",
+			"WATR08,DMa012",
+			"WATR09,DMa013"
+		],
+		[
+			"WATR02,DMa007",
+			"WATR08,DMa008",
+			"WATR02,DMa009",
+			"WATR00,DMa010"
+		],
+		[
+			"WATR02,DMa005",
+			"WATR01,DMa006",
+			"WATR08,DMa001",
+			"WATR11,DMa002"
+		],
+		[
+			"WATR06,DMa003",
+			"WATR01,DMa004",
+			"",
+			""
+		],
+		[
+			"WATR02,DMa050",
+			"",
+			"",
+			""
+		]
+	]
+}

@@ -1,12 +1,14 @@
 //! Resize Map modal (design: features.drawio "Map Resize
 //! Modal"). GIMP-style canvas resize: new W×H text fields plus a 3×3
-//! alignment anchor that places the existing map within the new bounds —
+//! alignment anchor that places the existing map within the new bounds -
 //! enlarging fills the rest with water, shrinking crops to the anchored
 //! window. Resolves to a `resize W H OFFX OFFY` command (the same path
 //! scripts use); the offset is derived from the anchor.
 //!
 //! Pure state/geometry, drawn through the shared [`UiQuads`].
 
+use crate::newmap::SIZE_PRESETS;
+use crate::textinput::{Charset, TextInput};
 use crate::theme;
 use crate::ui::{self, Hot, Rect, UiQuads};
 
@@ -24,17 +26,21 @@ pub enum Field {
 }
 
 pub struct Resize {
-	pub width: String,
-	pub height: String,
+	pub width: TextInput,
+	pub height: TextInput,
 	/// Current map size (for the offset math + preview).
 	old_w: u16,
 	old_h: u16,
 	/// Anchor column/row in 0..3 (1,1 = center).
 	col: u8,
 	row: u8,
+	/// The size-preset dropdown's open state.
+	preset_open: bool,
 	focus: Option<Field>,
+	/// The field being mouse-drag-selected (press..release).
+	drag_field: Option<Field>,
 	/// A command button held down, waiting for release-inside
-	/// — dragging off cancels.
+	/// - dragging off cancels.
 	armed: Option<ArmedBtn>,
 	/// Drag offset from centered (draggable by the titlebar).
 	pub(crate) drag_offset: (f32, f32),
@@ -59,20 +65,36 @@ pub enum Press {
 impl Resize {
 	pub fn new(old_w: u16, old_h: u16) -> Self {
 		Self {
-			width: old_w.to_string(),
-			height: old_h.to_string(),
+			width: TextInput::new(&old_w.to_string(), 4).charset(Charset::Digits),
+			height: TextInput::new(&old_h.to_string(), 4).charset(Charset::Digits),
 			old_w,
 			old_h,
 			col: 1,
 			row: 1,
+			preset_open: false,
 			focus: None,
+			drag_field: None,
 			armed: None,
 			drag_offset: (0.0, 0.0),
 		}
 	}
 
+	fn field_mut(&mut self, f: Field) -> &mut TextInput {
+		match f {
+			Field::Width => &mut self.width,
+			Field::Height => &mut self.height,
+		}
+	}
+
+	fn field_ref(&self, f: Field) -> &TextInput {
+		match f {
+			Field::Width => &self.width,
+			Field::Height => &self.height,
+		}
+	}
+
 	fn parsed(&self) -> Option<(u16, u16)> {
-		Some((self.width.parse().ok()?, self.height.parse().ok()?))
+		Some((self.width.text().parse().ok()?, self.height.text().parse().ok()?))
 	}
 
 	/// Offset of the old map inside the new bounds from the 3×3 anchor:
@@ -92,10 +114,21 @@ impl Resize {
 		Ok(format!("resize {w} {h} {ox} {oy}"))
 	}
 
+	/// The preset whose dimensions match the current W×H fields, if any.
+	fn preset_match(&self) -> Option<usize> {
+		let (w, h) = self.parsed()?;
+		SIZE_PRESETS.iter().position(|&(_, pw, ph)| w == pw && h == ph)
+	}
+
+	/// The dropdown's value label: the matching preset's name, else `Custom`.
+	fn preset_label(&self) -> &'static str {
+		self.preset_match().map(|i| SIZE_PRESETS[i].0).unwrap_or("Custom")
+	}
+
 	// ----- geometry ----------------------------------------------------------
 
 	fn height(&self) -> f32 {
-		TITLE_H + 8.0 + ROW_H + 8.0 + 3.0 * ANCHOR_CELL + 16.0 + BTN_H + 12.0
+		TITLE_H + 8.0 + 2.0 * (ROW_H + 8.0) + 3.0 * ANCHOR_CELL + 16.0 + BTN_H + 12.0
 	}
 
 	pub fn dialog_rect(&self, w: f32, h: f32) -> Rect {
@@ -103,8 +136,13 @@ impl Resize {
 		Rect::centered(w, h, W, dh).translate(self.drag_offset.0, self.drag_offset.1)
 	}
 
+	/// Size-preset cycle button (row 0), above the size fields.
+	fn preset_rect(&self, d: Rect) -> Rect {
+		Rect::new(d.x + 70.0, d.y + TITLE_H + 8.0, 170.0, BTN_H)
+	}
+
 	fn field_rect(&self, d: Rect, f: Field) -> Rect {
-		let y = d.y + TITLE_H + 8.0;
+		let y = d.y + TITLE_H + 8.0 + (ROW_H + 8.0);
 		match f {
 			Field::Width => Rect::new(d.x + 70.0, y, FIELD_W, BTN_H),
 			Field::Height => Rect::new(d.x + 70.0 + FIELD_W + 26.0, y, FIELD_W, BTN_H),
@@ -112,7 +150,7 @@ impl Resize {
 	}
 
 	fn anchor_origin(&self, d: Rect) -> (f32, f32) {
-		(d.x + 70.0, d.y + TITLE_H + 8.0 + ROW_H + 8.0)
+		(d.x + 70.0, d.y + TITLE_H + 8.0 + 2.0 * (ROW_H + 8.0))
 	}
 
 	fn anchor_cell(&self, d: Rect, col: u8, row: u8) -> Rect {
@@ -132,9 +170,32 @@ impl Resize {
 
 	pub fn on_press(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
 		let d = self.dialog_rect(w, h);
+		// Size-preset dropdown: the box toggles; an option rewrites the fields.
+		match crate::select::hit(self.preset_rect(d), self.preset_open, SIZE_PRESETS.len(), false, x, y) {
+			Some(crate::select::Hit::Box) => {
+				self.preset_open = !self.preset_open;
+				return Press::Consumed;
+			}
+			Some(crate::select::Hit::Option(i)) => {
+				let (_, pw, ph) = SIZE_PRESETS[i];
+				self.width.set_text(&pw.to_string());
+				self.height.set_text(&ph.to_string());
+				self.preset_open = false;
+				return Press::Consumed;
+			}
+			None if self.preset_open => {
+				// A click off an open list closes it (and is consumed).
+				self.preset_open = false;
+				return Press::Consumed;
+			}
+			None => {}
+		}
 		for f in [Field::Width, Field::Height] {
-			if self.field_rect(d, f).contains(x, y) {
+			let r = self.field_rect(d, f);
+			if r.contains(x, y) {
 				self.focus = Some(f);
+				self.drag_field = Some(f);
+				self.field_mut(f).on_press(x, y, r);
 				return Press::Consumed;
 			}
 		}
@@ -166,6 +227,7 @@ impl Resize {
 	/// Fire the armed command button if the release is still on it;
 	/// a release anywhere else just disarms.
 	pub fn on_release(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
+		self.drag_field = None;
 		let d = self.dialog_rect(w, h);
 		match self.armed.take() {
 			Some(ArmedBtn::Abort) if self.abort_rect(d).contains(x, y) => Press::Abort,
@@ -174,26 +236,33 @@ impl Resize {
 		}
 	}
 
-	pub fn on_key(&mut self, ch: Option<char>, backspace: bool, tab: bool) {
-		if tab {
-			self.focus = Some(match self.focus {
-				Some(Field::Width) => Field::Height,
-				_ => Field::Width,
-			});
-			return;
+	/// Mouse drag extends the active field's selection (after a press on it).
+	pub fn on_drag(&mut self, x: f32, y: f32, w: f32, h: f32) {
+		if let Some(f) = self.drag_field {
+			let r = self.field_rect(self.dialog_rect(w, h), f);
+			self.field_mut(f).on_drag(x, y, r);
 		}
-		let Some(f) = self.focus else { return };
-		let field = match f {
-			Field::Width => &mut self.width,
-			Field::Height => &mut self.height,
-		};
-		if backspace {
-			field.pop();
-		} else if let Some(c) = ch {
-			if c.is_ascii_digit() && field.len() < 4 {
-				field.push(c);
-			}
+	}
+
+	/// The focused W/H field's edit state.
+	pub fn edit_context(&self) -> Option<crate::modal::EditContext> {
+		let f = self.field_ref(self.focus?);
+		Some(f.edit_context())
+	}
+
+	/// Route an editing key to the focused field.
+	pub fn key(&mut self, key: &crate::modal::ModalKey) {
+		if let Some(f) = self.focus {
+			self.field_mut(f).on_key(key);
 		}
+	}
+
+	/// Tab toggles focus between the width and height fields.
+	pub fn focus_next(&mut self) {
+		self.focus = Some(match self.focus {
+			Some(Field::Width) => Field::Height,
+			_ => Field::Width,
+		});
 	}
 
 	pub fn confirm(&self) -> Press {
@@ -211,19 +280,26 @@ impl Resize {
 		ui::modal_scrim(&mut q, w, h);
 		ui::modal_frame(&mut q, d, "Resize Map", TITLE_H, w, h);
 
+		// Size-preset dropdown (Classic / Mega / Giga); the popup is drawn last.
+		let pr = self.preset_rect(d);
+		q.label("preset", d.x + 10.0, pr.y + 5.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
+		crate::select::draw_box(&mut q, pr, self.preset_label(), self.preset_open, w, h, hot);
+
 		// Size fields.
-		q.label("size", d.x + 10.0, d.y + TITLE_H + 8.0 + 5.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
-		for (f, text) in [(Field::Width, &self.width), (Field::Height, &self.height)] {
+		q.label(
+			"size",
+			d.x + 10.0,
+			self.field_rect(d, Field::Width).y + 5.0,
+			crate::ui::FONT_SMALL,
+			w,
+			h,
+			theme::INK_DIM,
+		);
+		for f in [Field::Width, Field::Height] {
 			let r = self.field_rect(d, f);
 			q.field(r, w, h);
-			let focused = self.focus == Some(f);
-			if focused {
+			if self.focus == Some(f) {
 				q.border(r, w, h, theme::INK);
-			}
-			q.label_in(text, r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
-			if focused {
-				let tw = crate::text::label_width(text, crate::ui::FONT_SMALL);
-				q.rect(Rect::new(r.x + 6.0 + tw + 1.0, r.y + 3.0, 2.0, r.h - 6.0), w, h, theme::INK);
 			}
 		}
 		let xr = self.field_rect(d, Field::Width);
@@ -260,7 +336,7 @@ impl Resize {
 		}
 		if let Some((nw, nh)) = self.parsed() {
 			// Fixed, short, ASCII-only lines (the MAX font has no em-dash) right of
-			// the anchor grid — never word-wrapped, so the note can't overflow.
+			// the anchor grid - never word-wrapped, so the note can't overflow.
 			let (verb, desc) = if nw >= self.old_w && nh >= self.old_h {
 				("enlarge", "fills with water")
 			} else if nw <= self.old_w && nh <= self.old_h {
@@ -288,11 +364,39 @@ impl Resize {
 		q.label_in("Resize", self.confirm_rect(d), 8.0, crate::ui::FONT_SMALL, w, h, theme::INK);
 		q
 	}
+
+	/// The open size-preset dropdown, as its own layer. The shell draws this
+	/// *after* `field_contents`, so the floating list (opaque well + border)
+	/// sits above the W/H field text - which is painted last and would otherwise
+	/// bleed through it. `None` when the dropdown is closed.
+	pub fn popup(&self, w: f32, h: f32, hot: Hot) -> Option<UiQuads> {
+		if !self.preset_open {
+			return None;
+		}
+		let d = self.dialog_rect(w, h);
+		let mut q = UiQuads::with_steel_map(ui::SteelMap::anchored(d));
+		let labels: Vec<&str> = SIZE_PRESETS.iter().map(|&(name, _, _)| name).collect();
+		crate::select::draw_popup(&mut q, self.preset_rect(d), &labels, self.preset_match(), false, w, h, hot);
+		Some(q)
+	}
+
+	/// Per-field text/caret/selection with the clip rect the shell scissors it to.
+	pub fn field_contents(&self, w: f32, h: f32) -> Vec<(UiQuads, Rect)> {
+		let d = self.dialog_rect(w, h);
+		[Field::Width, Field::Height]
+			.into_iter()
+			.map(|f| {
+				let r = self.field_rect(d, f);
+				(self.field_ref(f).content_quads(r, self.focus == Some(f), w, h), r)
+			})
+			.collect()
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::modal::ModalKey;
 
 	#[test]
 	fn drag_offset_shifts_the_dialog_rect() {
@@ -309,8 +413,8 @@ mod tests {
 	#[test]
 	fn center_anchor_centers_the_old_map() {
 		let mut m = Resize::new(4, 4);
-		m.width = "8".into();
-		m.height = "8".into();
+		m.width.set_text("8");
+		m.height.set_text("8");
 		// Center (1,1): offset = (8-4)/2 = 2.
 		assert_eq!(m.command().unwrap(), "resize 8 8 2 2");
 		// Top-left anchor (0,0): offset 0.
@@ -326,8 +430,8 @@ mod tests {
 	#[test]
 	fn shrink_crops_with_anchor() {
 		let mut m = Resize::new(8, 8);
-		m.width = "4".into();
-		m.height = "4".into();
+		m.width.set_text("4");
+		m.height.set_text("4");
 		// Center crop: offset = 1*(4-8)/2 = -2.
 		assert_eq!(m.command().unwrap(), "resize 4 4 -2 -2");
 	}
@@ -335,11 +439,26 @@ mod tests {
 	#[test]
 	fn validates_size() {
 		let mut m = Resize::new(8, 8);
-		m.width = "".into();
+		m.width.set_text("");
 		assert!(m.command().is_err());
-		m.width = "2000".into();
-		m.height = "8".into();
+		m.width.set_text("2000");
+		m.height.set_text("8");
 		assert!(m.command().is_err());
+	}
+
+	#[test]
+	fn key_edits_focused_field_and_tab_toggles() {
+		let mut m = Resize::new(4, 4);
+		m.focus = Some(Field::Width);
+		m.key(&ModalKey::SelectAll);
+		for c in "256x".chars() {
+			m.key(&ModalKey::Char(c)); // non-digit ignored by the Digits charset
+		}
+		assert_eq!(m.width.text(), "256");
+		m.key(&ModalKey::Backspace);
+		assert_eq!(m.width.text(), "25");
+		m.focus_next();
+		assert_eq!(m.focus, Some(Field::Height));
 	}
 
 	#[test]

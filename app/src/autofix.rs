@@ -22,7 +22,7 @@ const BTN_H: f32 = 22.0;
 pub enum FixMode {
 	/// ~1 second wall-clock cap, guaranteed non-freezing.
 	Fast,
-	/// Unbounded time, Stop button; bigger search — may also permute
+	/// Unbounded time, Stop button; bigger search - may also permute
 	/// adjacent land when that closes a seam.
 	Aggressive,
 	/// Unbounded time, total freedom: water, shore, and land all rewritable
@@ -52,7 +52,7 @@ pub struct AutoFix {
 	/// Cells changed once applied (set when a run finishes or is stopped).
 	pub applied: Option<usize>,
 	/// A command button held down, waiting for release-inside
-	/// — dragging off cancels.
+	/// - dragging off cancels.
 	armed: Option<ArmedBtn>,
 	/// Drag offset from centered (draggable by the titlebar).
 	pub(crate) drag_offset: (f32, f32),
@@ -62,7 +62,7 @@ pub struct AutoFix {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArmedBtn {
 	Close,
-	/// Start when idle / Stop while running — the same button.
+	/// Start when idle / Stop while running - the same button.
 	Start,
 }
 
@@ -188,7 +188,7 @@ impl AutoFix {
 		stat(&mut q, 0, "found bugs", self.found.to_string());
 		stat(&mut q, 1, "fixed", self.fixed.to_string());
 		stat(&mut q, 2, "remaining", self.remaining.to_string());
-		// ASCII only — the MAX atlas has no em-dash (it would silently vanish).
+		// ASCII only - the MAX atlas has no em-dash (it would silently vanish).
 		let elapsed =
 			if self.running || self.applied.is_some() { format!("{:.1}s", self.elapsed) } else { "-".to_string() };
 		stat(&mut q, 3, "elapsed", elapsed);

@@ -1,0 +1,26 @@
+{
+	"version": "1",
+	"name": "Mountain F-4",
+	"width": 2,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR06,SMB006",
+			"WATR06,SMB007"
+		],
+		[
+			"WATR11,SMB008",
+			"WATR01,SMB009"
+		]
+	]
+}

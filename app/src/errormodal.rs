@@ -1,6 +1,6 @@
 //! Error modal: when a command fails (`Outcome::Failed`), the shell raises
 //! this so the message is in front of the user instead of buried in the
-//! console — corrupt/rejected map files (the WRL/JSON validation at the
+//! console - corrupt/rejected map files (the WRL/JSON validation at the
 //! trust boundary), failed saves, bad imports. Pure geometry/draw; the only
 //! action is dismiss (Esc / OK / click-out), routed via the `Modal` trait.
 
@@ -16,7 +16,7 @@ const TEXT_W: f32 = W - 24.0;
 
 pub struct ErrorModal {
 	lines: Vec<String>,
-	/// True while the OK button is held down — it fires on release-inside;
+	/// True while the OK button is held down - it fires on release-inside;
 	/// dragging off cancels.
 	armed: bool,
 	/// Drag offset from centered (draggable by the titlebar).
@@ -104,7 +104,7 @@ mod tests {
 
 	#[test]
 	fn wraps_long_messages_onto_several_lines() {
-		let msg = "open MAP.WRL: bigmap references a tile beyond the tile table — the file is corrupt or not a valid M.A.X. map";
+		let msg = "open MAP.WRL: bigmap references a tile beyond the tile table - the file is corrupt or not a valid M.A.X. map";
 		let m = ErrorModal::new(msg);
 		assert!(m.lines.len() > 1, "a long message should wrap");
 		// Every wrapped line fits the text column (single over-long words aside).

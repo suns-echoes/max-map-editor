@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version      = "0.5.0"
+version      = "0.6.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Aneta Suns"]
@@ -23,7 +23,10 @@ json       = { path = "crates/json" }
 map-core   = { path = "crates/map-core" }
 max-assets = { path = "crates/max-assets" }
 
-# External crates — exact-pinned, versions matched to re-max's lockfile
+# External crates - exact-pinned, versions matched to re-max's lockfile
+# Text-only clipboard: default features dropped to avoid the `image` crate
+# (clipboard-image support); the Wayland backend is kept.
+arboard   = { version = "=3.6.1", default-features = false, features = ["wayland-data-control"] }
 bytemuck  = { version = "=1.24.0", features = ["derive"] }
 log       = "=0.4.28"
 png       = "=0.18.0"
@@ -35,11 +38,11 @@ winit     = "=0.30.12"
 
 # Lint policy for the first-party crates (app, map-core). Opt in per crate
 # with `[lints] workspace = true`. CI runs `cargo clippy … -- -D warnings`, so
-# everything is denied *except* the lints allowed here — they conflict with the
+# everything is denied *except* the lints allowed here - they conflict with the
 # house style (the code favours explicit nested guards, the directional `RING`
 # index loops in shore.rs, and the wide immediate-mode quad helpers). Keep this
 # list short and justified, not a catch-all. The copied-in crates (ini,
-# max-assets) don't opt in and aren't gated — they track their upstreams.
+# max-assets) don't opt in and aren't gated - they track their upstreams.
 [workspace.lints.clippy]
 collapsible_if      = "allow" # explicit nested guards read clearer here
 needless_range_loop = "allow" # indexed loops mirror the direction `RING`
@@ -47,7 +50,7 @@ too_many_arguments  = "allow" # immediate-mode quad/widget helpers take many
 single_match        = "allow" # `match { Ok(Some) => .., _ => {} }` suits the routers
 
 # The document kernel does real computation (auto-shore optimization, the
-# bake, composition) — optimize it even in dev builds; the app crate stays
+# bake, composition) - optimize it even in dev builds; the app crate stays
 # fast to compile and easy to debug.
 [profile.dev.package.map-core]
 opt-level = 2

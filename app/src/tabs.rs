@@ -1,6 +1,6 @@
 //! Project tab strip: the row of open-project tabs below the menu
 //! bar. One project is active at a time; click a tab to switch, click its `x`
-//! to close (hidden when only one tab is open — the last stays). Pure
+//! to close (hidden when only one tab is open - the last stays). Pure
 //! geometry + draw; the shell (`main.rs`) routes clicks and the document model
 //! (`state.rs`) owns the project list. Steel-themed like the rest of the
 //! chrome (active tab raised + amber, others dim; dirty marked with `*`).
@@ -17,7 +17,7 @@ const CLOSE_W: f32 = 13.0;
 const MIN_W: f32 = 70.0;
 const MAX_W: f32 = 200.0;
 const GAP: f32 = 2.0;
-/// The floor a tab can compress to when the strip overflows the window —
+/// The floor a tab can compress to when the strip overflows the window -
 /// keeps the close `x` and a few label glyphs usable.
 const MIN_COMPRESSED: f32 = 44.0;
 
@@ -29,14 +29,14 @@ pub enum Hit {
 	Close(usize),
 }
 
-/// A tab's label — dirty projects get a trailing `*` (title-bar parity).
+/// A tab's label - dirty projects get a trailing `*` (title-bar parity).
 fn label(name: &str, dirty: bool) -> String {
 	if dirty { format!("{name}*") } else { name.to_string() }
 }
 
 /// Per-tab widths: each fits its label (clamped MIN_W..MAX_W), then the whole
 /// strip compresses equally toward [`MIN_COMPRESSED`] when it would overflow
-/// the `vw`-wide window — labels ellipsize instead of tabs clipping off-screen.
+/// the `vw`-wide window - labels ellipsize instead of tabs clipping off-screen.
 fn tab_widths(tabs: &[(String, bool)], vw: f32) -> Vec<f32> {
 	let natural: Vec<f32> = tabs
 		.iter()
@@ -87,7 +87,7 @@ pub fn hit(tabs: &[(String, bool)], closable: bool, top: f32, x: f32, y: f32, vw
 
 /// Draw the strip: a steel band, then each tab (active raised + amber, others
 /// dim). The close `x` shows on every tab except the lone blank scratch
-/// (`closable` false — there's nothing to close).
+/// (`closable` false - there's nothing to close).
 pub fn draw(tabs: &[(String, bool)], active: usize, closable: bool, top: f32, w: f32, h: f32, hot: Hot) -> UiQuads {
 	let mut q = UiQuads::default();
 	let strip = Rect::new(0.0, top, w, BAR_H);
@@ -135,7 +135,7 @@ mod tests {
 
 	#[test]
 	fn non_closable_strip_only_selects() {
-		// The lone blank scratch tab has no `x` — its corner just selects.
+		// The lone blank scratch tab has no `x` - its corner just selects.
 		let one = vec![("empty".to_string(), false)];
 		let (top, vw) = (24.0, 1280.0);
 		let c = close_rect(tab_rect(&one, top, 0, vw));

@@ -1,0 +1,28 @@
+{
+	"version": "1",
+	"name": "Mountain D-3",
+	"width": 3,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR02,SMC013",
+			"WATR05,SMC014",
+			""
+		],
+		[
+			"WATR05,SMC016",
+			"WATR08,SMC017",
+			"WATR07,SMC018"
+		]
+	]
+}

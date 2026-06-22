@@ -1,0 +1,48 @@
+{
+	"version": "1",
+	"name": "Mountain A-3",
+	"width": 4,
+	"height": 5,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW_DARK",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR11,SME020",
+			"WATR09,SME017",
+			"WATR08,SME018",
+			"WATR03,SME000"
+		],
+		[
+			"WATR02,SME021",
+			"WATR10,SME022",
+			"WATR04,SME023",
+			"WATR10,SME001"
+		],
+		[
+			"WATR02,SME024",
+			"WATR04,SME025",
+			"WATR07,SME026",
+			"WATR08,SME002"
+		],
+		[
+			"WATR01,SME027",
+			"WATR07,SME028",
+			"WATR00,SME029",
+			"WATR11,SME003"
+		],
+		[
+			"",
+			"",
+			"WATR02,SME030",
+			""
+		]
+	]
+}

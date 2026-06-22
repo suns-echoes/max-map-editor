@@ -2,7 +2,7 @@
 # Right-click context menu (script-driven), Edit Clear (delete), and the
 # menu shortcut hints. The context menu snapshots the state at open time:
 # with a selection + clipboard it shows the full edit block.
-open! "resources/templates/GREEN_1.json"
+open! "resources/assets/maps/GREEN_1.json"
 assert-dirty false
 place 3 3 GLa000
 assert-cell 3 3 WATR00,GLa000

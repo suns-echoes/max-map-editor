@@ -1,0 +1,133 @@
+{
+	"DLa": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": true
+	},
+	"DLb": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": "invert"
+	},
+	"DLc": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": "invert"
+	},
+	"DMa": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"DMb": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"DMc": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"DMd": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"DPa": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"DSa": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSb": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSc": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSd": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSe": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSf": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSg": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSh": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSi": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSj": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSk": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSl": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"DSm": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	}
+}

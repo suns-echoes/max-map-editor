@@ -4,6 +4,7 @@
 //! those slots are ignored by the engine. Dynamic slots (64-159) hold
 //! 0xFF00FF placeholders here and are never applied.
 
+use crate::palette::{set_slot_rgb, slot_rgb};
 use crate::project::DYNAMIC_SLOTS;
 
 /// The in-game baseline palette, 256 x RGB.
@@ -61,7 +62,28 @@ pub fn apply_game_statics(palette: &mut [u8]) {
 		if DYNAMIC_SLOTS.contains(&slot) {
 			continue;
 		}
-		let at = slot as usize * 3;
-		palette[at..at + 3].copy_from_slice(&GAME_PALETTE[at..at + 3]);
+		set_slot_rgb(palette, slot, slot_rgb(&GAME_PALETTE, slot));
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn overwrites_only_the_static_slots() {
+		// Fill with a sentinel so kept-vs-overwritten is unambiguous.
+		let mut pal = vec![0x11u8; 768];
+		apply_game_statics(&mut pal);
+		for slot in 0u8..=255 {
+			let at = slot as usize * 3;
+			let got: &[u8] = &pal[at..at + 3];
+			if DYNAMIC_SLOTS.contains(&slot) {
+				assert_eq!(got, [0x11, 0x11, 0x11].as_slice(), "dynamic slot {slot} kept its map value");
+			} else {
+				assert_eq!(got, &GAME_PALETTE[at..at + 3], "static slot {slot} = the in-game baseline");
+				assert_ne!(got, [0xff, 0x00, 0xff].as_slice(), "an FF00FF placeholder leaked into static slot {slot}");
+			}
+		}
 	}
 }

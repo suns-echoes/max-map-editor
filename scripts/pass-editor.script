@@ -1,6 +1,6 @@
 # Pass Table Editor: switch to pass mode (the pass
 # overlay turns on so painting is visible), then paint per-cell pass values.
-# Overrides are document state — they change the hash, undo as one stroke,
+# Overrides are document state - they change the hash, undo as one stroke,
 # and persist in the project JSON / flow into the WRL bake.
 # Run: cargo run -- --script scripts/pass-editor.script --headless
 

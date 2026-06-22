@@ -1,0 +1,26 @@
+{
+	"version": "1",
+	"name": "Trees 14",
+	"width": 2,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "GREEN",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR11,GTa049",
+			"WATR08,GTa050"
+		],
+		[
+			"WATR10,GTa035",
+			"WATR08,GTa036"
+		]
+	]
+}

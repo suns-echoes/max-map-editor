@@ -19,7 +19,7 @@ grid on
 screenshot temp/resize.png
 
 # Crop back to 8x8 at the centered window (offset -4,-4): lossless for the
-# kept window — back to the original hash.
+# kept window - back to the original hash.
 resize 8 8 -4 -4
 assert-hash 0xa4cf721628f86034
 assert-cell 0 0 WATR09,GLa000

@@ -1,6 +1,6 @@
 //! Generate Random Terrain modal: pattern pick + water /
 //! obstruction / decoration %, optional seed, shore method. Generate starts
-//! a stepped [`map_core::GenSession`] the shell drives per frame — a
+//! a stepped [`map_core::GenSession`] the shell drives per frame - a
 //! progress bar fills, the Generate button becomes Abort, and the UI never
 //! freezes. The modal **stays open**, so seeds can be rerolled until the
 //! map looks right (every run is one undo unit; leave the seed field empty
@@ -11,6 +11,7 @@
 
 use map_core::{GenParams, GenPattern, GenSession};
 
+use crate::textinput::{Charset, TextInput};
 use crate::theme;
 use crate::ui::{self, Hot, Rect, UiQuads};
 
@@ -35,24 +36,26 @@ pub enum Field {
 
 pub struct Generator {
 	pub pattern: GenPattern,
-	pub water: String,
-	pub obstructions: String,
-	pub decorations: String,
+	pub water: TextInput,
+	pub obstructions: TextInput,
+	pub decorations: TextInput,
 	/// Empty = fresh random seed every Generate.
-	pub seed: String,
+	pub seed: TextInput,
 	/// Shore the coastlines with the loop-walk pass (Auto Shore ALT).
 	pub alt_shore: bool,
 	pub focus: Option<Field>,
+	/// The field being mouse-drag-selected (press..release).
+	drag_field: Option<Field>,
 	pub running: bool,
 	/// The live generation run (owned here; stepped by the shell).
 	pub session: Option<GenSession>,
-	/// The running/last run's params (seed resolved) — progress + report.
+	/// The running/last run's params (seed resolved) - progress + report.
 	pub started: Option<GenParams>,
-	/// Result report under the controls (seed used, stats, abort note) — one
+	/// Result report under the controls (seed used, stats, abort note) - one
 	/// entry per line, so the dialog grows instead of cropping a long line.
 	pub status: Vec<String>,
 	/// A command button held down, waiting for its release-inside to fire
-	/// — dragging off cancels.
+	/// - dragging off cancels.
 	armed: Option<ArmedBtn>,
 	/// Drag offset from centered (draggable by the titlebar).
 	pub(crate) drag_offset: (f32, f32),
@@ -62,7 +65,7 @@ pub struct Generator {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArmedBtn {
 	Close,
-	/// Generate when idle / Abort while running — the same button.
+	/// Generate when idle / Abort while running - the same button.
 	Generate,
 }
 
@@ -71,12 +74,12 @@ enum ArmedBtn {
 pub enum Press {
 	Consumed,
 	Close,
-	/// Start a run with the current settings. The modal stays open —
+	/// Start a run with the current settings. The modal stays open -
 	/// progress while running, ready for the next reroll once done.
 	Start,
 	/// Abort the live run (the same button, relabelled while running).
 	Abort,
-	/// Validation failed — show this in the console, keep the modal open.
+	/// Validation failed - show this in the console, keep the modal open.
 	Invalid(String),
 }
 
@@ -84,12 +87,13 @@ impl Generator {
 	pub fn new() -> Self {
 		Self {
 			pattern: GenPattern::Islands,
-			water: "45".into(),
-			obstructions: "10".into(),
-			decorations: "5".into(),
-			seed: String::new(),
+			water: TextInput::new("45", 3).charset(Charset::Digits),
+			obstructions: TextInput::new("10", 3).charset(Charset::Digits),
+			decorations: TextInput::new("5", 3).charset(Charset::Digits),
+			seed: TextInput::new("", 20).charset(Charset::Digits),
 			alt_shore: false,
 			focus: None,
+			drag_field: None,
 			running: false,
 			session: None,
 			started: None,
@@ -102,15 +106,17 @@ impl Generator {
 	/// The validated settings (`None` seed = the caller rolls a fresh one),
 	/// or what's wrong with them.
 	pub fn params(&self) -> Result<(GenParams, Option<u64>), String> {
-		let water: u8 = self.water.parse().map_err(|_| "water % is not a number".to_string())?;
-		let obstructions: u8 = self.obstructions.parse().map_err(|_| "obstructions % is not a number".to_string())?;
-		let decorations: u8 = self.decorations.parse().map_err(|_| "decorations % is not a number".to_string())?;
+		let water: u8 = self.water.text().parse().map_err(|_| "water % is not a number".to_string())?;
+		let obstructions: u8 =
+			self.obstructions.text().parse().map_err(|_| "obstructions % is not a number".to_string())?;
+		let decorations: u8 =
+			self.decorations.text().parse().map_err(|_| "decorations % is not a number".to_string())?;
 		if water > 100 || obstructions > 100 || decorations > 100 {
 			return Err("percentages are 0..=100".into());
 		}
-		let seed = match self.seed.is_empty() {
+		let seed = match self.seed.text().is_empty() {
 			true => None,
-			false => Some(self.seed.parse::<u64>().map_err(|_| "seed is not a number (u64)".to_string())?),
+			false => Some(self.seed.text().parse::<u64>().map_err(|_| "seed is not a number (u64)".to_string())?),
 		};
 		let params = GenParams {
 			pattern: self.pattern,
@@ -164,12 +170,41 @@ impl Generator {
 		Rect::new(d.x + d.w - 110.0, d.y + d.h - BTN_H - 10.0, 100.0, BTN_H)
 	}
 
+	/// "Copy Seed" button (centred in the button row) — shown once a run has
+	/// reported a seed, so the exact seed is one click from the clipboard.
+	fn copy_seed_rect(&self, d: Rect) -> Rect {
+		Rect::new(d.x + d.w / 2.0 - 50.0, d.y + d.h - BTN_H - 10.0, 100.0, BTN_H)
+	}
+
+	/// The seed of the last/running generation, once one exists.
+	fn reported_seed(&self) -> Option<u64> {
+		self.started.as_ref().map(|p| p.seed)
+	}
+
+	fn field_mut(&mut self, f: Field) -> &mut TextInput {
+		match f {
+			Field::Water => &mut self.water,
+			Field::Obstructions => &mut self.obstructions,
+			Field::Decorations => &mut self.decorations,
+			Field::Seed => &mut self.seed,
+		}
+	}
+
+	fn field_ref(&self, f: Field) -> &TextInput {
+		match f {
+			Field::Water => &self.water,
+			Field::Obstructions => &self.obstructions,
+			Field::Decorations => &self.decorations,
+			Field::Seed => &self.seed,
+		}
+	}
+
 	// ----- events --------------------------------------------------------------
 
 	pub fn on_press(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
 		let d = self.dialog_rect(w, h);
 		if self.running {
-			// Only the (relabelled) Abort button works mid-run — armed, so a
+			// Only the (relabelled) Abort button works mid-run - armed, so a
 			// drag-off can still cancel the click.
 			if self.generate_rect(d).contains(x, y) {
 				self.armed = Some(ArmedBtn::Generate);
@@ -183,14 +218,23 @@ impl Generator {
 			}
 		}
 		for f in [Field::Water, Field::Obstructions, Field::Decorations, Field::Seed] {
-			if Self::field_rect(d, f).contains(x, y) {
+			let r = Self::field_rect(d, f);
+			if r.contains(x, y) {
 				self.focus = Some(f);
+				self.field_mut(f).on_press(x, y, r);
+				self.drag_field = Some(f);
 				return Press::Consumed;
 			}
 		}
 		for alt in [false, true] {
 			if Self::shore_rect(d, alt).contains(x, y) {
 				self.alt_shore = alt;
+				return Press::Consumed;
+			}
+		}
+		if let Some(seed) = self.reported_seed() {
+			if self.copy_seed_rect(d).contains(x, y) {
+				crate::textinput::clipboard_set(&seed.to_string());
 				return Press::Consumed;
 			}
 		}
@@ -209,6 +253,7 @@ impl Generator {
 	/// Fire the armed command button if the release is still on it;
 	/// a release anywhere else just disarms.
 	pub fn on_release(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
+		self.drag_field = None;
 		let d = self.dialog_rect(w, h);
 		match self.armed.take() {
 			Some(ArmedBtn::Close) if self.close_rect(d).contains(x, y) && !self.running => Press::Close,
@@ -226,32 +271,39 @@ impl Generator {
 		}
 	}
 
-	/// Keyboard while the modal is open (digits only; seed is u64-sized).
-	pub fn on_key(&mut self, ch: Option<char>, backspace: bool, tab: bool) -> bool {
-		if tab {
-			self.focus = Some(match self.focus {
-				Some(Field::Water) => Field::Obstructions,
-				Some(Field::Obstructions) => Field::Decorations,
-				Some(Field::Decorations) => Field::Seed,
-				_ => Field::Water,
-			});
-			return true;
+	/// Mouse drag extends the active field's selection (after a press on it).
+	pub fn on_drag(&mut self, x: f32, y: f32, w: f32, h: f32) {
+		if let Some(f) = self.drag_field {
+			let r = Self::field_rect(self.dialog_rect(w, h), f);
+			self.field_mut(f).on_drag(x, y, r);
 		}
-		let Some(f) = self.focus else { return true };
-		let (field, cap) = match f {
-			Field::Water => (&mut self.water, 3),
-			Field::Obstructions => (&mut self.obstructions, 3),
-			Field::Decorations => (&mut self.decorations, 3),
-			Field::Seed => (&mut self.seed, 20),
-		};
-		if backspace {
-			field.pop();
-		} else if let Some(c) = ch {
-			if c.is_ascii_digit() && field.len() < cap {
-				field.push(c);
-			}
+	}
+
+	/// The focused field's edit state (none mid-run, when fields are frozen).
+	pub fn edit_context(&self) -> Option<crate::modal::EditContext> {
+		if self.running {
+			return None;
 		}
-		true
+		Some(self.field_ref(self.focus?).edit_context())
+	}
+
+	/// Route an editing key to the focused field (digits only; ignored mid-run).
+	pub fn key(&mut self, key: &crate::modal::ModalKey) {
+		if self.running {
+			return;
+		}
+		let Some(f) = self.focus else { return };
+		self.field_mut(f).on_key(key);
+	}
+
+	/// Tab advances focus through the fields (water → … → seed → water).
+	pub fn focus_next(&mut self) {
+		self.focus = Some(match self.focus {
+			Some(Field::Water) => Field::Obstructions,
+			Some(Field::Obstructions) => Field::Decorations,
+			Some(Field::Decorations) => Field::Seed,
+			_ => Field::Water,
+		});
 	}
 
 	// ----- drawing --------------------------------------------------------------
@@ -290,21 +342,10 @@ impl Generator {
 			if focused {
 				q.border(r, w, h, theme::INK);
 			}
-			let text = match f {
-				Field::Water => &self.water,
-				Field::Obstructions => &self.obstructions,
-				Field::Decorations => &self.decorations,
-				Field::Seed => &self.seed,
-			};
-			// An empty seed means "roll a new one every Generate".
-			if f == Field::Seed && text.is_empty() && !focused {
+			// An empty, unfocused seed shows a "random" hint; every field's value
+			// text + caret is drawn (clipped) by `field_contents`.
+			if f == Field::Seed && self.seed.text().is_empty() && !focused {
 				q.label_in("random", r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
-			} else {
-				q.label_in(text, r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
-			}
-			if focused {
-				let tw = crate::text::label_width(text, crate::ui::FONT_SMALL);
-				q.rect(Rect::new(r.x + 6.0 + tw + 1.0, r.y + 3.0, 2.0, r.h - 6.0), w, h, theme::INK);
 			}
 		}
 
@@ -321,7 +362,7 @@ impl Generator {
 			let bar = Rect::new(d.x + 110.0, py + 2.0, PAT_W * 2.0 + 6.0, BTN_H - 4.0);
 			q.progress_bar(bar, frac, Some(&format!("{:.0}%", frac * 100.0)), crate::ui::FONT_SMALL, w, h);
 		} else {
-			// The post-run report, one line each — the dialog grew to fit
+			// The post-run report, one line each - the dialog grew to fit
 			// (dialog_rect), each line still ellipsis-guarded.
 			for (i, line) in self.status.iter().enumerate() {
 				let line = crate::text::fit_label(line, crate::ui::FONT_SMALL, d.w - 24.0);
@@ -330,23 +371,43 @@ impl Generator {
 			}
 		}
 
-		// Close is locked mid-run (Abort first) — show it that way.
+		// Close is locked mid-run (Abort first) - show it that way.
 		if self.running {
 			q.button_disabled(self.close_rect(d), w, h);
 		} else {
 			q.button(self.close_rect(d), w, h, hot);
 		}
 		q.label_in("Close", self.close_rect(d), 8.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
+		// Copy Seed: available once a run has reported a seed (and not mid-run).
+		if !self.running && self.reported_seed().is_some() {
+			let r = self.copy_seed_rect(d);
+			q.button(r, w, h, hot);
+			q.label_in("Copy Seed", r, 8.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
+		}
 		q.button_primary(self.generate_rect(d), w, h, hot);
 		let label = if self.running { "Abort" } else { "Generate" };
 		q.label_in(label, self.generate_rect(d), 8.0, crate::ui::FONT_SMALL, w, h, theme::INK);
 		q
+	}
+
+	/// Each field's text/caret/selection, with the clip rect the shell scissors
+	/// it to (so long values stay in the well).
+	pub fn field_contents(&self, w: f32, h: f32) -> Vec<(UiQuads, Rect)> {
+		let d = self.dialog_rect(w, h);
+		[Field::Water, Field::Obstructions, Field::Decorations, Field::Seed]
+			.into_iter()
+			.map(|f| {
+				let r = Self::field_rect(d, f);
+				(self.field_ref(f).content_quads(r, self.focus == Some(f), w, h), r)
+			})
+			.collect()
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::modal::ModalKey;
 
 	#[test]
 	fn params_build_and_validate() {
@@ -358,15 +419,15 @@ mod tests {
 		);
 		assert_eq!(seed, None, "empty seed field = roll a fresh one");
 		m.pattern = GenPattern::RiverRaid;
-		m.water = "30".into();
-		m.seed = "42".into();
+		m.water.set_text("30");
+		m.seed.set_text("42");
 		m.alt_shore = true;
 		let (p, seed) = m.params().unwrap();
 		assert_eq!((p.pattern, p.water, p.alt_shore), (GenPattern::RiverRaid, 30, true));
 		assert_eq!(seed, Some(42));
-		m.water = "101".into();
+		m.water.set_text("101");
 		assert!(m.params().is_err());
-		m.water = "".into();
+		m.water.set_text("");
 		assert!(m.params().is_err());
 	}
 
@@ -385,14 +446,14 @@ mod tests {
 		let r = Generator::field_rect(d, Field::Water);
 		m.on_press(r.x + 2.0, r.y + 2.0, w, h);
 		assert_eq!(m.focus, Some(Field::Water));
-		m.water.clear();
+		m.water.set_text("");
 		for c in "60x".chars() {
-			m.on_key(Some(c), false, false); // non-digit ignored
+			m.key(&ModalKey::Char(c)); // non-digit ignored
 		}
-		assert_eq!(m.water, "60");
-		m.on_key(None, false, true); // tab → obstructions
+		assert_eq!(m.water.text(), "60");
+		m.focus_next(); // tab → obstructions
 		assert_eq!(m.focus, Some(Field::Obstructions));
-		m.on_key(None, false, true); // tab → decorations
+		m.focus_next(); // tab → decorations
 		assert_eq!(m.focus, Some(Field::Decorations));
 		// The shore-method buttons toggle the pass.
 		let alt = Generator::shore_rect(d, true);
@@ -405,10 +466,10 @@ mod tests {
 		// Dragging off before release cancels the click.
 		assert_eq!(m.on_press(g.x + 2.0, g.y + 2.0, w, h), Press::Consumed);
 		assert_eq!(m.on_release(2.0, 2.0, w, h), Press::Consumed, "drag-off cancels");
-		m.water = "x".into();
+		m.water.set_text("x");
 		m.on_press(g.x + 2.0, g.y + 2.0, w, h);
 		assert!(matches!(m.on_release(g.x + 2.0, g.y + 2.0, w, h), Press::Invalid(_)));
-		m.water = "60".into();
+		m.water.set_text("60");
 		// Close bubbles (on release); clicks outside are swallowed (focus drops).
 		let c = m.close_rect(d);
 		m.on_press(c.x + 2.0, c.y + 2.0, w, h);

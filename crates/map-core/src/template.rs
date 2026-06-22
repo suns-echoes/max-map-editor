@@ -1,26 +1,106 @@
 //! Tile templates: reusable chunks of map (a mountain range, a forest, an
-//! oasis) captured from a selection and stamped back anywhere — on any map
+//! oasis) captured from a selection and stamped back anywhere - on any map
 //! that uses the same tile packs.
 //!
 //! A template file is JSON: a `use` manifest naming the packs its tiles come
 //! from, and a cell grid in the **project save encoding** (`"WATR05,GSd004:!N"`
 //! per cell, layers comma-joined, `""` = a hole). Cells reference tiles by
 //! **id**, never by index, so a template survives pack reordering and resolves
-//! against whatever pack roster the open map has — [`Template::compatible`]
+//! against whatever pack roster the open map has - [`Template::compatible`]
 //! answers whether every id resolves there.
 //!
 //! Capture takes the selection's bounding box and keeps only selected cells
 //! (holes stay holes); apply skips holes, so irregular shapes stamp exactly
-//! what was selected. The same struct doubles as the copy/paste clipboard —
+//! what was selected. The same struct doubles as the copy/paste clipboard -
 //! paste is "apply a transient template".
 
 use std::path::Path;
 
-use crate::project::{LAYER_GROUND, MAX_LAYERS, Project, TileRef};
+use crate::pack::Transformable;
+use crate::project::{MAX_LAYERS, Project, TileRef, Transform};
 use crate::selection::Selection;
 
 /// One captured cell: the save-encoded stack spec (`""` = hole).
 type CellSpec = String;
+
+/// A quarter-turn or mirror the transform tool applies to a whole template
+/// stamp - the same four ops the toolbox offers for a single tile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StampOp {
+	Cw,
+	Ccw,
+	FlipH,
+	FlipV,
+}
+
+impl StampOp {
+	/// The op's name as the command line spells it (`cw`/`ccw`/`flip-h`/`flip-v`).
+	pub fn parse(s: &str) -> Option<Self> {
+		match s {
+			"cw" => Some(Self::Cw),
+			"ccw" => Some(Self::Ccw),
+			"flip-h" => Some(Self::FlipH),
+			"flip-v" => Some(Self::FlipV),
+			_ => None,
+		}
+	}
+
+	/// This op composed onto a tile's existing transform.
+	fn applied(self, t: Transform) -> Transform {
+		match self {
+			Self::Cw => t.rotated_cw(),
+			Self::Ccw => t.rotated_ccw(),
+			Self::FlipH => t.flipped_h(),
+			Self::FlipV => t.flipped_v(),
+		}
+	}
+
+	fn verb(self) -> &'static str {
+		match self {
+			Self::Cw | Self::Ccw => "rotated",
+			Self::FlipH | Self::FlipV => "flipped",
+		}
+	}
+}
+
+/// May a tile whose family is `kind` carry transform `t`? (The art is only
+/// drawn for the orientations the family permits - rotating past that corrupts
+/// baked light/shadow.) Sync tiles (water) ride along at a fixed orientation
+/// and are handled before this is ever consulted.
+fn family_allows(kind: Transformable, t: Transform) -> bool {
+	match kind {
+		Transformable::Free | Transformable::Sync => true,
+		Transformable::Invert => !t.mirror && t.rot.is_multiple_of(2),
+		Transformable::No => t == Transform::default(),
+	}
+}
+
+/// One cell spec with `op` applied to each tile in its stack. Sync tiles
+/// (water) are kept verbatim - they animate at a fixed orientation. A tile
+/// whose family can't take the op aborts the whole transform (`Err` names it).
+fn transform_cell(project: &Project, spec: &str, op: StampOp) -> Result<String, String> {
+	let mut parts: Vec<String> = Vec::new();
+	for part in spec.split(',').filter(|p| !p.is_empty()) {
+		let (tref, _) = project.resolve_ref(part)?;
+		let kind = project.packs[tref.pack as usize].tile_transformable(tref.tile);
+		if kind == Transformable::Sync {
+			parts.push(part.to_string());
+			continue;
+		}
+		let next = op.applied(tref.transform);
+		if !family_allows(kind, next) {
+			let id = part.split(':').next().unwrap_or(part);
+			let why = match kind {
+				Transformable::Invert => "only rotates 180\u{b0}",
+				_ => "can't be transformed",
+			};
+			return Err(format!("'{id}' {why}, so the stamp can't be {}", op.verb()));
+		}
+		let id = part.split(':').next().unwrap_or(part);
+		parts.push(format!("{id}{}", next.suffix()));
+	}
+	Ok(parts.join(","))
+}
 
 #[derive(Clone)]
 pub struct Template {
@@ -112,7 +192,7 @@ impl Template {
 		Ok(out)
 	}
 
-	/// Stamp the template with its top-left at `(x, y)` — one undo
+	/// Stamp the template with its top-left at `(x, y)` - one undo
 	/// transaction (or part of the open stroke). Cells past the map edge
 	/// clip; holes leave the map untouched. A cell that carries only a
 	/// ground entry keeps the map's water beneath it.
@@ -126,6 +206,35 @@ impl Template {
 			})
 			.collect();
 		Ok(project.place_many(&edits))
+	}
+
+	/// The template rotated or mirrored as a whole: the footprint turns and
+	/// every tile's own transform composes with `op`. Constrained by what the
+	/// tiles allow - if any tile's family can't represent the resulting
+	/// orientation (a non-rotatable obstruction, an `invert`-only tile asked
+	/// for a quarter turn), the op is refused with an error naming it, so the
+	/// stamp never bakes a corrupt orientation. Water (sync) rides along at its
+	/// fixed orientation and never blocks. Holes stay holes.
+	pub fn transformed(&self, project: &Project, op: StampOp) -> Result<Self, String> {
+		let (w, h) = (self.width as usize, self.height as usize);
+		// Quarter turns swap the footprint; mirrors keep it.
+		let (nw, nh) = match op {
+			StampOp::Cw | StampOp::Ccw => (h, w),
+			StampOp::FlipH | StampOp::FlipV => (w, h),
+		};
+		let mut cells = vec![String::new(); nw * nh];
+		for y in 0..h {
+			for x in 0..w {
+				let (nx, ny) = match op {
+					StampOp::Cw => (h - 1 - y, x),
+					StampOp::Ccw => (y, w - 1 - x),
+					StampOp::FlipH => (w - 1 - x, y),
+					StampOp::FlipV => (x, h - 1 - y),
+				};
+				cells[ny * nw + nx] = transform_cell(project, &self.cells[y * w + x], op)?;
+			}
+		}
+		Ok(Self { name: self.name.clone(), width: nw as u16, height: nh as u16, uses: self.uses.clone(), cells })
 	}
 
 	// ----- persistence ---------------------------------------------------------
@@ -143,12 +252,9 @@ impl Template {
 				])
 			})
 			.collect();
-		let mut rows = Vec::with_capacity(self.height as usize);
-		for y in 0..self.height as usize {
-			let row: Vec<J> =
-				(0..self.width as usize).map(|x| J::String(self.cells[y * self.width as usize + x].clone())).collect();
-			rows.push(J::Array(row));
-		}
+		let rows = crate::project::encode_cell_grid(self.width as usize, self.height as usize, |x, y| {
+			self.cells[y * self.width as usize + x].clone()
+		});
 		J::Object(vec![
 			("version".to_string(), J::String("1".to_string())),
 			("name".to_string(), J::String(self.name.clone())),
@@ -160,17 +266,17 @@ impl Template {
 		.to_pretty()
 	}
 
-	// An inherent constructor (like `INI::from_str`) — the `FromStr` trait
+	// An inherent constructor (like `INI::from_str`) - the `FromStr` trait
 	// would force callers through `.parse()` for no gain.
 	#[allow(clippy::should_implement_trait)]
 	pub fn from_str(text: &str) -> Result<Self, String> {
 		let root = json::parse(text)?;
-		let name = root.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed").to_string();
+		// The display name comes from the JSON `name` (empty if absent; `load`
+		// falls back to the file stem then).
+		let name = root.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
 		let width = root.get("width").and_then(|v| v.as_f64()).ok_or("template: missing width")? as u16;
 		let height = root.get("height").and_then(|v| v.as_f64()).ok_or("template: missing height")? as u16;
-		if width == 0 || height == 0 || width > 1024 || height > 1024 {
-			return Err(format!("template: bad size {width}x{height}"));
-		}
+		crate::project::check_map_size(width, height).map_err(|e| format!("template: {e}"))?;
 		let mut uses = Vec::new();
 		if let Some(list) = root.get("use").and_then(|v| v.as_array()) {
 			for u in list {
@@ -203,9 +309,12 @@ impl Template {
 	pub fn load(path: &Path) -> Result<Self, String> {
 		let text = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
 		let mut t = Self::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-		// The file stem is the canonical name (rename = rename the file).
-		if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-			t.name = stem.to_string();
+		// Display uses the JSON `name`; only fall back to the file stem when the
+		// file carries no name of its own.
+		if t.name.is_empty() {
+			if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+				t.name = stem.to_string();
+			}
 		}
 		Ok(t)
 	}
@@ -217,7 +326,7 @@ impl Template {
 		std::fs::write(path, self.save_string()).map_err(|e| format!("write {}: {e}", path.display()))
 	}
 
-	/// Which layers a cell spec occupies in `project` — the thumbnail wants
+	/// Which layers a cell spec occupies in `project` - the thumbnail wants
 	/// ground over water just like the map.
 	pub fn cell_layers(&self, project: &Project, dx: u16, dy: u16) -> [Option<TileRef>; MAX_LAYERS] {
 		let mut stack = [None; MAX_LAYERS];
@@ -234,16 +343,35 @@ impl Template {
 	}
 }
 
-/// Cut helper: clear the **ground layer** of every selected cell (one undo
-/// transaction or part of the open stroke) — the water base stays, exactly
-/// like the eraser. Returns whether anything changed.
-pub fn clear_selection_ground(project: &mut Project, selection: &Selection) -> bool {
+/// Clear one `layer` of every selected cell (one undo transaction or part of
+/// the open stroke). The active-layer eraser/Delete uses this, so deleting on
+/// the water layer drops water exactly like deleting ground drops ground.
+/// Returns whether anything changed.
+pub fn clear_selection_layer(project: &mut Project, selection: &Selection, layer: usize) -> bool {
 	let mut edits = Vec::new();
 	let (w, h) = (project.width, project.height);
 	for y in 0..h {
 		for x in 0..w {
 			if selection.contains(x, y) {
-				edits.push((x, y, LAYER_GROUND, None));
+				edits.push((x, y, layer, None));
+			}
+		}
+	}
+	project.place_many(&edits)
+}
+
+/// Clear **every** layer of every selected cell (Shift+Delete) - the cells
+/// become true holes, water and ground both gone. One undo transaction (or
+/// part of the open stroke). Returns whether anything changed.
+pub fn clear_selection(project: &mut Project, selection: &Selection) -> bool {
+	let mut edits = Vec::new();
+	let (w, h) = (project.width, project.height);
+	for y in 0..h {
+		for x in 0..w {
+			if selection.contains(x, y) {
+				for layer in 0..MAX_LAYERS {
+					edits.push((x, y, layer, None));
+				}
 			}
 		}
 	}
@@ -253,12 +381,12 @@ pub fn clear_selection_ground(project: &mut Project, selection: &Selection) -> b
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::project::LAYER_WATER;
+	use crate::project::{LAYER_GROUND, LAYER_WATER};
 	use crate::selection::SelectMode;
 	use std::path::PathBuf;
 
 	fn assets_root() -> PathBuf {
-		Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets")
+		Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks")
 	}
 
 	fn project() -> Project {
@@ -335,12 +463,86 @@ mod tests {
 	}
 
 	#[test]
-	fn cut_clears_only_selected_ground() {
+	fn transformed_rotates_footprint_and_composes_free_tiles_keeping_water() {
+		let p = project();
+		// A fresh cell is water only (sync, no suffix) - a real, resolvable spec.
+		let water = p.cell_spec(0, 0).unwrap();
+		assert!(!water.contains(':'), "water is sync → no transform suffix");
+		// 2-wide, 1-tall row: ground over water, then a pre-rotated ground tile.
+		let t = Template {
+			name: "row".into(),
+			width: 2,
+			height: 1,
+			uses: vec![("GREEN".into(), String::new()), ("WATER".into(), String::new())],
+			cells: vec![format!("{water},GLa000"), "GLa001:E".into()],
+		};
+
+		let cw = t.transformed(&p, StampOp::Cw).unwrap();
+		// Quarter turn swaps the footprint 2x1 → 1x2.
+		assert_eq!((cw.width, cw.height), (1, 2));
+		// Old (0,0) → new (0,0): water rides along verbatim; GLa000 (free, default)
+		// composes one clockwise quarter turn → rot 1 → `:W` suffix.
+		assert_eq!(cw.cells[0], format!("{water},GLa000:W"));
+		// Old (1,0) → new (0,1): GLa001:E (= rot 3) + cw = rot 0 → suffix drops.
+		assert_eq!(cw.cells[1], "GLa001");
+
+		// Mirrors keep the footprint; the water part still passes through untouched.
+		let fh = t.transformed(&p, StampOp::FlipH).unwrap();
+		assert_eq!((fh.width, fh.height), (2, 1));
+		assert!(fh.cells[1].starts_with(&format!("{water},")), "water unchanged under flip");
+	}
+
+	#[test]
+	fn transformed_refuses_ops_the_tiles_cant_take() {
+		let p = project();
+		// GLc has no `transformable` entry → Transformable::No.
+		let rock = Template {
+			name: "rock".into(),
+			width: 1,
+			height: 1,
+			uses: vec![("GREEN".into(), String::new())],
+			cells: vec!["GLc000".into()],
+		};
+		for op in [StampOp::Cw, StampOp::Ccw, StampOp::FlipH, StampOp::FlipV] {
+			let Err(err) = rock.transformed(&p, op) else {
+				panic!("{op:?} should be refused for a non-transformable tile");
+			};
+			assert!(err.contains("GLc000"), "the error names the offending tile: {err}");
+		}
+		// One non-rotatable tile in an otherwise-free stamp blocks the whole op.
+		let mixed = Template {
+			name: "mixed".into(),
+			width: 2,
+			height: 1,
+			uses: vec![("GREEN".into(), String::new())],
+			cells: vec!["GLa000".into(), "GLc000".into()],
+		};
+		assert!(mixed.transformed(&p, StampOp::Cw).is_err(), "a single No tile vetoes the stamp rotation");
+	}
+
+	#[test]
+	fn clear_selection_layer_drops_only_that_layer() {
 		let (mut p, s) = painted();
 		let water_before = p.cell(2, 2).unwrap()[LAYER_WATER];
-		assert!(clear_selection_ground(&mut p, &s));
+		// Clearing ground leaves the water base (the Cut / active-layer=ground path).
+		assert!(clear_selection_layer(&mut p, &s, LAYER_GROUND));
 		assert!(p.cell(2, 2).unwrap()[LAYER_GROUND].is_none(), "selected ground cleared");
 		assert_eq!(p.cell(2, 2).unwrap()[LAYER_WATER], water_before, "water base stays");
 		assert!(p.cell(2, 4).unwrap()[LAYER_GROUND].is_some(), "unselected cell kept");
+		// Clearing water drops the base too - no land/water distinction.
+		assert!(clear_selection_layer(&mut p, &s, LAYER_WATER));
+		assert!(p.cell(2, 2).unwrap()[LAYER_WATER].is_none(), "selected water cleared");
+	}
+
+	#[test]
+	fn clear_selection_empties_every_layer() {
+		let (mut p, s) = painted();
+		assert!(p.cell(2, 2).unwrap()[LAYER_WATER].is_some(), "starts with a water base");
+		assert!(clear_selection(&mut p, &s));
+		// A selected cell is now a true hole - both layers gone.
+		assert!(p.cell(2, 2).unwrap()[LAYER_GROUND].is_none(), "ground gone");
+		assert!(p.cell(2, 2).unwrap()[LAYER_WATER].is_none(), "water gone");
+		// An unselected cell keeps its water.
+		assert!(p.cell(2, 4).unwrap()[LAYER_WATER].is_some(), "unselected water kept");
 	}
 }

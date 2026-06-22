@@ -1,7 +1,7 @@
 # Interactive minimap: three sources + the view rectangle.
 # Run: cargo run -- --script scripts/minimap.script --headless
 
-open! resources/templates/GREEN_1.json
+open! resources/assets/maps/GREEN_1.json
 
 # Zoom in so the view rectangle is visibly smaller than the map.
 zoom-to 0.5

@@ -1,5 +1,5 @@
-//! Build the shipped stock templates (`resources/stock/templates`) from each
-//! pack's mined formation patterns (`tiles.patterns.json`) — the largest few
+//! Build the shipped stock templates (`resources/assets/templates`) from each
+//! pack's mined formation patterns (`tiles.patterns.json`) - the largest few
 //! formations per pack make good starter templates. Deterministic; re-run
 //! after pack data changes:
 //!
@@ -11,17 +11,19 @@ use map_core::{Template, TilePack};
 
 fn main() {
 	let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources");
-	let out = root.join("stock/templates");
-	std::fs::create_dir_all(&out).expect("create stock/templates");
+	let out = root.join("assets/templates");
 	let mut made = 0;
 	for pack_name in ["GREEN", "CRATER", "DESERT", "SNOW", "SNOW_DARK"] {
-		let pack = match TilePack::load(&root.join("assets"), pack_name) {
+		let pack = match TilePack::load(&root.join("assets/tilepacks"), pack_name) {
 			Ok(p) => p,
 			Err(e) => {
 				eprintln!("skip {pack_name}: {e}");
 				continue;
 			}
 		};
+		// One pack per generated template → the pack's own subdir.
+		let dir = out.join(pack_name);
+		std::fs::create_dir_all(&dir).expect("create pack template dir");
 		// Biggest formations first (most cells), name ties broken by order.
 		let mut patterns: Vec<_> = pack.patterns.iter().collect();
 		patterns.sort_by_key(|p| std::cmp::Reverse(p.cells.iter().flatten().count()));
@@ -36,7 +38,7 @@ fn main() {
 				uses: vec![(pack.name.clone(), pack.version.clone())],
 				cells,
 			};
-			template.save(&out.join(format!("{name}.json"))).expect("write template");
+			template.save(&dir.join(format!("{name}.json"))).expect("write template");
 			println!("{name}: {}x{} ({} tiles)", p.width, p.height, p.cells.iter().flatten().count());
 			made += 1;
 		}

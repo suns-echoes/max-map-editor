@@ -1,15 +1,15 @@
 //! UI primitives: screen-space rects, the two-batch quad
-//! collector, and draw-from-rect widget helpers. Immediate mode — every frame
+//! collector, and draw-from-rect widget helpers. Immediate mode - every frame
 //! the workspace rebuilds its quads from layout; nothing here is retained.
 //! Pattern from world-editor `ui.rs`/`widget.rs`, re-skinned for M.A.X.
 
 use crate::text::{self, TextVertex};
 use crate::theme;
 
-/// Default UI text size (px) — primary labels, titles, buttons. Both
+/// Default UI text size (px) - primary labels, titles, buttons. Both
 /// constants are baked sizes in [`crate::font::SIZES`].
 pub const FONT_BODY: f32 = 16.0;
-/// Small UI text size (px) — dense panels, hints, secondary labels.
+/// Small UI text size (px) - dense panels, hints, secondary labels.
 pub const FONT_SMALL: f32 = 12.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -29,19 +29,19 @@ impl Rect {
 		px >= self.x && px < self.x + self.w && py >= self.y && py < self.y + self.h
 	}
 
-	/// A `w`×`h` box centered in a `screen_w`×`screen_h` viewport — every modal
+	/// A `w`×`h` box centered in a `screen_w`×`screen_h` viewport - every modal
 	/// dialog rect.
 	pub fn centered(screen_w: f32, screen_h: f32, w: f32, h: f32) -> Self {
 		Self::new((screen_w - w) / 2.0, (screen_h - h) / 2.0, w, h)
 	}
 
-	/// The full-width `h`-tall strip at the top of this rect — a panel header
+	/// The full-width `h`-tall strip at the top of this rect - a panel header
 	/// band / sub-toolbar.
 	pub fn strip_top(&self, h: f32) -> Self {
 		Self::new(self.x, self.y, self.w, h)
 	}
 
-	/// This rect shifted by `(dx, dy)` — used to apply a draggable modal's offset.
+	/// This rect shifted by `(dx, dy)` - used to apply a draggable modal's offset.
 	pub fn translate(&self, dx: f32, dy: f32) -> Self {
 		Self::new(self.x + dx, self.y + dy, self.w, self.h)
 	}
@@ -63,7 +63,7 @@ pub struct Hot {
 }
 
 impl Hot {
-	/// The inert pointer — for covered surfaces and headless rendering.
+	/// The inert pointer - for covered surfaces and headless rendering.
 	pub const NONE: Hot = Hot { cursor: None, down: None };
 
 	pub fn hover(&self, r: Rect) -> bool {
@@ -71,7 +71,7 @@ impl Hot {
 	}
 
 	/// Held down on this widget: the press began inside `r` and the cursor is
-	/// still there — the classic armed-button look.
+	/// still there - the classic armed-button look.
 	pub fn pressed(&self, r: Rect) -> bool {
 		self.hover(r) && self.down.is_some_and(|(x, y)| r.contains(x, y))
 	}
@@ -93,7 +93,7 @@ pub const SCROLLBAR_W: f32 = 8.0;
 pub enum Batch {
 	/// Solid fills + Hack mono text (the console atlas).
 	Shape,
-	/// MAX proportional labels at a baked size (px) — picks that size's atlas.
+	/// MAX proportional labels at a baked size (px) - picks that size's atlas.
 	Label(u32),
 	/// Tinted brushed-steel chrome fills (the steel sheet).
 	Steel,
@@ -102,7 +102,7 @@ pub enum Batch {
 /// How a [`UiQuads`] maps screen rects onto the steel sheet.
 #[derive(Clone, Copy, Default)]
 pub enum SteelMap {
-	/// The sheet stretched once to fill the whole viewport — the main shell
+	/// The sheet stretched once to fill the whole viewport - the main shell
 	/// (background, docked panels, menu) is cut from one continuous plate.
 	#[default]
 	Stretch,
@@ -114,7 +114,7 @@ pub enum SteelMap {
 
 impl SteelMap {
 	/// Anchor sampling to `window`: fit the **whole** window into the sheet
-	/// (one non-repeating copy — the larger side spans the full sheet, the other
+	/// (one non-repeating copy - the larger side spans the full sheet, the other
 	/// is centered) and move that crop with the window. Scaling to the window
 	/// means the grain never wraps, whatever the size.
 	pub fn anchored(window: Rect) -> Self {
@@ -138,7 +138,7 @@ impl SteelMap {
 	}
 }
 
-/// One UI frame's geometry: a single vertex list plus the run structure —
+/// One UI frame's geometry: a single vertex list plus the run structure -
 /// consecutive same-atlas pushes coalesce into one run, and `draw_ui` plays
 /// the runs **in push order**. That keeps z-order honest: a panel drawn
 /// later covers an earlier panel's labels (a global shapes-then-labels split
@@ -207,14 +207,14 @@ impl UiQuads {
 		self.steel(r, w, h, m.grain);
 	}
 
-	/// A solid triangle from three screen-space points — chrome accents
+	/// A solid triangle from three screen-space points - chrome accents
 	/// (e.g. the floating resize-handle grip).
 	pub fn tri(&mut self, p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), w: f32, h: f32, color: [f32; 4]) {
 		text::push_tri(&mut self.verts, p0, p1, p2, w, h, color);
 		self.mark(Batch::Shape);
 	}
 
-	/// A solid four-point polygon (two triangles) — for non-axis-aligned chrome
+	/// A solid four-point polygon (two triangles) - for non-axis-aligned chrome
 	/// like the mitered bevel trapezoids.
 	fn quad4(&mut self, p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), p3: (f32, f32), w: f32, h: f32, c: [f32; 4]) {
 		text::push_tri(&mut self.verts, p0, p1, p2, w, h, c);
@@ -225,7 +225,7 @@ impl UiQuads {
 	/// A directional bevel: a `size`-px border ring, lit from the top-left. The
 	/// four edges are trapezoids that meet at 45° corner diagonals (CSS-border
 	/// miter, no overlap); `raised` lights top+left, inset swaps to bottom+right.
-	/// Drawn over the fill, and — with borders-as-margin — sitting in the inset
+	/// Drawn over the fill, and - with borders-as-margin - sitting in the inset
 	/// the content leaves clear.
 	pub fn bevel(&mut self, r: Rect, w: f32, h: f32, size: f32, raised: bool) {
 		let b = theme::BEVEL;
@@ -252,7 +252,7 @@ impl UiQuads {
 	}
 
 	/// The state-aware face every button shares: raised at rest, a darkening
-	/// wash under the cursor, and an inset bevel + stronger wash while held —
+	/// wash under the cursor, and an inset bevel + stronger wash while held -
 	/// the key visibly sinks. Inert with [`Hot::NONE`], so headless captures
 	/// always render the rest state.
 	pub fn button_face(&mut self, r: Rect, w: f32, h: f32, m: theme::Material, hot: Hot) {
@@ -276,7 +276,7 @@ impl UiQuads {
 		self.button_face(r, w, h, theme::BUTTON_PRIMARY, hot);
 	}
 
-	/// A toggled-on control (cool highlight, raised) — `on` falls back to a
+	/// A toggled-on control (cool highlight, raised) - `on` falls back to a
 	/// plain button so callers can `q.button_active(r, w, h, selected, hot)`.
 	pub fn button_active(&mut self, r: Rect, w: f32, h: f32, on: bool, hot: Hot) {
 		self.button_face(r, w, h, if on { theme::BUTTON_ACTIVE } else { theme::BUTTON }, hot);
@@ -310,10 +310,10 @@ impl UiQuads {
 	}
 
 	/// A toggleable button: the active bevel, a menu-style checkbox in the left
-	/// gutter, and the label in ACCENT (#44FF00) when checked — so on/off buttons
+	/// gutter, and the label in ACCENT (#44FF00) when checked - so on/off buttons
 	/// read like the menu's toggle items. `enabled: false` draws the muted
 	/// locked face (state still readable from the checkbox) and ignores the
-	/// pointer — for settings frozen during a live run.
+	/// pointer - for settings frozen during a live run.
 	#[allow(clippy::too_many_arguments)]
 	pub fn toggle_button(&mut self, r: Rect, label: &str, on: bool, enabled: bool, px: f32, w: f32, h: f32, hot: Hot) {
 		if enabled {
@@ -343,14 +343,14 @@ impl UiQuads {
 
 	/// MAX-font label, top-left at `(x, y)`; returns the advance width.
 	pub fn label(&mut self, s: &str, x: f32, y: f32, px: f32, w: f32, h: f32, color: [f32; 4]) -> f32 {
-		let size = crate::font::snap(px);
+		let size = crate::font::render_px(px);
 		let advance = text::push_label(&mut self.verts, s, x, y, size, w, h, color);
 		self.mark(Batch::Label(size));
 		advance
 	}
 
 	/// MAX-font label vertically centered in `r`, left-padded by `pad`. Embossed
-	/// (a top-left highlight + bottom-right shadow) — the chrome-text path
+	/// (a top-left highlight + bottom-right shadow) - the chrome-text path
 	/// for buttons, menu items, titles, and captions.
 	pub fn label_in(&mut self, s: &str, r: Rect, pad: f32, px: f32, w: f32, h: f32, color: [f32; 4]) {
 		let y = r.y + (r.h - px) / 2.0;
@@ -358,17 +358,17 @@ impl UiQuads {
 	}
 
 	/// [`Self::label_in`], but ellipsis-truncated to fit `r` (left pad `pad`,
-	/// 4-px right margin) — the path for **dynamic** text in fixed containers
+	/// 4-px right margin) - the path for **dynamic** text in fixed containers
 	/// (file names, status lines, tab titles), which must never escape the box.
 	pub fn label_fit(&mut self, s: &str, r: Rect, pad: f32, px: f32, w: f32, h: f32, color: [f32; 4]) {
 		let fitted = text::fit_label(s, px, (r.w - pad - 4.0).max(0.0));
 		self.label_in(&fitted, r, pad, px, w, h, color);
 	}
 
-	/// A label drawn three times — shadow (bottom-right), highlight (top-left),
-	/// then the ink — for a bevelled, lit-from-top-left look.
+	/// A label drawn three times - shadow (bottom-right), highlight (top-left),
+	/// then the ink - for a bevelled, lit-from-top-left look.
 	pub fn label_emboss(&mut self, s: &str, x: f32, y: f32, px: f32, w: f32, h: f32, color: [f32; 4]) {
-		let size = crate::font::snap(px);
+		let size = crate::font::render_px(px);
 		text::push_label(&mut self.verts, s, x + 1.0, y + 1.0, size, w, h, theme::TEXT_SHADOW);
 		text::push_label(&mut self.verts, s, x - 1.0, y - 1.0, size, w, h, theme::TEXT_HILITE);
 		text::push_label(&mut self.verts, s, x, y, size, w, h, color);
@@ -378,7 +378,7 @@ impl UiQuads {
 	/// Draw a vertical scrollbar in the right [`SCROLLBAR_W`] px of `region` (a
 	/// scroll viewport): an inset track + a thumb sized to the visible fraction
 	/// and positioned by `scroll`. The thumb brightens under the cursor and
-	/// while dragged — "dragged" = the press began inside the track, which
+	/// while dragged - "dragged" = the press began inside the track, which
 	/// stays true even when the cursor drifts off it mid-drag. A no-op when the
 	/// content fits.
 	#[allow(clippy::too_many_arguments)]
@@ -406,7 +406,7 @@ impl UiQuads {
 
 	/// Word-wrapped embossed label filling `r` from the top-left (padded by
 	/// `pad`, wrapping within `r.w - 2·pad`). Returns the height drawn. Use where
-	/// a container can be too narrow for one line — text breaks instead of
+	/// a container can be too narrow for one line - text breaks instead of
 	/// overflowing.
 	pub fn label_wrapped(&mut self, s: &str, r: Rect, pad: f32, px: f32, w: f32, h: f32, color: [f32; 4]) -> f32 {
 		let line_h = px + 4.0;
@@ -419,7 +419,7 @@ impl UiQuads {
 }
 
 /// A titlebar'd panel (the dockable-window chrome): a thin `frame`-px raised,
-/// mitered bevel (2 px) that also **margins the content** — the titlebar +
+/// mitered bevel (2 px) that also **margins the content** - the titlebar +
 /// body sit *inside* the ring, nothing on the border. Returns the close-button
 /// hit rect.
 #[allow(clippy::too_many_arguments)]
@@ -441,7 +441,7 @@ pub fn panel(q: &mut UiQuads, r: Rect, title: &str, dragging: bool, frame: f32, 
 	close
 }
 
-/// Modal frame border width — the thin ring that also margins the content.
+/// Modal frame border width - the thin ring that also margins the content.
 pub const MODAL_FRAME: f32 = 2.0;
 
 /// A modal dialog frame: the same chrome as [`panel`] with a 2-px frame
@@ -456,15 +456,27 @@ pub fn modal_frame(q: &mut UiQuads, r: Rect, title: &str, title_h: f32, w: f32, 
 	q.label_in(title, bar, 8.0, FONT_BODY, w, h, theme::ACCENT);
 }
 
-/// The full-screen backdrop drawn behind a modal — a 50% dark veil that dims
+/// The full-screen backdrop drawn behind a modal - a 50% dark veil that dims
 /// the scene (and blocks interaction with it) while keeping context visible.
 pub fn modal_scrim(q: &mut UiQuads, w: f32, h: f32) {
 	q.rect(Rect::new(0.0, 0.0, w, h), w, h, [0.0, 0.0, 0.0, 0.5]);
 }
 
+/// The standard modal bottom-row button pair: Cancel-style (left) + confirm
+/// (right), each [`MODAL_BTN_W`] wide and bottom-aligned inside dialog `d` of
+/// inner width `w`, given the modal's own `pad`/`btn_h` (passed in - modals
+/// tune these individually). Returns `(left, right)`.
+pub fn button_pair(d: Rect, w: f32, pad: f32, btn_h: f32) -> (Rect, Rect) {
+	let y = d.y + d.h - btn_h - pad;
+	(Rect::new(d.x + pad, y, MODAL_BTN_W, btn_h), Rect::new(d.x + w - MODAL_BTN_W - pad, y, MODAL_BTN_W, btn_h))
+}
+
+/// Standard modal action-button width (Cancel / Save / Delete / …).
+pub const MODAL_BTN_W: f32 = 90.0;
+
 pub const TITLEBAR_H: f32 = 22.0;
 
-/// The content box inside a panel's `frame`-px border ring — the area the
+/// The content box inside a panel's `frame`-px border ring - the area the
 /// border *margins off*. Titlebar + body live here; nothing is drawn on the
 /// border itself.
 pub fn content_box(r: Rect, frame: f32) -> Rect {
@@ -482,7 +494,7 @@ pub fn body_rect(r: Rect, frame: f32) -> Rect {
 	Rect::new(c.x, c.y + TITLEBAR_H, c.w, (c.h - TITLEBAR_H).max(0.0))
 }
 
-/// The titlebar close-button hit area — the right `TITLEBAR_H` square of the
+/// The titlebar close-button hit area - the right `TITLEBAR_H` square of the
 /// inset band.
 pub fn close_rect(r: Rect, frame: f32) -> Rect {
 	let bar = titlebar_band(r, frame);
@@ -511,7 +523,7 @@ mod tests {
 	#[test]
 	fn quads_interleave_runs_in_push_order() {
 		// Z-order honesty: a panel pushed later must cover an earlier
-		// panel's labels, so shape→label→shape→label stays four runs —
+		// panel's labels, so shape→label→shape→label stays four runs -
 		// while consecutive same-atlas pushes coalesce.
 		let mut q = UiQuads::default();
 		let r = Rect::new(0.0, 0.0, 10.0, 10.0);

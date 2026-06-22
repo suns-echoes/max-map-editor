@@ -1,0 +1,54 @@
+{
+	"version": "1",
+	"name": "Rough 1",
+	"width": 4,
+	"height": 6,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "DESERT",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"WATR07,DLc000",
+			"WATR08,DLc001",
+			""
+		],
+		[
+			"",
+			"WATR01,DLc002",
+			"WATR10,DLc003",
+			"WATR07,DLc004"
+		],
+		[
+			"",
+			"WATR00,DLc005",
+			"WATR08,DLc006",
+			"WATR11,DLc007"
+		],
+		[
+			"WATR08,DLc008",
+			"WATR11,DLc009",
+			"WATR01,DLc010",
+			""
+		],
+		[
+			"WATR00,DLc011",
+			"WATR04,DLc012",
+			"WATR04,DLc013",
+			""
+		],
+		[
+			"",
+			"WATR08,DLc014",
+			"WATR03,DLa021",
+			""
+		]
+	]
+}

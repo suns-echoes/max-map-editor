@@ -1,0 +1,33 @@
+{
+	"version": "1",
+	"name": "Mountain D-2",
+	"width": 3,
+	"height": 3,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "DESERT",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR02,DMc004",
+			"WATR04,DMc005",
+			"WATR02,DMc025"
+		],
+		[
+			"WATR03,DMc006",
+			"WATR06,DMc007",
+			"WATR03,DMc008"
+		],
+		[
+			"WATR08,DMc024",
+			"WATR03,DMc009",
+			"WATR03,DMc026"
+		]
+	]
+}

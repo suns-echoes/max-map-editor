@@ -3,7 +3,7 @@
 //! list them in a picker-style grid, and stamp non-document *preview*
 //! placements on the map so palette edits can be judged against real units.
 //!
-//! Pure logic — the GPU half (atlas + quad pass) lives in `units_render.rs`,
+//! Pure logic - the GPU half (atlas + quad pass) lives in `units_render.rs`,
 //! input routing in `main.rs`. Format knowledge (multi-image strips, `D_*`
 //! base records, `S_*` shadow strips, team-color slots) follows re-MAX.
 
@@ -20,7 +20,7 @@ use crate::units_render::AtlasSlots;
 /// The five player colors of the original game, in remap-table order.
 pub const TEAMS: usize = 5;
 pub const TEAM_NAMES: [&str; TEAMS] = ["red", "green", "blue", "gray", "yellow"];
-/// Swatch colors for the team picker row (UI only — sprites recolor through
+/// Swatch colors for the team picker row (UI only - sprites recolor through
 /// the palette remap in `units.wgsl`, not these).
 pub const TEAM_SWATCH: [[f32; 4]; TEAMS] = [
 	[0.78, 0.16, 0.16, 1.0],
@@ -36,11 +36,11 @@ pub const MAX_SPRITE: u32 = 128;
 
 /// Per-unit sprite-strip layout: `(tag, body_base, body_count, turret_base,
 /// turret_count)`. Extracted from re-MAX's `art.ini`, which in turn dumps the
-/// original game's base-unit-data — the `D_*` records in MAX.RES are shared
+/// original game's base-unit-data - the `D_*` records in MAX.RES are shared
 /// per-*class* templates, so per-unit truth has to come from a table like
 /// this (fixed turrets keep their turret strip at frame 1, not 8; SCANNER /
 /// AWAC turret strips spin through 16/30 frames; …). Explosion/projectile FX
-/// are deliberately omitted — they aren't placeable map dressing.
+/// are deliberately omitted - they aren't placeable map dressing.
 const STRIPS: &[(&str, u8, u8, u8, u8)] = &[
 	("COMMTWR", 0, 2, 0, 0),
 	("POWERSTN", 0, 2, 0, 0),
@@ -141,7 +141,7 @@ pub struct UnitEntry {
 	pub shadow: Vec<IndexedFrame>,
 	pub data: BaseUnitData,
 	/// Footprint in cells per side (1 for vehicles, 2 for big buildings),
-	/// derived from the body sprite size — MAX.RES carries no flag for it.
+	/// derived from the body sprite size - MAX.RES carries no flag for it.
 	pub footprint: u32,
 }
 
@@ -175,7 +175,7 @@ pub struct UnitLibrary {
 impl UnitLibrary {
 	/// Load every unit/building sprite from `<max_path>/MAX.RES`. The roster
 	/// is the set of tags with an `S_…` shadow companion (units and
-	/// buildings cast shadows; FX/UI art doesn't) — RES tags are 8 bytes, so
+	/// buildings cast shadows; FX/UI art doesn't) - RES tags are 8 bytes, so
 	/// companion prefixes truncate the base to 6 chars (`S_AIRTRA` for
 	/// `AIRTRANS`). Strip layout comes from the matching `D_…` template when
 	/// one exists, else from the frame-count convention (8 chassis headings,
@@ -183,7 +183,7 @@ impl UnitLibrary {
 	/// skipped.
 	pub fn load(max_path: &Path) -> Result<UnitLibrary, String> {
 		let res = find_max_res(max_path)
-			.ok_or_else(|| format!("MAX.RES not found in {} — check MaxPath", max_path.display()))?;
+			.ok_or_else(|| format!("MAX.RES not found in {} - check MaxPath", max_path.display()))?;
 		let archive = read_res_index(&res).map_err(|e| format!("{}: {e}", res.display()))?;
 
 		let has = |tag: &str| archive.entries.iter().any(|e| e.tag == tag);
@@ -279,7 +279,6 @@ const PAD: f32 = 4.0;
 const GAP: f32 = 2.0;
 const CELL: f32 = 52.0;
 const SWATCH: f32 = 14.0;
-pub const WHEEL_STEP: f32 = 48.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -289,26 +288,20 @@ pub enum Action {
 	Eraser,
 }
 
+fn grid(body: Rect) -> crate::cellgrid::Grid {
+	crate::cellgrid::Grid { body, cell: CELL, gap: GAP, pad: PAD, header: HEADER_H, row_extra: 0.0 }
+}
+
 fn cols(body: Rect) -> usize {
-	let inner = body.w - PAD * 2.0 - crate::ui::SCROLLBAR_W;
-	(((inner + GAP) / (CELL + GAP)).floor() as usize).max(1)
+	grid(body).cols()
 }
 
 fn item_rect(i: usize, body: Rect, scroll: f32) -> Rect {
-	let n = cols(body);
-	let (row, col) = (i / n, i % n);
-	Rect::new(
-		body.x + PAD + col as f32 * (CELL + GAP),
-		body.y + HEADER_H + PAD - scroll + row as f32 * (CELL + GAP),
-		CELL,
-		CELL,
-	)
+	grid(body).item_rect(i, scroll)
 }
 
 pub fn max_scroll(count: usize, body: Rect) -> f32 {
-	let rows = count.div_ceil(cols(body));
-	let content = rows as f32 * (CELL + GAP) + PAD * 2.0 - GAP;
-	crate::ui::scroll_max(content, body.h - HEADER_H)
+	grid(body).max_scroll(count)
 }
 
 fn swatch_rect(team: usize, body: Rect) -> Rect {
@@ -358,7 +351,7 @@ pub struct View {
 }
 
 /// Panel content: team swatch row + the unit grid. Thumbnails are body
-/// frames only — shadows/turrets appear on the map placement, where they
+/// frames only - shadows/turrets appear on the map placement, where they
 /// matter for color judgement.
 #[allow(clippy::too_many_arguments)]
 pub fn view(
@@ -390,7 +383,7 @@ pub fn view(
 		}
 		overlay.rect(r, w, h, TEAM_SWATCH[t]);
 	}
-	// The eraser is a standard toggle key (green when active — toolbox parity).
+	// The eraser is a standard toggle key (green when active - toolbox parity).
 	let er = eraser_rect(body);
 	overlay.button_active(er, w, h, erasing, hot);
 	overlay.label_in("erase", er, 6.0, crate::ui::FONT_SMALL, w, h, if erasing { theme::ACCENT } else { theme::INK });
@@ -398,7 +391,7 @@ pub fn view(
 	let (Some(lib), Some(slots)) = (lib, slots) else {
 		// Word-wraps in a narrow dock instead of running off the panel.
 		overlay.label_wrapped(
-			"set MaxPath in config/mme.ini to load units",
+			"set MaxPath in resources/user/config/mme.ini to load units",
 			Rect::new(body.x, body.y + HEADER_H + 4.0, body.w, body.h - HEADER_H),
 			PAD,
 			crate::ui::FONT_SMALL,
@@ -410,7 +403,7 @@ pub fn view(
 	};
 
 	let scroll = scroll.clamp(0.0, max_scroll(lib.units.len(), body));
-	// Active tag, right-aligned — truncated when a narrow panel would run it
+	// Active tag, right-aligned - truncated when a narrow panel would run it
 	// into the eraser button.
 	let tag = active_unit.map(|i| lib.units[i].tag.as_str()).unwrap_or("");
 	let avail = body.x + body.w - 6.0 - (er.x + er.w + 6.0);
@@ -438,7 +431,7 @@ pub fn view(
 }
 
 /// Thumbnail quads for one grid cell: body + turret composited the way the
-/// map does it — both hotspots anchored on the same point — then scaled to
+/// map does it - both hotspots anchored on the same point - then scaled to
 /// fit the cell.
 fn thumbnail_quads(
 	unit: &UnitEntry,
@@ -485,7 +478,7 @@ fn thumbnail_quads(
 }
 
 /// Build the map-overlay quads for the placed previews (the project's
-/// `UnitNote` annotations): shadow quads first, then bodies, then turrets —
+/// `UnitNote` annotations): shadow quads first, then bodies, then turrets -
 /// the game's compositing order. Notes whose tag isn't in the library (other
 /// game edition, mod) are silently skipped.
 pub fn map_quads(

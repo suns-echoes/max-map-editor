@@ -1,0 +1,42 @@
+{
+	"version": "1",
+	"name": "Pyramid 1A",
+	"width": 4,
+	"height": 4,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "DESERT",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"WATR03,DPa024",
+			"WATR05,DPa025",
+			"WATR08,DPa026",
+			"WATR10,DPa031"
+		],
+		[
+			"WATR11,DPa028",
+			"WATR11,DPa029",
+			"WATR03,DPa030",
+			"WATR09,DPa031"
+		],
+		[
+			"WATR01,DPa032",
+			"WATR09,DPa033",
+			"WATR08,DPa034",
+			"WATR07,DPa035"
+		],
+		[
+			"WATR10,DPa047",
+			"WATR03,DPa036",
+			"WATR07,DPa037",
+			""
+		]
+	]
+}

@@ -1,0 +1,26 @@
+{
+	"version": "1",
+	"name": "Dune 7",
+	"width": 2,
+	"height": 2,
+	"use": [
+		{
+			"name": "WATER",
+			"version": "1"
+		},
+		{
+			"name": "SNOW",
+			"version": "1"
+		}
+	],
+	"map": [
+		[
+			"",
+			"WATR07,SLb009"
+		],
+		[
+			"WATR09,SLb010",
+			"WATR08,SLb011"
+		]
+	]
+}

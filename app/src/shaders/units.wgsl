@@ -1,6 +1,6 @@
 // Unit-preview quads (see units.rs / units_render.rs): screen-space quads
 // sampling the unit sprite atlas (R8Uint, palette indices) through the
-// working palette — so palette edits and color cycling recolor units live.
+// working palette - so palette edits and color cycling recolor units live.
 //
 // Team colors: FRAMEPIC's three 8-entry team ramps (32..=39 green art,
 // 48..=55 blue art, 56..=63 red art) all remap to the active team's ramp
@@ -35,7 +35,7 @@ fn vs_main(in: VsIn) -> VsOut {
 }
 
 // Source palette indices for each team's 8-color ramp (Red, Green, Blue,
-// Gray, Yellow/Derelict) — from the original game's resource manager.
+// Gray, Yellow/Derelict) - from the original game's resource manager.
 const RAMP: array<array<u32, 8>, 5> = array<array<u32, 8>, 5>(
 	array<u32, 8>(56u, 57u, 58u, 59u, 60u, 61u, 62u, 63u),
 	array<u32, 8>(32u, 33u, 34u, 35u, 36u, 37u, 38u, 39u),

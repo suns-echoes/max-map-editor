@@ -1,6 +1,6 @@
 //! New from Image modal: configure how a decoded image maps onto
-//! a new map — dimensions, coverage (crop/stretch/fill) + offset, dither and
-//! dedupe method — then run a [`map_core::ConvertSession`] with a live progress
+//! a new map - dimensions, coverage (crop/stretch/fill) + offset, dither and
+//! dedupe method - then run a [`map_core::ConvertSession`] with a live progress
 //! bar, stage label, elapsed + estimated-remaining time, and an Abort button.
 //!
 //! The run is stepped per frame by the shell (like the Auto Fix Shore modal),
@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use map_core::{ConvertOpts, ConvertSession, Coverage, Dedupe};
 
+use crate::textinput::{Charset, TextInput};
 use crate::theme;
 use crate::ui::{self, Hot, Rect, UiQuads};
 
@@ -31,28 +32,30 @@ pub enum Field {
 	Threshold,
 }
 
-/// Dither algorithm (UI selector — only one option today, kept extensible).
+/// Dither algorithm (UI selector - only one option today, kept extensible).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DitherMethod {
 	FloydSteinberg,
 }
 
 pub struct NewFromImage {
-	/// The image file — only its pixels are read at Convert (the first stage),
+	/// The image file - only its pixels are read at Convert (the first stage),
 	/// so opening the modal stays instant even for large PNGs.
 	pub(crate) path: PathBuf,
 	pub name: String,
 
 	// Settings.
-	pub width: String,
-	pub height: String,
+	pub width: TextInput,
+	pub height: TextInput,
 	pub coverage: Coverage,
-	pub off_x: String,
-	pub off_y: String,
+	pub off_x: TextInput,
+	pub off_y: TextInput,
 	pub dither: DitherMethod,
 	pub dedupe: Dedupe,
-	pub threshold: String,
+	pub threshold: TextInput,
 	focus: Option<Field>,
+	/// The field a mouse-drag selection is extending (press..release).
+	drag_field: Option<Field>,
 
 	// Run state (the shell drives these via `EditorState`).
 	pub session: Option<ConvertSession>,
@@ -62,7 +65,7 @@ pub struct NewFromImage {
 	pub elapsed: f32,
 
 	/// A command button held down, waiting for release-inside
-	/// — dragging off cancels.
+	/// - dragging off cancels.
 	armed: Option<ArmedBtn>,
 	pub(crate) drag_offset: (f32, f32),
 }
@@ -71,7 +74,7 @@ pub struct NewFromImage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArmedBtn {
 	Cancel,
-	/// Convert when idle / Abort while running — the same button.
+	/// Convert when idle / Abort while running - the same button.
 	Convert,
 }
 
@@ -96,15 +99,16 @@ impl NewFromImage {
 		Self {
 			path,
 			name,
-			width: opts.width_tiles.to_string(),
-			height: opts.height_tiles.to_string(),
+			width: TextInput::new(&opts.width_tiles.to_string(), 5).charset(Charset::Digits),
+			height: TextInput::new(&opts.height_tiles.to_string(), 5).charset(Charset::Digits),
 			coverage: Coverage::Crop,
-			off_x: "0".to_string(),
-			off_y: "0".to_string(),
+			off_x: TextInput::new("0", 5).charset(Charset::Signed),
+			off_y: TextInput::new("0", 5).charset(Charset::Signed),
 			dither: DitherMethod::FloydSteinberg,
 			dedupe: Dedupe::Strict,
-			threshold: "5".to_string(),
+			threshold: TextInput::new("5", 5).charset(Charset::Digits),
 			focus: None,
+			drag_field: None,
 			session: None,
 			running: false,
 			progress: 0.0,
@@ -117,17 +121,17 @@ impl NewFromImage {
 
 	/// Parse the settings into [`ConvertOpts`] (validating ranges).
 	pub fn opts(&self) -> Result<ConvertOpts, String> {
-		let width_tiles: u32 = self.width.parse().map_err(|_| "width is not a number")?;
-		let height_tiles: u32 = self.height.parse().map_err(|_| "height is not a number")?;
+		let width_tiles: u32 = self.width.text().parse().map_err(|_| "width is not a number")?;
+		let height_tiles: u32 = self.height.text().parse().map_err(|_| "height is not a number")?;
 		if !(1..=1024).contains(&width_tiles) || !(1..=1024).contains(&height_tiles) {
 			return Err(format!("map size {width_tiles}×{height_tiles} (1..=1024 tiles)"));
 		}
-		let off_x = parse_signed(&self.off_x)?;
-		let off_y = parse_signed(&self.off_y)?;
+		let off_x = parse_signed(self.off_x.text())?;
+		let off_y = parse_signed(self.off_y.text())?;
 		let threshold = match self.dedupe {
 			Dedupe::Strict => 0.0,
 			Dedupe::Relaxed => {
-				let pct: f32 = self.threshold.parse().map_err(|_| "threshold is not a number")?;
+				let pct: f32 = self.threshold.text().parse().map_err(|_| "threshold is not a number")?;
 				(pct / 100.0).clamp(0.0, 1.0)
 			}
 		};
@@ -140,6 +144,26 @@ impl NewFromImage {
 			dedupe: self.dedupe,
 			threshold,
 		})
+	}
+
+	fn field_mut(&mut self, f: Field) -> &mut TextInput {
+		match f {
+			Field::Width => &mut self.width,
+			Field::Height => &mut self.height,
+			Field::OffX => &mut self.off_x,
+			Field::OffY => &mut self.off_y,
+			Field::Threshold => &mut self.threshold,
+		}
+	}
+
+	fn field_ref(&self, f: Field) -> &TextInput {
+		match f {
+			Field::Width => &self.width,
+			Field::Height => &self.height,
+			Field::OffX => &self.off_x,
+			Field::OffY => &self.off_y,
+			Field::Threshold => &self.threshold,
+		}
 	}
 
 	// ----- geometry ----------------------------------------------------------
@@ -194,7 +218,7 @@ impl NewFromImage {
 
 	pub fn on_press(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
 		let d = self.dialog_rect(w, h);
-		// Buttons are live in both states — armed, firing on release-inside
+		// Buttons are live in both states - armed, firing on release-inside
 		//.
 		if self.cancel_rect(d).contains(x, y) {
 			self.armed = Some(ArmedBtn::Cancel);
@@ -207,14 +231,22 @@ impl NewFromImage {
 		// Settings are frozen while a run is in flight.
 		if !self.running {
 			for f in [Field::Width, Field::Height, Field::OffX, Field::OffY] {
-				if self.field_rect(d, f).contains(x, y) {
+				let r = self.field_rect(d, f);
+				if r.contains(x, y) {
 					self.focus = Some(f);
+					self.field_mut(f).on_press(x, y, r);
+					self.drag_field = Some(f);
 					return Press::Consumed;
 				}
 			}
-			if self.dedupe == Dedupe::Relaxed && self.field_rect(d, Field::Threshold).contains(x, y) {
-				self.focus = Some(Field::Threshold);
-				return Press::Consumed;
+			if self.dedupe == Dedupe::Relaxed {
+				let r = self.field_rect(d, Field::Threshold);
+				if r.contains(x, y) {
+					self.focus = Some(Field::Threshold);
+					self.field_mut(Field::Threshold).on_press(x, y, r);
+					self.drag_field = Some(Field::Threshold);
+					return Press::Consumed;
+				}
 			}
 			for (i, c) in [Coverage::Crop, Coverage::Stretch, Coverage::Fill].into_iter().enumerate() {
 				if self.coverage_rect(d, i).contains(x, y) {
@@ -237,6 +269,7 @@ impl NewFromImage {
 	/// Fire the armed command button if the release is still on it;
 	/// a release anywhere else just disarms.
 	pub fn on_release(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
+		self.drag_field = None;
 		let d = self.dialog_rect(w, h);
 		match self.armed.take() {
 			Some(ArmedBtn::Cancel) if self.cancel_rect(d).contains(x, y) => Press::Cancel,
@@ -251,30 +284,34 @@ impl NewFromImage {
 		}
 	}
 
-	pub fn on_key(&mut self, ch: Option<char>, backspace: bool, tab: bool) {
+	/// The focused field's edit state (none mid-run, when settings are frozen).
+	pub fn edit_context(&self) -> Option<crate::modal::EditContext> {
+		if self.running {
+			return None;
+		}
+		let f = self.field_ref(self.focus?);
+		Some(f.edit_context())
+	}
+
+	/// Route an editing key to the focused field (ignored while a run is live).
+	pub fn key(&mut self, key: &crate::modal::ModalKey) {
 		if self.running {
 			return;
 		}
-		if tab {
-			self.focus = Some(self.next_focus());
-			return;
-		}
 		let Some(f) = self.focus else { return };
-		let field = match f {
-			Field::Width => &mut self.width,
-			Field::Height => &mut self.height,
-			Field::OffX => &mut self.off_x,
-			Field::OffY => &mut self.off_y,
-			Field::Threshold => &mut self.threshold,
-		};
-		let signed = matches!(f, Field::OffX | Field::OffY);
-		if backspace {
-			field.pop();
-		} else if let Some(c) = ch {
-			let ok = c.is_ascii_digit() && field.len() < 5 || (signed && c == '-' && field.is_empty());
-			if ok {
-				field.push(c);
-			}
+		self.field_mut(f).on_key(key);
+	}
+
+	/// Tab moves to the next field.
+	pub fn focus_next(&mut self) {
+		self.focus = Some(self.next_focus());
+	}
+
+	/// Mouse drag extends the active field's selection (after a press on it).
+	pub fn on_drag(&mut self, x: f32, y: f32, w: f32, h: f32) {
+		if let Some(f) = self.drag_field {
+			let r = self.field_rect(self.dialog_rect(w, h), f);
+			self.field_mut(f).on_drag(x, y, r);
 		}
 	}
 
@@ -297,29 +334,24 @@ impl NewFromImage {
 		ui::modal_scrim(&mut q, w, h);
 		ui::modal_frame(&mut q, d, "New from Image", TITLE_H, w, h);
 		let f = crate::ui::FONT_SMALL;
-		let dim = if self.running { theme::INK_DIM } else { theme::INK };
 
 		let lab = |q: &mut UiQuads, text: &str, row: usize| {
 			q.label(text, d.x + PAD, self.row_y(d, row) + 5.0, f, w, h, theme::INK_DIM);
 		};
-		let field = |q: &mut UiQuads, this: &Self, fld: Field, text: &str| {
+		// The well + focus border; the editable text is drawn clipped by the shell
+		// (see `field_contents`).
+		let field = |q: &mut UiQuads, this: &Self, fld: Field| {
 			let r = this.field_rect(d, fld);
 			q.field(r, w, h);
-			let focused = this.focus == Some(fld) && !this.running;
-			if focused {
+			if this.focus == Some(fld) && !this.running {
 				q.border(r, w, h, theme::INK);
-			}
-			q.label_in(text, r, 6.0, f, w, h, dim);
-			if focused {
-				let tw = crate::text::label_width(text, f);
-				q.rect(Rect::new(r.x + 6.0 + tw + 1.0, r.y + 3.0, 2.0, r.h - 6.0), w, h, theme::INK);
 			}
 		};
 
 		// Size.
 		lab(&mut q, "size (tiles)", 0);
-		field(&mut q, self, Field::Width, &self.width);
-		field(&mut q, self, Field::Height, &self.height);
+		field(&mut q, self, Field::Width);
+		field(&mut q, self, Field::Height);
 		let xr = self.field_rect(d, Field::Width);
 		q.label_in("x", Rect::new(xr.x + FIELD_W + 6.0, xr.y, 12.0, BTN_H), 0.0, f, w, h, theme::INK_DIM);
 
@@ -334,13 +366,13 @@ impl NewFromImage {
 
 		// Offset.
 		lab(&mut q, "offset (px)", 2);
-		field(&mut q, self, Field::OffX, &self.off_x);
-		field(&mut q, self, Field::OffY, &self.off_y);
+		field(&mut q, self, Field::OffX);
+		field(&mut q, self, Field::OffY);
 
 		// Dither.
 		lab(&mut q, "dither", 3);
 		let dither_name = match self.dither {
-			// ASCII hyphen — the MAX atlas has no en-dash (it would vanish).
+			// ASCII hyphen - the MAX atlas has no en-dash (it would vanish).
 			DitherMethod::FloydSteinberg => "Floyd-Steinberg",
 		};
 		q.toggle_button(self.dither_rect(d), dither_name, true, !self.running, f, w, h, hot);
@@ -352,7 +384,7 @@ impl NewFromImage {
 			q.toggle_button(r, name, self.dedupe == dd, !self.running, f, w, h, hot);
 		}
 		if self.dedupe == Dedupe::Relaxed {
-			field(&mut q, self, Field::Threshold, &self.threshold);
+			field(&mut q, self, Field::Threshold);
 			let tr = self.field_rect(d, Field::Threshold);
 			q.label_in("%", Rect::new(tr.x + tr.w + 2.0, tr.y, 12.0, BTN_H), 0.0, f, w, h, theme::INK_DIM);
 		}
@@ -377,6 +409,23 @@ impl NewFromImage {
 		q.label_in(if self.running { "Abort" } else { "Convert" }, cr, 8.0, f, w, h, theme::INK);
 		q
 	}
+
+	/// Each editable field's text/caret/selection with its clip rect (Threshold
+	/// only when the relaxed dedupe shows it). Drawn clipped to the wells.
+	pub fn field_contents(&self, w: f32, h: f32) -> Vec<(UiQuads, Rect)> {
+		let d = self.dialog_rect(w, h);
+		let mut fields = vec![Field::Width, Field::Height, Field::OffX, Field::OffY];
+		if self.dedupe == Dedupe::Relaxed {
+			fields.push(Field::Threshold);
+		}
+		fields
+			.into_iter()
+			.map(|fld| {
+				let r = self.field_rect(d, fld);
+				(self.field_ref(fld).content_quads(r, self.focus == Some(fld) && !self.running, w, h), r)
+			})
+			.collect()
+	}
 }
 
 /// Parse a possibly-negative integer field; empty = 0.
@@ -398,7 +447,7 @@ mod tests {
 	#[test]
 	fn defaults_fit_source_dimensions() {
 		let m = modal();
-		assert_eq!((m.width.as_str(), m.height.as_str()), ("2", "1"));
+		assert_eq!((m.width.text(), m.height.text()), ("2", "1"));
 		let opts = m.opts().unwrap();
 		assert_eq!((opts.width_tiles, opts.height_tiles), (2, 1));
 	}
@@ -407,7 +456,7 @@ mod tests {
 	fn relaxed_threshold_parses_as_fraction() {
 		let mut m = modal();
 		m.dedupe = Dedupe::Relaxed;
-		m.threshold = "25".into();
+		m.threshold.set_text("25");
 		assert!((m.opts().unwrap().threshold - 0.25).abs() < 1e-6);
 		// Strict ignores the threshold field.
 		m.dedupe = Dedupe::Strict;
@@ -417,7 +466,7 @@ mod tests {
 	#[test]
 	fn offset_accepts_negative() {
 		let mut m = modal();
-		m.off_x = "-12".into();
+		m.off_x.set_text("-12");
 		assert_eq!(m.opts().unwrap().off_x, -12);
 	}
 

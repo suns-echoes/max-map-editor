@@ -1,0 +1,113 @@
+{
+	"CHa": {
+		"hasVariants": true,
+		"type": "OBSTRUCTION",
+		"transformable": "invert"
+	},
+	"CLa": {
+		"hasVariants": true,
+		"type": "LAND",
+		"transformable": true
+	},
+	"CMa": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"CMb": {
+		"hasVariants": false,
+		"type": "OBSTRUCTION",
+		"transformable": false
+	},
+	"CSa": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSb": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSc": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSd": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSe": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSf": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSg": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSh": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSi": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSj": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSk": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSl": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	},
+	"CSm": {
+		"hasVariants": true,
+		"type": "SHORE",
+		"transformable": true,
+		"useMaskColor": true,
+		"mask": 0
+	}
+}
