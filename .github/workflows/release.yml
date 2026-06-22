@@ -6,9 +6,8 @@
 #
 # Zip layout (the portable install - settings live beside the binary):
 #   max-map-editor[.exe]
-#   config/mme.ini
-#   resources/...
-#   MANUAL.md, LICENSE
+#   resources/...   (tile packs, maps, manual, and config/mme.ini)
+#   MANUAL.md, LICENSE, THIRD-PARTY-LICENSES.md
 #   install.sh (Linux only - optional desktop integration)
 
 name: release
@@ -72,7 +71,7 @@ jobs:
             cp target/release/max-map-editor "dist/$name/"
             cp install.sh "dist/$name/"
           fi
-          cp -R config resources "dist/$name/"
+          cp -R resources "dist/$name/"
           cp MANUAL.md LICENSE THIRD-PARTY-LICENSES.md "dist/$name/"
 
       - name: Smoke test (Linux, software Vulkan)
