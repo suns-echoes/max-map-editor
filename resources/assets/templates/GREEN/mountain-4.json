@@ -15,32 +15,32 @@
 	],
 	"map": [
 		[
-			"WATR05,GMa065",
-			"WATR05,GMa066",
-			"WATR01,GMa067",
+			"WTR005,GMa065",
+			"WTR005,GMa066",
+			"WTR001,GMa067",
 			"",
 			""
 		],
 		[
-			"WATR11,GMa068",
-			"WATR05,GMa069",
-			"WATR11,GMa070",
-			"WATR04,GMa071",
+			"WTR011,GMa068",
+			"WTR005,GMa069",
+			"WTR011,GMa070",
+			"WTR004,GMa071",
 			""
 		],
 		[
-			"WATR03,GMa073",
-			"WATR03,GMa074",
-			"WATR10,GMa075",
-			"WATR11,GMa076",
-			"WATR09,GMa077"
+			"WTR003,GMa073",
+			"WTR003,GMa074",
+			"WTR010,GMa075",
+			"WTR011,GMa076",
+			"WTR009,GMa077"
 		],
 		[
 			"",
-			"WATR05,GMa078",
-			"WATR04,GMa079",
-			"WATR10,GMa080",
-			"WATR03,GMa081"
+			"WTR005,GMa078",
+			"WTR004,GMa079",
+			"WTR010,GMa080",
+			"WTR003,GMa081"
 		]
 	]
 }

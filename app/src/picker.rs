@@ -13,9 +13,7 @@ use crate::ui::{Hot, Rect, SteelMap, UiQuads};
 /// Display sizes the size dropdown offers (the larger ones suit a wide panel
 /// or close inspection of a single tile).
 pub const SIZES: [f32; 7] = [16.0, 24.0, 32.0, 48.0, 64.0, 128.0, 256.0];
-/// Two header rows: filter + size on top, the new/clone/edit actions below.
-const HEADER_H: f32 = 44.0;
-/// Height of one header row (filter row, action row).
+/// Height of one header control row.
 const ROW_H: f32 = 20.0;
 const PAD: f32 = 4.0;
 const GAP: f32 = 2.0;
@@ -138,7 +136,7 @@ pub fn items(project: &Project, filter: Filter) -> Vec<Item<'_>> {
 
 /// Grid geometry for the picker body (header row on top, `tile_px` cells below).
 pub fn grid(body: Rect, tile_px: f32) -> crate::cellgrid::Grid {
-	crate::cellgrid::Grid { body, cell: tile_px, gap: GAP, pad: PAD, header: HEADER_H, row_extra: 0.0 }
+	crate::cellgrid::Grid { body, cell: tile_px, gap: GAP, pad: PAD, header: header_h(body), row_extra: 0.0 }
 }
 
 /// Screen rect of item `i` at a given scroll.
@@ -151,26 +149,90 @@ pub fn max_scroll(count: usize, body: Rect, tile_px: f32) -> f32 {
 	grid(body, tile_px).max_scroll(count)
 }
 
-/// The grid's clip area (body minus the header row).
+/// Scroll offset that brings item `index` into the grid's visible window,
+/// moving as little as possible from `scroll` (a no-op when it's already shown).
+/// Used to reveal the just-picked tile (the map eyedropper).
+pub fn scroll_to_reveal(body: Rect, tile_px: f32, count: usize, index: usize, scroll: f32) -> f32 {
+	let g = grid(body, tile_px);
+	let max = g.max_scroll(count);
+	let top = g.item_rect(index, scroll).y; // current on-screen top
+	let bot = top + tile_px;
+	let (win_top, win_bot) = (body.y + header_h(body), body.y + body.h);
+	let s = if top < win_top {
+		scroll - (win_top - top) // scroll up to bring the top into view
+	} else if bot > win_bot {
+		scroll + (bot - win_bot) // scroll down to bring the bottom into view
+	} else {
+		scroll // already visible
+	};
+	s.clamp(0.0, max)
+}
+
+/// The grid's clip area (body minus the header rows).
 pub fn scissor(body: Rect) -> Rect {
-	crate::cellgrid::scissor(body, HEADER_H)
+	crate::cellgrid::scissor(body, header_h(body))
 }
 
-/// Header controls (top row): the `filter` dropdown box and the size dropdown.
-fn header_buttons(body: Rect) -> (Rect, Rect) {
-	let h = ROW_H - 2.0;
-	(Rect::new(body.x + 2.0, body.y + 2.0, 128.0, h), Rect::new(body.x + 134.0, body.y + 2.0, 56.0, h))
+/// The filter dropdown's fixed width: its longest option plus the caret gutter
+/// and padding (see [`crate::select::draw_box`]), so the closed value and the
+/// popup options never ellipsize.
+fn filter_w() -> f32 {
+	let longest =
+		Filter::ALL.iter().map(|f| crate::text::label_width(f.name(), crate::ui::FONT_SMALL)).fold(0.0_f32, f32::max);
+	longest + 28.0
 }
 
-/// Action row (below the filter row): `new` / `clone` / `edit` / `del`, sharing
-/// the width evenly so they fit even a narrow panel.
-fn action_buttons(body: Rect) -> [Rect; 4] {
-	let y = body.y + ROW_H + 2.0;
-	let h = ROW_H - 2.0;
-	let avail = body.w - 2.0 * PAD;
-	let bw = ((avail - 3.0 * GAP) / 4.0).max(22.0);
-	let x0 = body.x + PAD;
-	std::array::from_fn(|i| Rect::new(x0 + i as f32 * (bw + GAP), y, bw, h))
+/// The size dropdown's fixed width: enough that the popup options (`"256 px"`)
+/// render in full (the closed number then fits trivially).
+fn size_w() -> f32 {
+	let longest = SIZES
+		.iter()
+		.map(|s| crate::text::label_width(&format!("{} px", *s as u32), crate::ui::FONT_SMALL))
+		.fold(0.0_f32, f32::max);
+	longest + 12.0
+}
+
+/// The fixed width shared by the `new`/`clone`/`edit`/`delete` buttons (sized to
+/// the longest label).
+fn action_w() -> f32 {
+	let longest = ["new", "clone", "edit", "delete"]
+		.iter()
+		.map(|s| crate::text::label_width(s, crate::ui::FONT_SMALL))
+		.fold(0.0_f32, f32::max);
+	longest + 12.0
+}
+
+/// Right-edge space reserved on the first header row for the tile count, so the
+/// controls never collide with it (sized for up to four digits).
+fn count_reserve() -> f32 {
+	crate::text::label_width("0000", crate::ui::FONT_SMALL) + 6.0 + GAP
+}
+
+/// The header controls in flow order - the filter + size selects, then the four
+/// action buttons - each a fixed width and wrapping to a new row when it won't
+/// fit. Row 0 keeps clear of the tile count on the right. Returns one rect per
+/// control (filter, size, new, clone, edit, delete) and the total row count.
+fn header_flow(body: Rect) -> (Vec<Rect>, usize) {
+	let widths = [filter_w(), size_w(), action_w(), action_w(), action_w(), action_w()];
+	let left = body.x + PAD;
+	let mut rects = Vec::with_capacity(widths.len());
+	let mut x = left;
+	let mut row = 0usize;
+	for &cw in &widths {
+		let right = body.x + body.w - if row == 0 { count_reserve() } else { PAD };
+		if x > left && x + cw > right {
+			row += 1;
+			x = left;
+		}
+		rects.push(Rect::new(x, body.y + 2.0 + row as f32 * ROW_H, cw, ROW_H - 2.0));
+		x += cw + GAP;
+	}
+	(rects, row + 1)
+}
+
+/// The header band height: as many control rows as the flow needs.
+fn header_h(body: Rect) -> f32 {
+	header_flow(body).1 as f32 * ROW_H + 4.0
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -201,7 +263,8 @@ pub enum Action {
 
 /// What a click at `(x, y)` in the panel body does.
 pub fn click(project: &Project, state: &PickerState, body: Rect, x: f32, y: f32) -> Option<Action> {
-	let (filter_btn, size_btn) = header_buttons(body);
+	let ctrls = header_flow(body).0;
+	let (filter_btn, size_btn) = (ctrls[0], ctrls[1]);
 	// The filter dropdown takes priority while open - its list floats over the
 	// grid below the header.
 	match crate::select::hit(filter_btn, state.filter_open, Filter::ALL.len(), false, x, y) {
@@ -216,20 +279,13 @@ pub fn click(project: &Project, state: &PickerState, body: Rect, x: f32, y: f32)
 		None if state.size_open => return Some(Action::CloseSize),
 		None => {}
 	}
-	let [new_b, clone_b, edit_b, del_b] = action_buttons(body);
-	if new_b.contains(x, y) {
-		return Some(Action::NewTile);
+	for (r, action) in ctrls[2..].iter().zip([Action::NewTile, Action::CloneTile, Action::EditTile, Action::DeleteTile])
+	{
+		if r.contains(x, y) {
+			return Some(action);
+		}
 	}
-	if clone_b.contains(x, y) {
-		return Some(Action::CloneTile);
-	}
-	if edit_b.contains(x, y) {
-		return Some(Action::EditTile);
-	}
-	if del_b.contains(x, y) {
-		return Some(Action::DeleteTile);
-	}
-	if y < body.y + HEADER_H {
+	if y < body.y + header_h(body) {
 		return None;
 	}
 	let list = items(project, state.filter);
@@ -301,35 +357,25 @@ pub fn view(
 		}
 	}
 
-	// Header: filter dropdown + size button and the count, over a steel
-	// sub-toolbar.
-	overlay.material(body.strip_top(HEADER_H), w, h, theme::TITLE);
-	let (filter_btn, size_btn) = header_buttons(body);
-	crate::select::draw_box(
-		&mut overlay,
-		filter_btn,
-		&format!("filter: {}", state.filter.name()),
-		state.filter_open,
-		w,
-		h,
-		hot,
-	);
+	// Header: filter dropdown + size dropdown + the action buttons (flowed,
+	// fixed-width), and the count, over a steel sub-toolbar.
+	overlay.material(body.strip_top(header_h(body)), w, h, theme::TITLE);
+	let ctrls = header_flow(body).0;
+	let (filter_btn, size_btn) = (ctrls[0], ctrls[1]);
+	crate::select::draw_box(&mut overlay, filter_btn, state.filter.name(), state.filter_open, w, h, hot);
 	// Closed box shows just the number (the popup spells out "N px").
 	crate::select::draw_box(&mut overlay, size_btn, &format!("{}", state.tile_px as u32), state.size_open, w, h, hot);
-	// Action row: new (always), clone/edit/del (need a selected tile - greyed
-	// otherwise; the command still reports why if clicked).
-	let [new_b, clone_b, edit_b, del_b] = action_buttons(body);
+	// Action buttons: new (always), clone/edit/delete (need a selected tile -
+	// greyed otherwise; the command still reports why if clicked).
 	let has = active.is_some();
-	overlay.button(new_b, w, h, hot);
-	overlay.label_in("new", new_b, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
-	for (r, label) in [(clone_b, "clone"), (edit_b, "edit"), (del_b, "delete")] {
-		if has {
-			overlay.button(r, w, h, hot);
-			overlay.label_in(label, r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK);
+	for (r, label) in ctrls[2..].iter().zip(["new", "clone", "edit", "delete"]) {
+		let live = has || label == "new";
+		if live {
+			overlay.button(*r, w, h, hot);
 		} else {
-			overlay.button_disabled(r, w, h);
-			overlay.label_in(label, r, 6.0, crate::ui::FONT_SMALL, w, h, theme::INK_DIM);
+			overlay.button_disabled(*r, w, h);
 		}
+		overlay.label_in(label, *r, 6.0, crate::ui::FONT_SMALL, w, h, if live { theme::INK } else { theme::INK_DIM });
 	}
 	let count = format!("{}", list.len());
 	let cx = body.x + body.w - 6.0 - crate::text::label_width(&count, crate::ui::FONT_SMALL);
@@ -379,7 +425,7 @@ mod tests {
 		// A fresh map uses only water variants.
 		let used = items(&p, Filter::Used);
 		assert!(!used.is_empty() && used.len() <= 12);
-		assert!(used.iter().all(|i| i.id.starts_with("WATR")));
+		assert!(used.iter().all(|i| i.id.starts_with("WTR")));
 		assert_eq!(items(&p, Filter::Unused).len(), total - used.len());
 
 		// Atlas indices follow the pack_base contract (WATER first).
@@ -400,7 +446,7 @@ mod tests {
 		let scroll = state.scroll.clamp(0.0, max_scroll(list.len(), body, state.tile_px));
 		for &i in &[0usize, 7, 8, 100, list.len() - 1] {
 			let r = item_rect(&g, state.tile_px, scroll, i);
-			if r.y < body.y + HEADER_H || r.y + r.h > body.y + body.h {
+			if r.y < body.y + header_h(body) || r.y + r.h > body.y + body.h {
 				continue; // scrolled out of view - not clickable
 			}
 			match click(&p, &state, body, r.x + 5.0, r.y + 5.0) {
@@ -417,13 +463,14 @@ mod tests {
 	fn header_controls_and_filter_dropdown() {
 		let p = project();
 		let body = Rect::new(1000.0, 50.0, 278.0, 500.0);
-		// Closed: the filter box and the size box each toggle their dropdown.
+		let ctrls = header_flow(body).0;
+		let (filter_btn, size_btn) = (ctrls[0], ctrls[1]);
+		// Closed: clicking each box toggles its dropdown.
 		let closed = PickerState::default();
-		assert_eq!(click(&p, &closed, body, body.x + 10.0, body.y + 10.0), Some(Action::ToggleFilter));
-		assert_eq!(click(&p, &closed, body, body.x + 150.0, body.y + 10.0), Some(Action::ToggleSize));
-		// Size dropdown open: each row picks its size; a miss closes it.
+		assert_eq!(click(&p, &closed, body, filter_btn.x + 2.0, filter_btn.y + 2.0), Some(Action::ToggleFilter));
+		assert_eq!(click(&p, &closed, body, size_btn.x + 2.0, size_btn.y + 2.0), Some(Action::ToggleSize));
+		// Size dropdown open: each row picks its size.
 		let sized = PickerState { size_open: true, ..PickerState::default() };
-		let (_, size_btn) = header_buttons(body);
 		for i in 0..SIZES.len() {
 			let o = crate::select::option_rect(size_btn, i, SIZES.len(), false);
 			assert_eq!(click(&p, &sized, body, o.x + 2.0, o.y + 2.0), Some(Action::SetSize(i)));
@@ -431,7 +478,6 @@ mod tests {
 
 		// Open: each option row picks its filter; a click off the list closes it.
 		let open = PickerState { filter_open: true, ..PickerState::default() };
-		let (filter_btn, _) = header_buttons(body);
 		for (i, &f) in Filter::ALL.iter().enumerate() {
 			let o = crate::select::option_rect(filter_btn, i, Filter::ALL.len(), false);
 			assert_eq!(click(&p, &open, body, o.x + 2.0, o.y + 2.0), Some(Action::SetFilter(f)));
@@ -450,21 +496,60 @@ mod tests {
 	}
 
 	#[test]
+	fn header_controls_are_fixed_width_and_wrap() {
+		let narrow = Rect::new(0.0, 0.0, 200.0, 400.0);
+		let wide = Rect::new(0.0, 0.0, 600.0, 400.0);
+		let (n, n_rows) = header_flow(narrow);
+		let (wd, w_rows) = header_flow(wide);
+		// Controls keep a fixed width regardless of the panel size.
+		for i in 0..6 {
+			assert_eq!(n[i].w, wd[i].w, "control {i} keeps a fixed width");
+		}
+		// Selects fit their longest option (filter "blocked", size "256 px").
+		assert!(n[0].w >= crate::text::label_width("blocked", crate::ui::FONT_SMALL));
+		assert!(n[1].w >= crate::text::label_width("256 px", crate::ui::FONT_SMALL) + 10.0);
+		// Wide → one row; narrow → wraps to more rows.
+		assert_eq!(w_rows, 1, "all controls fit one row when wide");
+		assert!(n_rows > 1, "a narrow panel wraps controls to new rows");
+		// No row-0 control overlaps the tile-count area on the right.
+		let count_left = wide.x + wide.w - count_reserve();
+		for r in wd.iter().filter(|r| (r.y - (wide.y + 2.0)).abs() < 0.5) {
+			assert!(r.x + r.w <= count_left + 0.5, "row-0 control clears the count");
+		}
+	}
+
+	#[test]
 	fn view_culls_to_the_body_and_highlights_the_active_tile() {
 		let p = project();
 		let state = PickerState::default();
 		let body = Rect::new(1000.0, 50.0, 278.0, 300.0);
 		let total = items(&p, Filter::All).len();
-		let v = view(&p, &state, Some("WATR03:!N"), body, 1280.0, 800.0, SteelMap::Stretch, Hot::NONE);
+		let v = view(&p, &state, Some("WTR003:!N"), body, 1280.0, 800.0, SteelMap::Stretch, Hot::NONE);
 		assert!(v.tiles.len() < total, "off-screen rows are culled");
 		assert!(!v.tiles.is_empty());
 		// All emitted quads at least touch the clip area.
 		for t in &v.tiles {
 			assert!(t.rect.y + t.rect.h >= v.scissor.y && t.rect.y <= v.scissor.y + v.scissor.h);
 		}
-		// Selection ring present: WATR03 is on the first screen (border = 4
+		// Selection ring present: WTR003 is on the first screen (border = 4
 		// rects = 24 verts in the overlay before the header strip).
 		assert!(v.overlay.verts.len() > 24);
+	}
+
+	#[test]
+	fn scroll_to_reveal_brings_an_offscreen_item_into_view() {
+		let body = Rect::new(0.0, 0.0, 278.0, 200.0); // small → must scroll
+		let (count, tile_px) = (500usize, 32.0);
+		let g = grid(body, tile_px);
+		let win = scissor(body);
+		assert!(max_scroll(count, body, tile_px) > 0.0);
+		// A far-down item: revealing it lands it fully inside the grid window.
+		let i = 400;
+		let s = scroll_to_reveal(body, tile_px, count, i, 0.0);
+		let r = item_rect(&g, tile_px, s, i);
+		assert!(r.y >= win.y - 0.5 && r.y + r.h <= win.y + win.h + 0.5, "item {i} revealed");
+		// An already-visible item doesn't move the scroll.
+		assert_eq!(scroll_to_reveal(body, tile_px, count, 0, 0.0), 0.0, "top item needs no scroll");
 	}
 
 	#[test]

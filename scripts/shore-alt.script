@@ -23,8 +23,8 @@ assert-hash 0x905e0ed305ad18e4
 
 # ...gains a 16-cell shore ring; the walk closes every seam.
 shore alt
-assert-cell 6 6 WATR04,GLa000
-assert-cell 6 5 WATR02,GLa000
+assert-cell 6 6 WTR004,GLa000
+assert-cell 6 5 WTR002,GLa000
 assert-hash 0x41e8d6da13c6f8cf
 
 # One undo unit, deterministic redo.

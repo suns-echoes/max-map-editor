@@ -67,6 +67,8 @@ pub const GROUPS: &[Group] = &[
 			b("pick", Act::Run("tool picker")),
 			b("erase", Act::Run("tool eraser")),
 			b("flood", Act::Run("tool fill")),
+			b("land", Act::Run("tool paint-land")),
+			b("water", Act::Run("tool paint-water")),
 			b("random", Act::Run("randomize toggle")),
 		],
 	},
@@ -91,6 +93,17 @@ pub const GROUPS: &[Group] = &[
 		cols: 2,
 		kind: Kind::Buttons,
 		buttons: &[b("square", Act::Run("brush-shape square")), b("circle", Act::Run("brush-shape circle"))],
+	},
+	// The terrain brush's coast-on-release behaviour (Tool::PaintMask).
+	Group {
+		label: "auto shore",
+		cols: 1,
+		kind: Kind::Select,
+		buttons: &[
+			b("disabled", Act::Run("auto-shore off")),
+			b("sweep", Act::Run("auto-shore sweep")),
+			b("loop-walk", Act::Run("auto-shore loop-walk")),
+		],
 	},
 	Group {
 		label: "layer",
@@ -357,12 +370,17 @@ pub fn view(editor: &EditorState, body: Rect, scroll: f32, w: f32, h: f32, map: 
 						|| (*cmd == "tool picker" && editor.tool == Tool::Picker)
 						|| (*cmd == "tool eraser" && editor.tool == Tool::Eraser)
 						|| (*cmd == "tool fill" && editor.tool == Tool::Fill)
+						|| (*cmd == "tool paint-land" && editor.tool == Tool::PaintMask && !editor.mask_water)
+						|| (*cmd == "tool paint-water" && editor.tool == Tool::PaintMask && editor.mask_water)
 						|| (*cmd == "tool select" && editor.tool == Tool::Select)
 						|| (*cmd == "tool select-rect" && editor.tool == Tool::SelectRect)
 						|| (*cmd == "randomize toggle" && editor.randomize)
 						|| (cmd.strip_prefix("brush-size ").is_some_and(|n| n.parse() == Ok(editor.brush_size)))
 						|| (*cmd == "brush-shape square" && editor.brush_shape == crate::state::BrushShape::Square)
 						|| (*cmd == "brush-shape circle" && editor.brush_shape == crate::state::BrushShape::Circle)
+						|| (*cmd == "auto-shore off" && editor.brush_shore == crate::state::BrushShore::Off)
+						|| (*cmd == "auto-shore sweep" && editor.brush_shore == crate::state::BrushShore::Sweep)
+						|| (*cmd == "auto-shore loop-walk" && editor.brush_shore == crate::state::BrushShore::LoopWalk)
 						|| (*cmd == "layer water" && editor.active_layer_name() == "water")
 						|| (*cmd == "layer ground" && editor.active_layer_name() == "ground")
 						|| (*cmd == "pass-pick 0" && editor.active_pass == 0)

@@ -13,7 +13,7 @@ assert-hash 0xa4cf721628f86034
 # (0,0) moves to (4,4), the rest fills with water.
 resize 16 16 4 4
 assert-hash 0x12d3478b461cc81e
-assert-cell 4 4 WATR09,GLa000
+assert-cell 4 4 WTR009,GLa000
 fit
 grid on
 screenshot temp/resize.png
@@ -22,4 +22,4 @@ screenshot temp/resize.png
 # kept window - back to the original hash.
 resize 8 8 -4 -4
 assert-hash 0xa4cf721628f86034
-assert-cell 0 0 WATR09,GLa000
+assert-cell 0 0 WTR009,GLa000

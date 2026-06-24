@@ -4,7 +4,7 @@
 new 24 16 GREEN 42
 assert-dirty false
 assert-hash 0xcd2c199024f778ee          # deterministic from the seed
-assert-cell 4 3 WATR07                  # random water variant, ground empty
+assert-cell 4 3 WTR007                  # random water variant, ground empty
 
 # A three-cell drag is ONE stroke = one undo step.
 tile GLa000
@@ -13,7 +13,7 @@ paint 3 3
 paint 4 3
 paint 5 3
 stroke end
-assert-cell 4 3 WATR07,GLa000
+assert-cell 4 3 WTR007,GLa000
 assert-dirty true
 
 # A second stroke, painting a transformed shore tile.
@@ -21,7 +21,7 @@ tile GSa000:!N
 stroke begin
 paint 5 2
 stroke end
-assert-cell 5 2 WATR07,GSa000:!N
+assert-cell 5 2 WTR007,GSa000:!N
 
 zoom-to 1
 pan-to 4 3
@@ -29,13 +29,13 @@ screenshot temp/new-map-painted.png
 
 # Each undo unwinds one whole stroke.
 undo
-assert-cell 5 2 WATR07
+assert-cell 5 2 WTR007
 undo
-assert-cell 4 3 WATR07
+assert-cell 4 3 WTR007
 assert-hash 0xcd2c199024f778ee
 
 redo
-assert-cell 4 3 WATR07,GLa000
+assert-cell 4 3 WTR007,GLa000
 undo
 
 # Round-trip the new project through save/open, then export it as WRL.

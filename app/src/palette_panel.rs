@@ -118,42 +118,78 @@ pub fn grid_area_bare(body: Rect) -> Rect {
 
 fn grid_area_at(body: Rect, chrome: Chrome) -> Rect {
 	let c = inner_body(body, chrome);
-	Rect::new(c.x, c.y + HEADER_H, c.w, (c.h - HEADER_H - EDITOR_H).max(0.0))
+	let hh = header_h(chrome);
+	Rect::new(c.x, c.y + hh, c.w, (c.h - hh - EDITOR_H).max(0.0))
 }
 
-/// Top toolbar (pinned above everything): the grid/saved tabs + Save/Load.
+/// The cycle/static header band height by chrome. The full Color Palette moved
+/// its animation toggle into the toolbar (the `animate` checkbox), so it needs
+/// no band; the bare WRL Internal Palette keeps its cycle/static header.
+fn header_h(chrome: Chrome) -> f32 {
+	match chrome {
+		Chrome::Full => 0.0,
+		Chrome::Bare => HEADER_H,
+	}
+}
+
+/// Toolbar row height (one button row).
 pub const TAB_H: f32 = 20.0;
 const SAVED_ROW: f32 = 18.0;
+/// Action-button width.
+const ABW: f32 = 36.0;
+/// The `animate` checkbox button's width (toolbar row 1, right-aligned).
+const ANIM_W: f32 = 76.0;
+
+/// How many of the five action buttons fit across one toolbar row.
+fn action_cols(body: Rect) -> usize {
+	let avail = body.w - 4.0; // 2px margins
+	(((avail + 1.0) / (ABW + 1.0)).floor() as usize).clamp(1, 5)
+}
+
+/// The Full toolbar's height: row 1 (tabs + animate) plus the action rows
+/// (line 2 - wrapped to more rows when five buttons don't fit across).
+fn toolbar_h(body: Rect) -> f32 {
+	let action_rows = 5usize.div_ceil(action_cols(body));
+	(1 + action_rows) as f32 * TAB_H
+}
 
 fn tab_bar(body: Rect) -> Rect {
-	body.strip_top(TAB_H)
+	body.strip_top(toolbar_h(body))
 }
 
 /// The content area below the toolbar (the bare panel has none) - where the
 /// grid or the saved list lives.
 fn inner_body(body: Rect, chrome: Chrome) -> Rect {
 	let tab_h = match chrome {
-		Chrome::Full => TAB_H,
+		Chrome::Full => toolbar_h(body),
 		Chrome::Bare => 0.0,
 	};
 	Rect::new(body.x, body.y + tab_h, body.w, (body.h - tab_h).max(0.0))
 }
 
-/// The grid / saved tab hit rects (left of the toolbar).
+/// The grid / saved tab hit rects - the left group of toolbar row 1.
 fn tab_rects(body: Rect) -> (Rect, Rect) {
 	let (y, hh) = (body.y + 2.0, TAB_H - 4.0);
 	(Rect::new(body.x + 2.0, y, 44.0, hh), Rect::new(body.x + 48.0, y, 46.0, hh))
 }
 
-/// Action-button width.
-const ABW: f32 = 36.0;
+/// The `animate` checkbox - toolbar row 1, right-aligned (clamped so it never
+/// rides over the tabs). Supersedes the old cycle/static buttons.
+fn animate_rect(body: Rect) -> Rect {
+	let x = (body.x + body.w - 2.0 - ANIM_W).max(body.x + 96.0); // 96 = right of the saved tab + gap
+	Rect::new(x, body.y + 2.0, ANIM_W, TAB_H - 4.0)
+}
 
-/// The five manager buttons `[Save, Edit, Delete, Import, Export]`, right-aligned.
+/// The five manager buttons `[Save, Edit, Delete, Import, Export]` on toolbar
+/// row 2 (line 2), left-aligned and wrapping to more rows when they don't fit.
 fn action_btns(body: Rect) -> [Rect; 5] {
-	let (y, hh) = (body.y + 2.0, TAB_H - 4.0);
-	let total = 5.0 * ABW + 4.0;
-	let x0 = body.x + body.w - 2.0 - total;
-	std::array::from_fn(|i| Rect::new(x0 + i as f32 * (ABW + 1.0), y, ABW, hh))
+	let cols = action_cols(body);
+	let hh = TAB_H - 4.0;
+	let row2_top = body.y + TAB_H; // below row 1 (tabs + animate)
+	std::array::from_fn(|i| {
+		let (col, row) = (i % cols, i / cols);
+		Rect::new(body.x + 2.0 + col as f32 * (ABW + 1.0), row2_top + row as f32 * TAB_H + 2.0, ABW, hh)
+	})
 }
 
 /// Row `i` of the saved-palettes list within the content area.
@@ -161,9 +197,19 @@ fn saved_row(inner: Rect, i: usize) -> Rect {
 	Rect::new(inner.x + PAD, inner.y + PAD + i as f32 * SAVED_ROW, inner.w - 2.0 * PAD, SAVED_ROW - 1.0)
 }
 
-/// Draw the toolbar: grid/saved tabs (left) + Save/Edit/Delete/Import/Export
-/// (right). Edit/Delete are greyed unless a user palette is selected.
-fn draw_tab_bar(q: &mut UiQuads, body: Rect, show_saved: bool, sel_is_user: bool, w: f32, h: f32, hot: Hot) {
+/// Draw the toolbar. Row 1: grid/saved tabs (left) + the `animate` checkbox
+/// (right). Row 2: Save/Edit/Delete/Import/Export (wrapping when narrow).
+/// Edit/Delete are greyed unless a user palette is selected.
+fn draw_tab_bar(
+	q: &mut UiQuads,
+	body: Rect,
+	show_saved: bool,
+	sel_is_user: bool,
+	cycling: bool,
+	w: f32,
+	h: f32,
+	hot: Hot,
+) {
 	q.material(tab_bar(body), w, h, theme::TITLE);
 	let (grid, saved) = tab_rects(body);
 	let ink = |on: bool| if on { theme::ACCENT } else { theme::INK_DIM };
@@ -171,6 +217,8 @@ fn draw_tab_bar(q: &mut UiQuads, body: Rect, show_saved: bool, sel_is_user: bool
 	q.label_in("grid", grid, 6.0, crate::ui::FONT_SMALL, w, h, ink(!show_saved));
 	q.button_active(saved, w, h, show_saved, hot);
 	q.label_in("saved", saved, 6.0, crate::ui::FONT_SMALL, w, h, ink(show_saved));
+	// The animation toggle (was the cycle/static pair), right of the tabs.
+	q.toggle_button(animate_rect(body), "animate", cycling, true, crate::ui::FONT_SMALL, w, h, hot);
 	// Save/Import/Export are always live; Edit/Delete need a selected user palette.
 	let labels = ["save", "edit", "del", "imp", "exp"];
 	let enabled = [true, sel_is_user, sel_is_user, true, true];
@@ -268,7 +316,7 @@ fn slot_rect_at(body: Rect, scroll: f32, index: u16, chrome: Chrome) -> Rect {
 	let c = inner_body(body, chrome);
 	let b = box_px(c);
 	let scroll = scroll.clamp(0.0, max_scroll_at(body, chrome));
-	let mut y = c.y + HEADER_H + PAD - scroll;
+	let mut y = c.y + header_h(chrome) + PAD - scroll;
 	for s in &SECTIONS {
 		y += LABEL_H;
 		if index >= s.start && index <= s.end {
@@ -298,8 +346,10 @@ pub enum Action {
 	Select(u16),
 	/// Shift-click: extend the selection range to this slot.
 	SelectTo(u16),
-	/// Header button: turn palette cycling on/off (the global animation).
+	/// Header button (bare panel): turn palette cycling on/off (the global animation).
 	Cycle(bool),
+	/// The full panel's `animate` checkbox: toggle palette cycling.
+	CycleToggle,
 	/// Absolute slider for the selected color: channel 0..=2 = R/G/B,
 	/// 3..=5 = H/S/L; `track` maps the cursor x to the value.
 	Slider {
@@ -348,6 +398,10 @@ pub fn click(
 	if saved_tab.contains(x, y) {
 		return Some(Action::ShowSaved(true));
 	}
+	// The animate checkbox toggles palette cycling (was cycle/static).
+	if animate_rect(body).contains(x, y) {
+		return Some(Action::CycleToggle);
+	}
 	let actions = [Action::Save, Action::Edit, Action::Delete, Action::Import, Action::Export];
 	for (r, a) in action_btns(body).iter().zip(actions) {
 		if r.contains(x, y) {
@@ -387,12 +441,16 @@ fn click_at(
 	shift: bool,
 	chrome: Chrome,
 ) -> Option<Action> {
-	let (cycle, fixed) = header_buttons(body, chrome);
-	if cycle.contains(x, y) {
-		return Some(Action::Cycle(true));
-	}
-	if fixed.contains(x, y) {
-		return Some(Action::Cycle(false));
+	// The bare panel keeps its cycle/static header buttons; the full panel's
+	// animation toggle lives in the toolbar (handled in `click`).
+	if chrome == Chrome::Bare {
+		let (cycle, fixed) = header_buttons(body, chrome);
+		if cycle.contains(x, y) {
+			return Some(Action::Cycle(true));
+		}
+		if fixed.contains(x, y) {
+			return Some(Action::Cycle(false));
+		}
 	}
 	if let Some((lo, hi)) = selection(active, sel_end).filter(|_| can_edit) {
 		if lo != hi {
@@ -478,7 +536,7 @@ pub fn view(
 	hot: Hot,
 ) -> PaletteView {
 	let mut chrome = UiQuads::with_steel_map(map);
-	draw_tab_bar(&mut chrome, body, show_saved, sel_is_user, w, h, hot);
+	draw_tab_bar(&mut chrome, body, show_saved, sel_is_user, cycling, w, h, hot);
 	if show_saved {
 		let inner = inner_body(body, Chrome::Full);
 		draw_saved_list(&mut chrome, saved, sel, inner, w, h, hot);
@@ -532,7 +590,7 @@ fn view_at(
 	let dups = dynamic_duplicates(base);
 	let clip = grid_area_at(body, which);
 	let scroll = scroll.clamp(0.0, max_scroll_at(body, which));
-	let mut y = inner_body(body, which).y + HEADER_H + PAD - scroll;
+	let mut y = inner_body(body, which).y + header_h(which) + PAD - scroll;
 
 	for s in &SECTIONS {
 		let section_h = LABEL_H + rows(s) as f32 * (b + GAP);
@@ -578,12 +636,16 @@ fn view_at(
 		y += rows(s) as f32 * (b + GAP);
 	}
 
-	// Header: cycle / static buttons (the global palette animation).
-	chrome.material(inner_body(body, which).strip_top(HEADER_H), w, h, theme::TITLE);
-	let (cycle_btn, static_btn) = header_buttons(body, which);
-	for (r, label, on) in [(cycle_btn, "cycle", cycling), (static_btn, "static", !cycling)] {
-		chrome.button_active(r, w, h, on, hot);
-		chrome.label_in(label, r, 6.0, crate::ui::FONT_SMALL, w, h, if on { theme::ACCENT } else { theme::INK_DIM });
+	// The bare panel's cycle/static header (the full panel uses the toolbar's
+	// `animate` checkbox instead, drawn in `draw_tab_bar`).
+	if which == Chrome::Bare {
+		chrome.material(inner_body(body, which).strip_top(HEADER_H), w, h, theme::TITLE);
+		let (cycle_btn, static_btn) = header_buttons(body, which);
+		for (r, label, on) in [(cycle_btn, "cycle", cycling), (static_btn, "static", !cycling)] {
+			chrome.button_active(r, w, h, on, hot);
+			let ink = if on { theme::ACCENT } else { theme::INK_DIM };
+			chrome.label_in(label, r, 6.0, crate::ui::FONT_SMALL, w, h, ink);
+		}
 	}
 	chrome.material(editor_rect(body, which), w, h, theme::PANEL);
 	draw_editor(&mut chrome, base, active, sel_end, can_edit, body, w, h, which);
@@ -752,12 +814,47 @@ mod tests {
 		let last = slot_rect(narrow, max, 255);
 		let g = grid_area(narrow);
 		assert!(last.y + last.h <= g.y + g.h + 1.0, "fully scrolled, slot 255 visible");
-		// The grid never paints into the toolbar / pinned header / editor (scissor).
-		assert_eq!(g.h, narrow.h - TAB_H - HEADER_H - EDITOR_H);
-		assert_eq!(g.y, narrow.y + TAB_H + HEADER_H);
+		// The grid never paints into the toolbar / editor (scissor). The full
+		// panel has no cycle/static header band, so the grid starts right below
+		// the (two-row) toolbar.
+		assert_eq!(g.h, narrow.h - toolbar_h(narrow) - EDITOR_H);
+		assert_eq!(g.y, narrow.y + toolbar_h(narrow));
 		// A tall enough body needs no scroll at all (8-per-line is taller now).
 		let tall = Rect::new(0.0, 0.0, 200.0, 1200.0);
 		assert_eq!(max_scroll(tall), 0.0);
+	}
+
+	#[test]
+	fn toolbar_row1_tabs_and_animate_then_row2_actions() {
+		let body = Rect::new(0.0, 0.0, 300.0, 460.0);
+		// Row 1: grid/saved tabs (left) + the animate checkbox (right), no overlap.
+		let (grid, saved) = tab_rects(body);
+		let anim = animate_rect(body);
+		assert_eq!((grid.y, saved.y, anim.y), (body.y + 2.0, body.y + 2.0, body.y + 2.0), "all on row 1");
+		assert!(saved.x + saved.w <= anim.x, "animate sits right of the tabs");
+		assert!(anim.x + anim.w <= body.x + body.w, "animate fits inside the panel");
+		// Row 2: the five action buttons, below row 1, left-aligned.
+		let acts = action_btns(body);
+		for r in &acts {
+			assert_eq!(r.y, body.y + TAB_H + 2.0, "actions are on the second row");
+		}
+		assert!(acts[0].x < acts[4].x);
+		// Five fit one row here → a two-row toolbar; the full panel has no
+		// cycle/static header, so the grid starts right below the toolbar.
+		assert_eq!(action_cols(body), 5);
+		assert_eq!(toolbar_h(body), 2.0 * TAB_H);
+		assert_eq!(header_h(Chrome::Full), 0.0);
+		assert_eq!(grid_area(body).y, body.y + toolbar_h(body));
+		// Hit-testing the new controls.
+		let hit = |x, y| click(body, None, None, true, 0.0, x, y, false, false, 0);
+		assert_eq!(hit(grid.x + 2.0, grid.y + 2.0), Some(Action::ShowSaved(false)));
+		assert_eq!(hit(anim.x + 2.0, anim.y + 2.0), Some(Action::CycleToggle));
+		assert_eq!(hit(acts[0].x + 2.0, acts[0].y + 2.0), Some(Action::Save));
+		assert_eq!(hit(acts[4].x + 2.0, acts[4].y + 2.0), Some(Action::Export));
+		// A very narrow panel breaks the action line into more rows.
+		let narrow = Rect::new(0.0, 0.0, 120.0, 460.0);
+		assert!(action_cols(narrow) < 5, "five buttons can't fit a 120px row");
+		assert!(toolbar_h(narrow) > 2.0 * TAB_H, "the action line wraps");
 	}
 
 	#[test]
@@ -783,16 +880,12 @@ mod tests {
 		assert!(click(body, Some(70), None, true, 0.0, block.x + 2.0, block.y + 2.0, false, false, 0).is_none());
 		// Fixed selection: no sliders at all (the strip area never selects).
 		assert!(click(body, Some(32), None, true, 0.0, rgb.x + 2.0, rgb.y + 2.0, false, false, 0).is_none());
-		// Header buttons route the cycle toggle.
-		let (cycle, fixed) = header_buttons(body, Chrome::Full);
-		assert!(matches!(
-			click(body, None, None, true, 0.0, cycle.x + 2.0, cycle.y + 2.0, false, false, 0),
-			Some(Action::Cycle(true)),
-		));
-		assert!(matches!(
-			click(body, None, None, true, 0.0, fixed.x + 2.0, fixed.y + 2.0, false, false, 0),
-			Some(Action::Cycle(false)),
-		));
+		// The toolbar's animate checkbox routes the cycle toggle.
+		let anim = animate_rect(body);
+		assert_eq!(
+			click(body, None, None, true, 0.0, anim.x + 2.0, anim.y + 2.0, false, false, 0),
+			Some(Action::CycleToggle),
+		);
 		// Contract helpers.
 		assert_eq!(water_block(110), Some((110, 116)));
 		assert_eq!(water_block(70), None);
@@ -836,14 +929,16 @@ mod tests {
 
 	#[test]
 	fn bare_panel_has_no_toolbar_and_never_edits() {
-		let body = Rect::new(0.0, 0.0, 280.0, 460.0);
-		// The grid starts one toolbar row higher than the full panel's.
+		let body = Rect::new(0.0, 0.0, 320.0, 460.0);
+		// Bare keeps its cycle/static header (no toolbar); the full panel has a
+		// toolbar and no header band. Each grid starts just below its own chrome.
 		assert_eq!(grid_area_bare(body).y, body.y + HEADER_H);
-		assert_eq!(grid_area(body).y, body.y + TAB_H + HEADER_H);
-		assert_eq!(max_scroll(body) - max_scroll_bare(body), TAB_H.min(max_scroll(body)));
-		// Swatches hit one toolbar row higher too - and round-trip to Select.
+		assert_eq!(grid_area(body).y, body.y + toolbar_h(body));
+		// Slot 0 sits a pad + the first section label below each grid's top.
+		assert_eq!(slot_rect_at(body, 0.0, 0, Chrome::Bare).y, grid_area_bare(body).y + PAD + LABEL_H);
+		assert_eq!(slot_rect(body, 0.0, 0).y, grid_area(body).y + PAD + LABEL_H);
+		// Swatches round-trip to Select in the bare panel.
 		let r = slot_rect_at(body, 0.0, 0, Chrome::Bare);
-		assert_eq!(r.y, slot_rect(body, 0.0, 0).y - TAB_H);
 		assert!(matches!(click_bare(body, None, None, 0.0, r.x + 1.0, r.y + 1.0, false), Some(Action::Select(0))));
 		assert!(matches!(click_bare(body, Some(5), None, 0.0, r.x + 1.0, r.y + 1.0, true), Some(Action::SelectTo(0))));
 		// The cycle/static header buttons live where the toolbar tabs sit in

@@ -192,7 +192,9 @@ const ACTIONS: &[(&str, &str, &str)] = &[
 	("FileDialogLoad", "file-dialog load", "Ctrl+O"),
 	("NewMap", "new-map", "Ctrl+N"),
 	("CloseProject", "close-project", "Ctrl+W"),
-	("Export", "export", "Ctrl+E"),
+	// Opens the WRL save picker - the SAME command the File menu runs (see
+	// `menu::act_id`), so the shortcut and the menu item can't drift.
+	("Export", "file-dialog export-wrl", "Ctrl+E"),
 	// Edit
 	("Undo", "undo", "Ctrl+Z"),
 	("Redo", "redo", "Ctrl+Shift+Z Ctrl+Y"),
@@ -225,6 +227,10 @@ const ACTIONS: &[(&str, &str, &str)] = &[
 	("ToolEraser", "tool eraser", "E"),
 	("ToolPicker", "tool picker", "I"),
 	("ToolFill", "tool fill", "K"),
+	// Terrain brush: Q paints land, W paints water (adjacent keys, so the brush
+	// colour flips without leaving the map).
+	("ToolPaintLand", "tool paint-land", "Q"),
+	("ToolPaintWater", "tool paint-water", "W"),
 	("ToolSelect", "tool select", "L"),
 	("ToolSelectRect", "tool select-rect", "M"),
 	// Templates (only when one is selected in the explorer).
@@ -243,10 +249,49 @@ fn command_for_key(key: &str) -> &str {
 	ACTIONS.iter().find(|(name, ..)| *name == key).map_or(key, |(_, command, _)| command)
 }
 
+/// The command line a registry action runs, by its [`ACTIONS`] id - the single
+/// definition the menus reference ([`crate::menu::act_id`]) so a menu item and
+/// its keyboard shortcut share one command line and can't drift. Panics on an
+/// unknown id; menu wiring is validated at construction by the menu tests.
+pub fn action_command(id: &str) -> &'static str {
+	ACTIONS
+		.iter()
+		.find(|(name, ..)| *name == id)
+		.map(|(_, command, _)| *command)
+		.unwrap_or_else(|| panic!("unknown action id '{id}' (see ACTIONS in input.rs)"))
+}
+
 /// Whitespace-normalize a command line so `select  all` and `select all`
 /// name the same action (the replace/hint key).
 fn normalize(line: &str) -> String {
 	line.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A menu command that runs a confirmation or variant of a *bound* action: its
+/// row advertises that action's configured chord. So File ▸ Exit (which runs
+/// `quit-request`, the confirm-and-quit) shows whatever the `quit` key is.
+/// Resolved through the live bindings, so it follows a rebind.
+pub fn binding_alias(line: &str) -> Option<&'static str> {
+	match line {
+		"quit-request" => Some("quit"),
+		_ => None,
+	}
+}
+
+/// Shortcuts wired straight into the shell rather than the configurable
+/// `[Bindings]` table, so a menu row can still advertise them: the text-field
+/// edit menu's clipboard/selection keys (hardcoded in the modal key handler,
+/// `main.rs`) and the armed stamp's Esc cancel. Keep in sync with those sites.
+pub fn fixed_hint(line: &str) -> Option<&'static str> {
+	Some(match line {
+		"edit-cut" => "Ctrl+X",
+		"edit-copy" => "Ctrl+C",
+		"edit-paste" => "Ctrl+V",
+		"edit-select-all" => "Ctrl+A",
+		"edit-delete" => "Del",
+		"stamp cancel" => "Esc",
+		_ => return None,
+	})
 }
 
 impl Bindings {
@@ -515,6 +560,33 @@ mod tests {
 			b.lookup(ModifiersState::CONTROL, &Key::Character("g".into())),
 			Some(Command::ZoomTo { level: 2.0 })
 		);
+	}
+
+	#[test]
+	fn menu_command_and_its_shortcut_run_the_same_action() {
+		// The registry ([`ACTIONS`]) is the single definition of a bound action's
+		// command line; the menu references it by id (`menu::act_id`) and the
+		// keybinding parses it. So both resolve to the same `Command` - the
+		// structural guard against the menu/shortcut drift that hit Export.
+		let b = Bindings::load(None);
+		let same = |id: &str, mods: ModifiersState, key: Key| {
+			let via_shortcut = b.lookup(mods, &key);
+			let via_menu = command::parse_line(action_command(id)).unwrap();
+			assert_eq!(via_shortcut, via_menu, "action '{id}': menu and shortcut drifted");
+			assert!(via_shortcut.is_some(), "action '{id}': shortcut resolves to a command");
+		};
+		let ctrl = ModifiersState::CONTROL;
+		same("Export", ctrl, Key::Character("e".into()));
+		same("SaveProject", ctrl, Key::Character("s".into()));
+		same("NewMap", ctrl, Key::Character("n".into()));
+		same("Undo", ctrl, Key::Character("z".into()));
+		same("SelectAll", ctrl, Key::Character("a".into()));
+		same("Delete", ModifiersState::empty(), Key::Named(NamedKey::Delete));
+		// The action that drifted now opens the WRL save picker from both paths.
+		assert!(matches!(
+			b.lookup(ctrl, &Key::Character("e".into())),
+			Some(Command::FileDialog { purpose: crate::command::FilePurpose::ExportWrl }),
+		));
 	}
 
 	#[test]

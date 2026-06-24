@@ -5,7 +5,7 @@
 open! "resources/assets/maps/GREEN_1.json"
 assert-dirty false
 place 3 3 GLa000
-assert-cell 3 3 WATR00,GLa000
+assert-cell 3 3 WTR000,GLa000
 
 # A selection + clipboard for the full context menu.
 select-rect 3 3 3 3
@@ -16,9 +16,9 @@ context-menu off
 
 # Edit Clear: ground goes, water stays, the clipboard is untouched.
 delete
-assert-cell 3 3 WATR00
+assert-cell 3 3 WTR000
 undo
-assert-cell 3 3 WATR00,GLa000
+assert-cell 3 3 WTR000,GLa000
 
 # Shortcut hints ride the dropdowns (visual).
 menu edit

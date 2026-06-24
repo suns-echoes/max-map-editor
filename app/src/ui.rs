@@ -357,6 +357,13 @@ impl UiQuads {
 		self.label_emboss(s, r.x + pad, y, px, w, h, color);
 	}
 
+	/// MAX-font label centered in `r` on both axes, embossed like [`Self::label_in`].
+	pub fn label_center(&mut self, s: &str, r: Rect, px: f32, w: f32, h: f32, color: [f32; 4]) {
+		let x = r.x + (r.w - text::label_width(s, px)) / 2.0;
+		let y = r.y + (r.h - px) / 2.0;
+		self.label_emboss(s, x, y, px, w, h, color);
+	}
+
 	/// [`Self::label_in`], but ellipsis-truncated to fit `r` (left pad `pad`,
 	/// 4-px right margin) - the path for **dynamic** text in fixed containers
 	/// (file names, status lines, tab titles), which must never escape the box.

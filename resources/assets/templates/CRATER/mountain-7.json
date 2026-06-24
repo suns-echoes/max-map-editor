@@ -15,12 +15,12 @@
 	],
 	"map": [
 		[
-			"WATR02,CMa084",
-			"WATR00,CMa085"
+			"WTR002,CMa084",
+			"WTR000,CMa085"
 		],
 		[
-			"WATR07,CMa086",
-			"WATR01,CMa087"
+			"WTR007,CMa086",
+			"WTR001,CMa087"
 		]
 	]
 }

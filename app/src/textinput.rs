@@ -229,9 +229,14 @@ impl TextInput {
 	}
 
 	/// Ordered selection range `(start, end)`, or `None` when nothing is selected.
+	/// Both ends are clamped to the current length so the range is always a valid
+	/// slice of `value` - the render/measure paths index `value` by it, and a
+	/// stale `anchor` left past the end must never panic them.
 	fn selection(&self) -> Option<(usize, usize)> {
-		let a = self.anchor?;
-		(a != self.cursor).then(|| (a.min(self.cursor), a.max(self.cursor)))
+		let len = self.value.len();
+		let a = self.anchor?.min(len);
+		let c = self.cursor.min(len);
+		(a != c).then(|| (a.min(c), a.max(c)))
 	}
 
 	fn delete_selection(&mut self) -> bool {
@@ -289,11 +294,17 @@ impl TextInput {
 					self.cursor -= 1;
 					self.value.remove(self.cursor);
 				}
+				// Collapse any selection: an edit always ends with a bare caret.
+				// (A press arms `anchor` for drag-select; leaving it set after a
+				// delete would strand it past the now-shorter value - a phantom
+				// selection whose range slices `value` out of bounds on render.)
+				self.anchor = None;
 			}
 			ModalKey::Delete => {
 				if !self.delete_selection() && self.cursor < self.value.len() {
 					self.value.remove(self.cursor);
 				}
+				self.anchor = None;
 			}
 			ModalKey::Left { shift } => {
 				// Collapse a selection to its left edge instead of stepping.
@@ -577,6 +588,31 @@ mod tests {
 		assert!(!t.has_selection());
 		t.on_key(&ModalKey::Delete);
 		assert_eq!(t.text(), "lo");
+	}
+
+	#[test]
+	fn delete_clears_a_stale_click_anchor_no_oob_render() {
+		// Regression: clicking a field arms `anchor` for drag-select (anchor ==
+		// caret). A plain Backspace then shrank `value` and moved the caret but
+		// left `anchor` pointing past the new end, so `selection()` reported a
+		// range whose end sliced `value` out of bounds on the next render → panic.
+		// Repro: "new map → click width → Backspace".
+		let rect = Rect::new(0.0, 0.0, 56.0, 20.0);
+		let mut t = TextInput::new("112", 4).charset(Charset::Digits);
+		t.on_press(1.0e6, 10.0, rect); // click far right → caret at end, anchor armed
+		assert_eq!(t.cursor, 3);
+		t.on_key(&ModalKey::Backspace);
+		assert_eq!(t.text(), "11");
+		assert!(t.selection().is_none(), "an edit collapses the armed anchor");
+		// The render path must not slice `value` out of bounds.
+		let _ = t.content_quads(rect, true, 100.0, 100.0);
+
+		// Same for Delete from an interior click.
+		t.on_press(0.0, 10.0, rect); // caret at start, anchor armed
+		t.on_key(&ModalKey::Delete);
+		assert_eq!(t.text(), "1");
+		assert!(t.selection().is_none());
+		let _ = t.content_quads(rect, true, 100.0, 100.0);
 	}
 
 	#[test]

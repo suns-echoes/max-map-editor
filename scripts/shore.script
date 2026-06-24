@@ -22,8 +22,8 @@ assert-hash 0x905e0ed305ad18e4
 # ...keeps its land and gains a 16-cell shore ring on the water around it.
 shore
 assert-hash 0x10203a3b070d0abf
-assert-cell 6 6 WATR04,GLa000
-assert-cell 6 5 WATR02,GLa000
+assert-cell 6 6 WTR004,GLa000
+assert-cell 6 5 WTR002,GLa000
 
 # One undo unit: back to the bare island, redo replays the same shoreline.
 undo

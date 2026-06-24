@@ -114,6 +114,20 @@ projects are migrated automatically the first time you save them.
   selection. With **Randomize** on, painting places random variants of the
   chosen tile so large areas don't look stamped. **Delete** (`Del`) clears the
   selected cells' ground.
+- **Terrain Brush** - free-hand paint a land/water mask, like a brush in a
+  paint program, and let the editor build the terrain from it. The Toolbox's
+  **land** and **water** buttons (or the **`Q`** / **`W`** keys) choose what the
+  brush lays down; drag on the map to paint it (the **brush** size and **shape**
+  apply, same as the pencil). Land becomes flat ground and water becomes open
+  sea - and when you release the stroke, the editor grows the **coastline**
+  (beach + animated coastal water) along the new land/water boundary, all as one
+  undo step. The Toolbox's **auto shore** select chooses that release behaviour:
+  **sweep** (uniform), **loop-walk** (varied), or **disabled** to leave the
+  painted land/water raw (then shore it later from **Tools → Shore**). It's the
+  same land/coast the random generator makes, but shaped by hand. No tile needs
+  to be selected. (Scriptable as `paint-mask X Y` after a `tool paint-land` /
+  `tool paint-water`, with `auto-shore off|sweep|loop-walk`; then `shore` the
+  painted region.)
 - **Tile Painter** - paint a tile's pixels by hand. The Tile Explorer's
   header has **new** (a blank tile), **clone** (a copy of the selected tile),
   **edit** (the selected tile in place), and **del** (remove the selected tile)
@@ -154,14 +168,33 @@ projects are migrated automatically the first time you save them.
   so you can inspect or edit it in isolation; it's a view filter only and
   never changes the document. The app background behind the map is dimmed and
   the map is framed by a thin green outline, so the editor chrome reads clearly.
-- **Auto-shore** - generates correct shore transitions between water and
-  land automatically (**Tools** menu; `shore` in the console). The **Fix
-  Shore** modal repairs an existing map's shorelines with live stats and a
-  Stop button, in three modes: **Fast** (~1 s, re-tiles broken shore only),
-  **Aggressive** (unbounded; may also re-tile land next to the shore when
-  that closes a seam), and **Destructive** (full freedom over water, shore,
-  and land - where no lawful shore exists, the area flattens to water
-  rather than keeping a broken seam).
+- **Shore** (**Tools → Shore**) - lays the coastline (beach + animated coastal
+  water) between land and water and fixes broken or misplaced shore. Every
+  method first **places any missing coast**, then repairs to a chosen depth -
+  a "fast → fully accurate" ladder:
+  - **Sweep** / **Loop-Walk** - place + a quick greedy repair; instant. Sweep
+    gives a uniform coastline, Loop-Walk a more varied one.
+  - **Aggressive** - place, then **loop** [permute stubborn seams + adjacent
+    land → re-check]; if pure re-tiling plateaus it **escalates to reshaping**
+    for the genuinely un-tileable residue, so it also reaches a **clean coast**
+    while changing as little terrain as possible.
+  - **Destructive** - place, then **loop** [reshape water/shore/land → re-check]
+    until the coast is **100% clean** (it only flattens a spot to water where no
+    lawful shore can exist, so it too preserves terrain wherever it can).
+
+  Every pass is checked against `tiles.match.json` - the source of truth for
+  which shore tiles may sit beside which - so no broken, misplaced, or missing
+  shore is missed (a dense or hand-painted mosaic may simply not be tileable as
+  drawn, in which case the un-tileable pockets are reshaped). The menu's
+  **Shore Sweep + Fix** / **Shore Loop-Walk + Fix** open the dialog already
+  running the Aggressive fix; **Fix Shore...** opens it on the full method
+  select. The dialog shows live stats (broken seams / fixed / remaining), a
+  **Stop** button, and an **Undo** button to revert the applied result in one
+  step; it steps across frames so the UI **never freezes**, however large the
+  map. In the console (synchronous, for scripts): `shore`,
+  `shore loop-walk`, `shore sweep-fix`, `shore loop-fix`, `shore full`, or
+  `shore fix` (repair existing shore only), each optionally followed by a
+  `X0 Y0 X1 Y1` region.
 - **Pass editors** - passability (the data the game uses for unit movement) is
   **tile-dependent**: **Mode → Pass Table Editor** paints the *tile's* pass
   value, so every cell sharing that tile id retints at once. When a designer
@@ -180,21 +213,69 @@ projects are migrated automatically the first time you save them.
   to tiles. Great for blocking out a map from a sketch.
 - **Generate Random Terrain** - seeds a whole map procedurally
   (**Tools → Generate Random Terrain...**), replacing the current terrain
-  entirely (both layers - undo brings the old map back): pick a pattern -
-  **Islands**,
-  **Continent**, **Land Mass** (always connected), or **River Raid** (land
-  cut by rivers) - set the water, obstruction, and decoration percentages,
-  pick the shore method (**Auto Shore** for a uniform coastline, **Auto
-  Shore ALT** for a more varied one), and press Generate. A progress bar
-  tracks the run and the editor stays responsive throughout - the Generate
-  button becomes **Abort** while it works, and aborting rolls the map back
-  as if nothing happened. Mountains, trees, and other features are stamped
-  as **whole multi-tile formations** lifted from the original maps, never
-  as random single tiles; decorations are the passable terrain features.
-  Coastlines are auto-shored and seam-fixed as part of the run, and the
-  whole thing is one undo step. The same seed + settings always produce
-  the same map, so a seed is shareable; leave the seed field empty to roll
-  a fresh map on every press until one looks right.
+  entirely (both layers - undo brings the old map back). Pick a **generator**,
+  each dedicated to one layout; its knobs are a table of **count / min / max**.
+  All sizes are in **cells** (a blob or patch *radius*; river width is tiles
+  across; island *distance* is the cell gap between island edges):
+  - **Islands** - separate land masses (never touching each other or the edge):
+    **main islands** and **small islands** (count + radius), each with a
+    **distance** range, plus **rivers** and **lakes**. Islands are spaced so the
+    gap between them is `distance` regardless of their radius.
+  - **Continents** - one or more landmasses ringed by ocean: **continents**
+    (count + radius), **rivers**, **lakes**.
+  - **Central Seas** - the inverse: one or more seas enclosed by land, with
+    **seas** (count + radius) and **rivers**.
+  - **Land** - a solid landmass, edge to edge, with optional **rivers** and **lakes**.
+  - **Rivers** - solid land cut by very curly, meandering rivers (count + width).
+  - **River Raid** - solid land cut by nearly straight rivers (count + width).
+  - **Maze** - a navigable labyrinth of land corridors and water walls (its
+    **maze** knob is the loop count + corridor width); land and water are the
+    headline, obstructions just dress it up.
+
+  Rivers (in every generator) enter at a random edge and cross the map at **any
+  angle**, not just horizontal or vertical; the **Rivers** generator makes them
+  especially wavy (heavy sine meanders, oxbows and tributary deltas).
+
+  Every generator also shares the common knobs: **drop zones** (good starting
+  spots - each overwrites the terrain with a flat, fully-accessible disc of land
+  of its radius, inset from the edges and spread far apart), **obstructions** and
+  **decorations** (patches of feature
+  templates, count + radius), **accessibility** % (lower = denser / more walled
+  patches; at low accessibility obstructions may hug the shore, higher keeps the
+  coast clear), and an obstruction-layout mode:
+  - **random** - patches scattered as the density dictates,
+  - **paths** - walkable roads as multi-step random curves wandering between the
+    map's extremes, **one road per 5 accessibility**; the centre stays dense
+    (only a thin spine is cut through it),
+  - **labyrinth** - a maze of twisting corridors woven across the whole map.
+
+  The roads / maze are planned *before* obstructions are placed, so feature
+  templates always land whole and are never partially erased.
+
+  Pick a **symmetry** for fair-play maps - **None**, **Left-Right** /
+  **Top-Bottom** (mirror across an axis), **Four Corners** (mirror both axes -
+  all four quadrants match), or **Rotate 180 deg** (point symmetry). The terrain
+  shape mirrors, and the placed features mirror too (respecting each tile's
+  rotate/flip rules, approximating where a tile can't be flipped). Pick the
+  **shore** method (**Sweep** for a uniform coastline, **Loop-walk** for a more
+  varied one, or **None** to leave coastlines untiled), optionally a **seed**,
+  and press Generate. A progress bar tracks the run and the editor stays
+  responsive - the Generate button becomes **Abort** while it works, and
+  aborting rolls the map back as if nothing happened. Obstructions and
+  decorations are stamped from your **actual templates** (the stock and
+  user-saved templates for the map's tileset), classified automatically into
+  impassable obstructions and passable decorations - a tileset with no
+  templates simply gets none. Coastlines are auto-shored and seam-fixed as part
+  of the run, and the whole thing is one undo step. The same seed + settings
+  always produce the same map, so a seed is shareable; leave the seed field
+  empty to roll a fresh map on every press until one looks right. The
+  **Surprise Me** button at the top fills every property with sensible random
+  values tuned to the generator and scaled to the map (continents fill most of
+  it, central seas span ~40-80%), rolling a fresh seed too. The
+  window is **non-blocking** - it floats above the map so you can pan, zoom, and
+  edit while it's open (drag its titlebar to move it; it isn't dockable) - and it
+  **remembers the last settings for each generator** during the session, so
+  switching generators or reopening it restores what you had.
 - **Selection** - pick the **select** tool (toolbox or **Select** menu) and
   drag over tiles to select them, or the **rect** tool to span rectangles.
   **Shift+drag adds** to the selection, **Ctrl+drag subtracts**, a plain
@@ -404,6 +485,7 @@ Default bindings:
 | `Delete` | `Delete` | clear the selected ground (Edit ▸ Clear) |
 | `SelectAll` / `SelectClear` / `SelectInvert` | `Ctrl+A` / `Ctrl+D` / `Ctrl+I` | |
 | `ToolPencil` / `ToolEraser` / `ToolPicker` / `ToolFill` | `B` / `E` / `I` / `K` | map editor only |
+| `ToolPaintLand` / `ToolPaintWater` | `Q` / `W` | terrain brush: paint land / water |
 | `ToolSelect` / `ToolSelectRect` | `L` / `M` | map editor only |
 | `Fit` | `F` | fit the map in the view |
 | `ZoomTo100` / `ZoomTo50` / `ZoomTo25` | `1` / `2` / `3` | map editor zoom presets |
@@ -465,8 +547,9 @@ Commonly useful:
 | `import-wrl PATH` | open the Import WRL modal to match a standard-tile WRL onto chosen tilesets (§2) |
 | `new W H PACK SEED` | new map (e.g. `new 64 64 GREEN 7`) |
 | `tile SPEC` / `paint X Y` / `fill X Y` | choose a tile and place it |
-| `shore` | run auto-shore |
-| `generate PATTERN [water=N] [obstructions=N] [decorations=N] [seed=N] [shore=sweep\|alt]` | random terrain (§4) |
+| `tool paint-land\|paint-water`, `paint-mask X Y`, `auto-shore off\|sweep\|loop-walk` | terrain brush: paint a land/water mask + its coast-on-release |
+| `shore [loop-walk\|fix\|sweep-fix\|loop-fix\|full] [X0 Y0 X1 Y1]` | lay + fix the coast (place → repair ladder; optional region) |
+| `generate GENERATOR [symmetry=none\|lr\|tb\|quad\|rotate] [shore=sweep\|loop\|none] [seed=N] [accessibility=N] [access-mode=random\|paths\|labyrinth] [main-islands=N] [small-islands=N] [continents=N] [seas=N] [rivers=N] [lakes=N] [maze=N] [drop-zones=N] [obstructions=N] [decorations=N]` (GENERATOR = islands\|continents\|central-seas\|land\|rivers\|river-raid\|maze; counts set, sizes default) | random terrain (§4) |
 | `select all\|clear\|invert\|similar`, `select-rect X0 Y0 X1 Y1 [add\|sub]` | selection (§4) |
 | `copy` / `cut` / `paste` / `delete` / `delete-all`, `stamp X Y`, `stamp cancel` | clipboard + ghost placement (`delete` = active layer, `delete-all` = every layer) |
 | `context-menu X Y` / `context-menu off` | open/close the right-click menu (scripts) |
@@ -477,6 +560,7 @@ Commonly useful:
 | `zoom-to N` / `pan-to X Y` / `fit` | view |
 | `grid on|off|toggle`, `status-bar on\|off\|toggle` | cell grid overlay / bottom status bar |
 | `brush-size N` | pencil/eraser footprint size (1–99; brush dropdown offers 1–13) |
+| `tool paint-land\|paint-water`, `paint-mask X Y` | terrain brush: pick the material, then paint a land/water mask (shore the region after) |
 | `map-preferences` | open the Map Preferences dialog (name, players, …) |
 | `animate`, `ingame`, `crt`, `map-palette` | toggles (palette cycling, in-game look, CRT, internal-palette debug render) |
 | `convert-palette [match\|rasterize] [water=keep\|drop]` | convert an opened WRL to a MAX-compatible palette (§5) |

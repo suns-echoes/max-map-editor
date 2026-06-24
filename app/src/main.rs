@@ -26,6 +26,7 @@ mod gpu;
 mod grid;
 mod importwrl;
 mod input;
+mod matcheditor;
 mod max_font;
 mod menu;
 mod minimap;
@@ -316,7 +317,7 @@ fn brush_overlay(editor: &EditorState, w: f32, h: f32) -> Option<ui::UiQuads> {
 	if editor.brush_size <= 1 || editor.mode != state::EditorMode::Map {
 		return None;
 	}
-	if !matches!(editor.tool, state::Tool::Pencil | state::Tool::Eraser) {
+	if !matches!(editor.tool, state::Tool::Pencil | state::Tool::Eraser | state::Tool::PaintMask) {
 		return None;
 	}
 	// `hot.cursor` is logical (UI space): gate against the logical UI rects, but
@@ -397,10 +398,12 @@ fn render_frame(
 	// the error modal beats whatever raised it) reacts to the cursor.
 	// Headless runs leave `editor.hot` at `Hot::NONE`, so captures are stable.
 	let hot = editor.hot;
-	let modal_open = editor.active_modal().is_some();
-	let covered = modal_open || editor.menu.open.is_some() || editor.context_menu.is_some();
+	// A non-blocking modal (the generator window) floats on top without dimming
+	// or covering the map / panels - only a blocking modal makes them inert.
+	let modal_blocking = editor.active_modal_ref().is_some_and(|m| m.blocking());
+	let covered = modal_blocking || editor.menu.open.is_some() || editor.context_menu.is_some();
 	let shell_hot = if covered { ui::Hot::NONE } else { hot };
-	let menu_hot = if modal_open { ui::Hot::NONE } else { hot };
+	let menu_hot = if modal_blocking { ui::Hot::NONE } else { hot };
 	let modal_hot = if editor.modal_as::<crate::errormodal::ErrorModal>().is_some() { ui::Hot::NONE } else { hot };
 	// CRT: when on, render the whole frame into an offscreen scene (sized
 	// to the viewport) and post-process it onto `target` at the end; otherwise
@@ -684,10 +687,36 @@ fn render_frame(
 			}
 		} else if let Some(modal) = any.downcast_ref::<crate::autofix::AutoFix>() {
 			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			// The method dropdown floats above the stats (drawn last).
+			if let Some(popup) = modal.popup(wf, hf, modal_hot) {
+				text_pass.draw_ui(device, encoder, target, &popup);
+			}
 		} else if let Some(modal) = any.downcast_ref::<crate::generator::Generator>() {
 			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
 			for (quads, scissor) in modal.field_contents(wf, hf) {
 				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+			// A pattern/symmetry/shore dropdown floats above the field text.
+			if let Some(popup) = modal.popup(wf, hf, modal_hot) {
+				text_pass.draw_ui(device, encoder, target, &popup);
+			}
+		} else if let Some(modal) = any.downcast_ref::<crate::matcheditor::MatchEditor>() {
+			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
+			// List rows + text fields, each clipped to its region (so rows crop).
+			for (quads, scissor) in modal.field_contents(wf, hf) {
+				text_pass.draw_ui_clipped(device, encoder, target, &quads, scissor, (w, h), scale);
+			}
+			// The tile thumbnails (lists, cross, orientation previews), clipped.
+			for (tiles, scissor) in modal.tile_layers(&editor.project, wf, hf) {
+				if !tiles.is_empty() {
+					renderer.draw_picker(device, encoder, target, &tiles, scissor, (w, h), scale, 1.0);
+				}
+			}
+			// Cross + orientation highlights, above the tiles.
+			text_pass.draw_ui(device, encoder, target, &modal.overlay(wf, hf));
+			// The pack dropdown floats above the lists (drawn last).
+			if let Some(popup) = modal.popup(wf, hf, modal_hot) {
+				text_pass.draw_ui(device, encoder, target, &popup);
 			}
 		} else if let Some(modal) = any.downcast_ref::<crate::convertpalette::ConvertPalette>() {
 			text_pass.draw_ui(device, encoder, target, &modal.view(wf, hf, modal_hot));
@@ -1109,6 +1138,8 @@ impl App {
 				state::Tool::Eraser => {
 					Command::Erase { x, y, layer: Some(self.editor.active_layer_name().to_string()) }
 				}
+				// The terrain brush paints a land/water mask (its own command).
+				state::Tool::PaintMask => Command::PaintMask { x, y },
 				_ => Command::Paint { x, y },
 			},
 		}
@@ -1268,6 +1299,10 @@ impl App {
 				let outcome = self.editor.generate_tick(true);
 				self.act_on(outcome, event_loop);
 			}
+			ModalAction::Surprise => {
+				let outcome = self.editor.generator_surprise();
+				self.act_on(outcome, event_loop);
+			}
 			ModalAction::Error(message) => self.editor.console.push_line(message),
 			// Auto Fix Shore live run: the shell owns the wall clock and steps
 			// the session per frame (see `redraw`); the modal stays open.
@@ -1277,6 +1312,9 @@ impl App {
 			}
 			ModalAction::StopFix => {
 				self.editor.autofix_tick(self.autofix_elapsed(), true);
+			}
+			ModalAction::UndoFix => {
+				self.editor.autofix_undo();
 			}
 			// New-from-Image live conversion: the shell owns the wall clock
 			// and steps the session per frame (see `redraw`); the modal stays open.
@@ -1344,6 +1382,12 @@ impl App {
 			}
 			ModalAction::FinishWrlImport => {
 				let outcome = self.editor.wrl_finish();
+				self.act_on(outcome, event_loop);
+			}
+			// Save the Edit Match Data modal: apply + write the pack files; the
+			// modal stays open (its dirty flags clear on success).
+			ModalAction::SaveMatch => {
+				let outcome = self.editor.match_editor_save();
 				self.act_on(outcome, event_loop);
 			}
 		}
@@ -1440,7 +1484,11 @@ impl App {
 					return;
 				}
 				match action {
-					picker::Action::Pick(tile) => self.run(Command::Tile { spec: Some(tile) }, event_loop),
+					picker::Action::Pick(tile) => {
+						self.run(Command::Tile { spec: Some(tile) }, event_loop);
+						// Choosing a tile in the explorer arms the pencil to paint it.
+						self.run(Command::ToolSelect { name: "pencil".into() }, event_loop);
+					}
 					picker::Action::SetFilter(f) => {
 						self.editor.picker.filter_open = false;
 						self.run(Command::PickerFilter { name: f.name().into() }, event_loop);
@@ -1562,6 +1610,7 @@ impl App {
 						}
 					}
 					palette_panel::Action::Cycle(on) => self.run(Command::Animate { on: Some(on) }, event_loop),
+					palette_panel::Action::CycleToggle => self.run(Command::Animate { on: None }, event_loop),
 					// Selections and drags never arm.
 					_ => {}
 				}
@@ -1843,9 +1892,15 @@ impl App {
 		}
 		self.last_frame = std::time::Instant::now();
 
-		// Auto Fix Shore: step the live run a slice per frame.
+		// Fix Shore: step the live run a slice per frame. The clock starts on the
+		// first running frame (covers both the Start button and the menu's
+		// auto-started runs) and resets while idle so each run times fresh; the
+		// modal keeps its own final `elapsed` for the display after a run ends.
 		if self.editor.autofix_running() {
+			self.autofix_clock.get_or_insert_with(std::time::Instant::now);
 			self.editor.autofix_tick(self.autofix_elapsed(), false);
+		} else {
+			self.autofix_clock = None;
 		}
 
 		// Generate Random Terrain: step the live run within a
@@ -1996,8 +2051,10 @@ impl ApplicationHandler for App {
 					self.console_key(&event, event_loop);
 					return;
 				}
-				// An open text-field modal captures the keyboard next.
-				if self.editor.active_modal().is_some() {
+				// An open modal captures the keyboard next - a blocking one always,
+				// a non-blocking (floating) one only while one of its fields is
+				// focused, so map shortcuts keep working when you're not editing it.
+				if self.editor.active_modal_ref().is_some_and(|m| m.blocking() || m.edit_context().is_some()) {
 					let shift = self.modifiers.shift_key();
 					let ctrl = self.modifiers.control_key();
 					let (sw, sh) = self.editor.ui_screen();
@@ -2237,18 +2294,23 @@ impl ApplicationHandler for App {
 							self.redraw_win();
 							return;
 						}
-						// An open text-field modal swallows every press; a press on
-						// its titlebar starts a drag, otherwise it routes in.
-						if self.editor.active_modal().is_some() {
-							let (cx, cy) = (lcx, lcy);
-							if self.editor.active_modal().unwrap().titlebar(sw, sh).contains(cx, cy) {
-								self.modal_drag = true;
-							} else {
-								let action = self.editor.active_modal().unwrap().on_press(cx, cy, sw, sh);
-								self.apply_modal_action(action, event_loop);
+						// A modal takes the press when it captures it: a blocking modal
+						// always; a non-blocking (floating) one only over its own rect.
+						// A press on the titlebar starts a drag, otherwise it routes in.
+						// A press elsewhere falls through to the map / panels below.
+						if let Some((blocking, over, on_titlebar)) = self.editor.active_modal_ref().map(|m| {
+							(m.blocking(), m.bounds(sw, sh).contains(lcx, lcy), m.titlebar(sw, sh).contains(lcx, lcy))
+						}) {
+							if blocking || over {
+								if on_titlebar {
+									self.modal_drag = true;
+								} else {
+									let action = self.editor.active_modal().unwrap().on_press(lcx, lcy, sw, sh);
+									self.apply_modal_action(action, event_loop);
+								}
+								self.redraw_win();
+								return;
 							}
-							self.redraw_win();
-							return;
 						}
 						// The menu bar is next: it sees the press first.
 						match self.editor.menu.on_press(lcx, lcy, sw) {
@@ -2372,7 +2434,8 @@ impl ApplicationHandler for App {
 											| palette_panel::Action::Import
 											| palette_panel::Action::Export
 											| palette_panel::Action::LoadSaved(_)
-											| palette_panel::Action::Cycle(_)),
+											| palette_panel::Action::Cycle(_)
+											| palette_panel::Action::CycleToggle),
 										) => {
 											self.armed = Some(Armed::Palette { body, action });
 										}
@@ -2501,6 +2564,17 @@ impl ApplicationHandler for App {
 											}
 										}
 									}
+									// Terrain brush: strokes like the pencil (press +
+									// drag = one undo unit), but needs no active tile -
+									// it paints the land/water mask. The coast grows on
+									// release (see the release handler below).
+									state::Tool::PaintMask => {
+										if let Some((x, y)) = self.editor.cell_at(self.cursor.0, self.cursor.1) {
+											self.paint = Some((x, y));
+											self.run(Command::Stroke { begin: true }, event_loop);
+											self.run(self.paint_command(x, y), event_loop);
+										}
+									}
 									// Flood fill: a single click fills the region
 									// (its own undo unit - no drag).
 									state::Tool::Fill => {
@@ -2595,6 +2669,22 @@ impl ApplicationHandler for App {
 							}
 						} else if self.paint.is_some() {
 							self.paint = None;
+							// Terrain brush: grow the coast (beach + animated coastal
+							// waves) over everything the stroke painted, inside the same
+							// undo unit, before the stroke closes - the toolbox "auto
+							// shore" select chooses the placement (or off).
+							if self.editor.tool == state::Tool::PaintMask {
+								if let Some(region) = self.editor.take_mask_region() {
+									let mode = match self.editor.brush_shore {
+										state::BrushShore::Off => None,
+										state::BrushShore::Sweep => Some(command::ShoreMode::Sweep),
+										state::BrushShore::LoopWalk => Some(command::ShoreMode::LoopWalk),
+									};
+									if let Some(mode) = mode {
+										self.run(Command::Shore { region: Some(region), mode }, event_loop);
+									}
+								}
+							}
 							self.run(Command::Stroke { begin: false }, event_loop);
 						}
 					}
@@ -2609,10 +2699,11 @@ impl ApplicationHandler for App {
 				// Not from the menu bar, tab strip, panels, or under a modal. The
 				// "is it over the map" test is a UI question (logical space); the
 				// pan/context-menu points captured below stay physical (the map).
+				let over_modal =
+					self.editor.active_modal_ref().is_some_and(|m| m.blocking() || m.bounds(sw, sh).contains(lcx, lcy));
 				let over_map = lcy >= menu::BAR_H + tabs::BAR_H
 					&& self.editor.menu.open.is_none()
-					&& self.editor.active_modal().is_none()
-					&& !self.editor.workspace.over_ui(lcx, lcy, sw, sh);
+					&& !over_modal && !self.editor.workspace.over_ui(lcx, lcy, sw, sh);
 				match state {
 					ElementState::Pressed => {
 						self.drag = (over_map && self.bindings.is_pan_button(button)).then_some(self.cursor);
@@ -2626,6 +2717,13 @@ impl ApplicationHandler for App {
 						let on_template = right.then(|| self.template_at(lcx, lcy, sw, sh)).flatten();
 						self.rclick_template = on_template.map(|g| (g, self.cursor));
 						let over_field = self.editor.active_modal_ref().and_then(|m| m.edit_context()).is_some();
+						// A right-press inside a (non-field) modal goes to the modal itself.
+						if right && over_modal && !over_field {
+							let action = self.editor.active_modal().unwrap().on_right_press(lcx, lcy, sw, sh);
+							self.apply_modal_action(action, event_loop);
+							self.redraw_win();
+							return;
+						}
 						self.rclick =
 							(right && on_template.is_none() && (over_map || over_field)).then_some(self.cursor);
 					}
@@ -2669,11 +2767,14 @@ impl ApplicationHandler for App {
 					self.redraw_win();
 					return;
 				}
-				// An open modal takes the wheel - the file dialog scrolls its
-				// list; the others just swallow it.
+				// A modal takes the wheel when it captures it (a blocking modal
+				// always; a non-blocking one only over its rect) - the file dialog
+				// scrolls its list, the others just swallow it. Otherwise it falls
+				// through to the map / panels.
 				let (sw, sh) = self.editor.ui_screen();
-				if let Some(modal) = self.editor.active_modal() {
-					modal.on_wheel(steps, sw, sh);
+				let (lcx, lcy) = self.lcursor();
+				if self.editor.active_modal_ref().is_some_and(|m| m.blocking() || m.bounds(sw, sh).contains(lcx, lcy)) {
+					self.editor.active_modal().unwrap().on_wheel_at(steps, lcx, lcy, sw, sh);
 					self.redraw_win();
 					return;
 				}

@@ -9,6 +9,8 @@ use std::path::Path;
 
 use max_assets::wrl::TILE_DATA_SIZE;
 
+use crate::project::Transform;
+
 /// Directions are ring-indexed clockwise: N=0, E=1, S=2, W=3 (`shore.rs`
 /// rotates them with this arithmetic).
 pub(crate) const DIR_N: usize = 0;
@@ -130,9 +132,10 @@ pub struct TilePack {
 	pub variant_groups: Vec<Vec<u16>>,
 	/// Tile index → its `variant_groups` index (`None` = no variants).
 	pub variant_of: Vec<Option<u16>>,
-	/// Variant-group name → `variant_groups` index (group names usually
-	/// match tile families, but not always: WATER's group is `WTR`, its
-	/// tile ids `WATR00…`).
+	/// Variant-group name → `variant_groups` index. The group name matches the
+	/// tile family in every shipped pack (WATER's `WTR` group holds `WTR000…`);
+	/// they only differ when tiles are linked across families in the match
+	/// editor (resolved via [`TilePack::group_of`]).
 	pub variant_named: HashMap<String, u16>,
 	/// Group key → semantic props from `tiles.props.json` (worldgen,
 	/// transform guards). Keys are variant-group names or tile-id families -
@@ -157,6 +160,161 @@ fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<bool, String> {
 	}
 	std::fs::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
 	Ok(true)
+}
+
+/// Quote + escape a string as a JSON string literal. Tile ids and match specs
+/// are ASCII (`[A-Za-z0-9_:!]`), so this only ever needs `"`/`\` escaping, but
+/// it stays correct for arbitrary input.
+fn json_string(s: &str) -> String {
+	let mut out = String::with_capacity(s.len() + 2);
+	out.push('"');
+	for c in s.chars() {
+		match c {
+			'"' => out.push_str("\\\""),
+			'\\' => out.push_str("\\\\"),
+			'\n' => out.push_str("\\n"),
+			'\t' => out.push_str("\\t"),
+			c => out.push(c),
+		}
+	}
+	out.push('"');
+	out
+}
+
+/// Canonical sort key for a match-list entry: wildcards (`__LAND__`/`__WATER__`)
+/// first, then concrete `group:suffix` entries by group name, then by the
+/// neighbor transform's bit pattern (identity, the three rotations, then the
+/// four mirrored). Gives a stable, diff-friendly order after editing (the
+/// shipped files were in the offline extractor's discovery order).
+fn entry_sort_key(s: &str) -> (u8, String, u8) {
+	if s.starts_with("__") {
+		return (0, s.to_string(), 0);
+	}
+	match s.split_once(':') {
+		Some((g, t)) => (1, g.to_string(), Transform::parse(t).map(|t| t.bits() as u8).unwrap_or(u8::MAX)),
+		None => (1, s.to_string(), 0),
+	}
+}
+
+/// Serialize match rules to the shipped `tiles.match.json` text: tab-indented,
+/// group keys sorted, directions in file order N/W/S/E (storage is ring-indexed
+/// N/E/S/W), each direction's entries canonically sorted. Hand-rolled because
+/// the `json` dep doesn't control whitespace; round-trips the shipped files
+/// (modulo the offline extractor's original entry ordering).
+pub fn serialize_matches(matches: &HashMap<String, MatchRule>) -> String {
+	let mut keys: Vec<&String> = matches.keys().collect();
+	keys.sort();
+	let mut out = String::from("{\n");
+	for (ki, key) in keys.iter().enumerate() {
+		let rule = &matches[*key];
+		out.push('\t');
+		out.push_str(&json_string(key));
+		out.push_str(": {\n");
+		const FILE_DIRS: [(&str, usize); 4] = [("N", DIR_N), ("W", DIR_W), ("S", DIR_S), ("E", DIR_E)];
+		for (di, (label, ring)) in FILE_DIRS.iter().enumerate() {
+			let mut entries = rule.dirs[*ring].clone();
+			entries.sort_by_key(|e| entry_sort_key(e));
+			entries.dedup();
+			if entries.is_empty() {
+				out.push_str(&format!("\t\t\"{label}\": []"));
+			} else {
+				out.push_str(&format!("\t\t\"{label}\": [\n"));
+				for (ei, e) in entries.iter().enumerate() {
+					out.push_str("\t\t\t");
+					out.push_str(&json_string(e));
+					out.push_str(if ei + 1 < entries.len() { ",\n" } else { "\n" });
+				}
+				out.push_str("\t\t]");
+			}
+			out.push_str(if di + 1 < FILE_DIRS.len() { ",\n" } else { "\n" });
+		}
+		out.push_str("\t}");
+		out.push_str(if ki + 1 < keys.len() { ",\n" } else { "\n" });
+	}
+	out.push_str("}\n");
+	out
+}
+
+/// Serialize variant groups to the shipped `tiles.variants.json` text:
+/// tab-indented, group keys sorted, tile ids in the given order.
+pub fn serialize_variants(groups: &[(String, Vec<String>)]) -> String {
+	let mut g: Vec<&(String, Vec<String>)> = groups.iter().filter(|(_, t)| !t.is_empty()).collect();
+	g.sort_by(|a, b| a.0.cmp(&b.0));
+	let mut out = String::from("{\n");
+	for (gi, (name, tiles)) in g.iter().enumerate() {
+		out.push('\t');
+		out.push_str(&json_string(name));
+		out.push_str(": [\n");
+		for (ti, t) in tiles.iter().enumerate() {
+			out.push_str("\t\t");
+			out.push_str(&json_string(t));
+			out.push_str(if ti + 1 < tiles.len() { ",\n" } else { "\n" });
+		}
+		out.push_str("\t]");
+		out.push_str(if gi + 1 < g.len() { ",\n" } else { "\n" });
+	}
+	out.push_str("}\n");
+	out
+}
+
+/// Serialize the id table to `tiles-data.json` (array form, tab-indented).
+pub fn serialize_ids(ids: &[String]) -> String {
+	let mut out = String::from("[\n");
+	for (i, id) in ids.iter().enumerate() {
+		out.push('\t');
+		out.push_str(&json_string(id));
+		out.push_str(if i + 1 < ids.len() { ",\n" } else { "\n" });
+	}
+	out.push_str("]\n");
+	out
+}
+
+/// Serialize the pass table to `tiles.pass.json` (`{ "<id>": <0..3>, … }`, in id
+/// order, tab-indented).
+pub fn serialize_pass(ids: &[String], pass: &[u8]) -> String {
+	let mut out = String::from("{\n");
+	let n = ids.len().min(pass.len());
+	for i in 0..n {
+		out.push('\t');
+		out.push_str(&json_string(&ids[i]));
+		out.push_str(&format!(": {}", pass[i]));
+		out.push_str(if i + 1 < n { ",\n" } else { "\n" });
+	}
+	out.push_str("}\n");
+	out
+}
+
+/// Replace whole tile-id tokens `old`→`new` in cell/JSON text - only where `old`
+/// is bounded by a JSON string quote or a cell separator (`"` / `,` before, and
+/// `"` / `,` / `:` after), so renaming `GSa00` never touches `GSa000`. Returns the
+/// rewritten text and the replacement count. The match editor's id-rename cascade
+/// runs this over every shipped map + template.
+pub fn replace_id_token(text: &str, old: &str, new: &str) -> (String, usize) {
+	if old.is_empty() || old == new {
+		return (text.to_string(), 0);
+	}
+	let bytes = text.as_bytes();
+	let mut out = String::with_capacity(text.len());
+	let mut i = 0;
+	let mut count = 0;
+	while i < text.len() {
+		if text[i..].starts_with(old) {
+			let before = i.checked_sub(1).map(|j| bytes[j]);
+			let after = bytes.get(i + old.len()).copied();
+			let lb = matches!(before, Some(b'"') | Some(b','));
+			let rb = matches!(after, Some(b'"') | Some(b',') | Some(b':'));
+			if lb && rb {
+				out.push_str(new);
+				i += old.len();
+				count += 1;
+				continue;
+			}
+		}
+		let ch = text[i..].chars().next().unwrap();
+		out.push(ch);
+		i += ch.len_utf8();
+	}
+	(out, count)
 }
 
 impl TilePack {
@@ -199,8 +357,8 @@ impl TilePack {
 	}
 
 	/// Tile `index`'s semantic props, resolved through its variant-group name
-	/// when it has one (WATER's `WTR` group keys the `WATR…` tiles) and its id
-	/// family otherwise - the same keying [`Self::group_tiles`] reverses.
+	/// when it has one (else its id family) - the same keying
+	/// [`Self::group_tiles`] reverses.
 	pub fn tile_props(&self, index: u16) -> Option<&FamilyProps> {
 		if let Some(g) = self.variant_of.get(index as usize).copied().flatten() {
 			if let Some((name, _)) = self.variant_named.iter().find(|&(_, &gi)| gi == g) {
@@ -257,7 +415,7 @@ impl TilePack {
 		let tile_count = tiles.len() / TILE_DATA_SIZE;
 
 		// tiles-data.json: bin index → tile id, in either shape found in the
-		// shipped packs: `["WATR00", …]` (index = position) or
+		// shipped packs: `["WTR000", …]` (index = position) or
 		// `{ "0": "SCa000", … }`. TODO: normalize the packs to one shape.
 		let id_map = read_json_opt("tiles-data.json")?.ok_or(format!("{name}/tiles-data.json: not found"))?;
 		let mut ids = vec![String::new(); tile_count];
@@ -540,7 +698,7 @@ impl TilePack {
 
 	/// The tiles a props/variants group key covers: the variant group
 	/// registered under that name when one exists (WATER's `WTR` group holds
-	/// the `WATR…` tiles), else every tile whose id family matches the key.
+	/// the `WTR…` tiles), else every tile whose id family matches the key.
 	pub fn group_tiles(&self, key: &str) -> Vec<u16> {
 		if let Some(&g) = self.variant_named.get(key) {
 			return self.variant_groups[g as usize].clone();
@@ -555,6 +713,87 @@ impl TilePack {
 			Some(g) => &self.variant_groups[g as usize],
 			None => &[],
 		}
+	}
+
+	/// The name a variant group (by index) was registered under, if any.
+	pub fn group_name(&self, g: u16) -> Option<&str> {
+		self.variant_named.iter().find(|&(_, &gi)| gi == g).map(|(name, _)| name.as_str())
+	}
+
+	/// The match/props group key a tile belongs to: its variant-group name when
+	/// it has one (WATER's `WTR` covers the `WTR…` tiles), else its id family.
+	/// The auto-shore engine resolves a placed tile to its adjacency rule
+	/// through this, so linking tiles into a group (even across id families) is
+	/// what makes matching honor the link. Mirrors [`Self::tile_props`]'s
+	/// resolution.
+	pub fn group_of(&self, index: u16) -> &str {
+		if let Some(g) = self.variant_of.get(index as usize).copied().flatten() {
+			if let Some(name) = self.group_name(g) {
+				return name;
+			}
+		}
+		family_of(&self.ids[index as usize])
+	}
+
+	/// Replace this pack's match rules and variant grouping in one shot - the
+	/// match-data editor's commit. `groups` is `(group name → member bin
+	/// indices)`; empty groups are dropped. Rebuilds `variant_groups` /
+	/// `variant_of` / `variant_named` so [`Self::group_of`] (and thus the live
+	/// auto-shore engine) immediately reflects the new links.
+	pub fn set_match_data(&mut self, groups: Vec<(String, Vec<u16>)>, matches: HashMap<String, MatchRule>) {
+		let count = self.tile_count() as usize;
+		let mut variant_groups: Vec<Vec<u16>> = Vec::new();
+		let mut variant_of: Vec<Option<u16>> = vec![None; count];
+		let mut variant_named: HashMap<String, u16> = HashMap::new();
+		for (name, mut tiles) in groups {
+			tiles.retain(|&t| (t as usize) < count);
+			tiles.sort_unstable();
+			tiles.dedup();
+			if tiles.is_empty() {
+				continue;
+			}
+			let g = variant_groups.len() as u16;
+			for &t in &tiles {
+				variant_of[t as usize] = Some(g);
+			}
+			variant_named.insert(name, g);
+			variant_groups.push(tiles);
+		}
+		self.variant_groups = variant_groups;
+		self.variant_of = variant_of;
+		self.variant_named = variant_named;
+		self.matches = matches;
+	}
+
+	/// Write this pack's match rules + variant groups to `dir/tiles.match.json`
+	/// and `dir/tiles.variants.json` (only the files that actually changed).
+	/// The match-data editor's save; the only writer of `tiles.match.json` (it
+	/// is otherwise shipped read-only and [`Self::dump`] skips it). Returns
+	/// whether anything was written.
+	pub fn save_match_data(&self, dir: &Path) -> Result<bool, String> {
+		let mut groups: Vec<(String, Vec<String>)> = self
+			.variant_named
+			.iter()
+			.map(|(name, &g)| {
+				let mut idxs = self.variant_groups[g as usize].clone();
+				idxs.sort_unstable();
+				(name.clone(), idxs.iter().map(|&i| self.ids[i as usize].clone()).collect())
+			})
+			.collect();
+		groups.sort_by(|a, b| a.0.cmp(&b.0));
+		let wrote_m = write_if_changed(&dir.join("tiles.match.json"), serialize_matches(&self.matches).as_bytes())?;
+		let wrote_v = write_if_changed(&dir.join("tiles.variants.json"), serialize_variants(&groups).as_bytes())?;
+		Ok(wrote_m || wrote_v)
+	}
+
+	/// Write `tiles-data.json` (the id table) + `tiles.pass.json` (when present) -
+	/// the match editor's id-rename / pass save. Returns whether anything changed.
+	pub fn save_ids_pass(&self, dir: &Path) -> Result<bool, String> {
+		let mut wrote = write_if_changed(&dir.join("tiles-data.json"), serialize_ids(&self.ids).as_bytes())?;
+		if let Some(pass) = &self.pass {
+			wrote |= write_if_changed(&dir.join("tiles.pass.json"), serialize_pass(&self.ids, pass).as_bytes())?;
+		}
+		Ok(wrote)
 	}
 
 	/// Write this pack to `dir/` in the on-disk asset format (`load`'s
@@ -775,6 +1014,147 @@ mod tests {
 		assert!(e.contains("tiles.pass.json"), "{e}");
 	}
 
+	/// Parse a serialized `tiles.match.json` string back into the ring-indexed
+	/// dir form, mirroring `from_reader`'s mapping (file N/E/S/W → ring).
+	fn reparse_matches(text: &str) -> HashMap<String, [Vec<String>; 4]> {
+		let value = json::parse(text).expect("valid json");
+		let families = value.as_object().expect("object");
+		let mut out = HashMap::new();
+		for (family, rule) in families {
+			let mut dirs: [Vec<String>; 4] = Default::default();
+			for (key, dir) in [("N", DIR_N), ("E", DIR_E), ("S", DIR_S), ("W", DIR_W)] {
+				let Some(list) = rule.get(key) else { continue };
+				for entry in list.as_array().expect("array") {
+					dirs[dir].push(entry.as_str().expect("str").to_string());
+				}
+			}
+			out.insert(family.to_string(), dirs);
+		}
+		out
+	}
+
+	/// `serialize_matches` preserves every family/direction's entry set across a
+	/// round-trip through the shipped GREEN rules (order is canonicalized, so
+	/// compare as sets).
+	#[test]
+	fn serialize_matches_round_trips_green() {
+		let pack = TilePack::load(&assets_root(), "GREEN").expect("GREEN loads");
+		let text = serialize_matches(&pack.matches);
+		let back = reparse_matches(&text);
+		assert_eq!(back.len(), pack.matches.len(), "family count");
+		for (fam, rule) in &pack.matches {
+			let got = back.get(fam).unwrap_or_else(|| panic!("missing family {fam}"));
+			for d in 0..4 {
+				let mut a = rule.dirs[d].clone();
+				let mut b = got[d].clone();
+				a.sort();
+				b.sort();
+				assert_eq!(a, b, "{fam} dir {d}");
+			}
+		}
+	}
+
+	/// `serialize_variants` preserves the GREEN variant groups across a
+	/// round-trip (group name → member id set).
+	#[test]
+	fn serialize_variants_round_trips_green() {
+		let pack = TilePack::load(&assets_root(), "GREEN").expect("GREEN loads");
+		let groups: Vec<(String, Vec<String>)> = pack
+			.variant_named
+			.iter()
+			.map(|(name, &g)| {
+				(name.clone(), pack.variant_groups[g as usize].iter().map(|&i| pack.ids[i as usize].clone()).collect())
+			})
+			.collect();
+		let text = serialize_variants(&groups);
+		let value = json::parse(&text).expect("valid json");
+		let obj = value.as_object().expect("object");
+		let mut count = 0;
+		for (name, list) in obj {
+			count += 1;
+			let mut got: Vec<String> = list.as_array().unwrap().iter().map(|e| e.as_str().unwrap().to_string()).collect();
+			let (_, mut want) = groups.iter().find(|(n, _)| n == name).expect("group present").clone();
+			got.sort();
+			want.sort();
+			assert_eq!(got, want, "group {name}");
+		}
+		assert_eq!(count, groups.len(), "group count");
+	}
+
+	/// `set_match_data` rebuilds grouping so `group_of` (and the live engine)
+	/// honors a fresh link, even across id-prefixes.
+	#[test]
+	fn set_match_data_relinks_group_of() {
+		let mut pack = TilePack::load(&assets_root(), "GREEN").expect("GREEN loads");
+		let donor = pack.index_of["GSa000"]; // family GSa
+		// Link GSa000 into the GSh group; everything else keeps its group.
+		let mut groups: Vec<(String, Vec<u16>)> = pack
+			.variant_named
+			.iter()
+			.map(|(name, &g)| (name.clone(), pack.variant_groups[g as usize].clone()))
+			.collect();
+		for (name, tiles) in &mut groups {
+			tiles.retain(|&t| t != donor);
+			if name == "GSh" {
+				tiles.push(donor);
+			}
+		}
+		let matches = pack.matches.clone();
+		pack.set_match_data(groups, matches);
+		assert_eq!(pack.group_of(donor), "GSh", "GSa000 now resolves to the GSh group");
+	}
+
+	/// `save_match_data` writes both sidecars to a directory, and they reparse to
+	/// the same content (the full editor → disk → reload path). Writes to a
+	/// throwaway dir, never the shipped assets.
+	#[test]
+	fn save_match_data_writes_reparseable_files() {
+		let pack = TilePack::load(&assets_root(), "GREEN").expect("GREEN loads");
+		let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../temp/test-matchsave");
+		let _ = std::fs::remove_dir_all(&dir);
+		std::fs::create_dir_all(&dir).expect("temp dir");
+		let wrote = pack.save_match_data(&dir).expect("save");
+		assert!(wrote, "first save writes the files");
+		assert!(dir.join("tiles.match.json").exists());
+		assert!(dir.join("tiles.variants.json").exists());
+		// Reparse the match file and compare entry sets.
+		let text = std::fs::read_to_string(dir.join("tiles.match.json")).unwrap();
+		let back = reparse_matches(&text);
+		for (fam, rule) in &pack.matches {
+			let got = back.get(fam).unwrap_or_else(|| panic!("missing {fam}"));
+			for d in 0..4 {
+				let (mut a, mut b) = (rule.dirs[d].clone(), got[d].clone());
+				a.sort();
+				b.sort();
+				assert_eq!(a, b, "{fam} dir {d}");
+			}
+		}
+		// A second save is a no-op (content unchanged).
+		assert!(!pack.save_match_data(&dir).expect("save2"), "unchanged save writes nothing");
+		std::fs::remove_dir_all(&dir).ok();
+	}
+
+	/// `save_ids_pass` writes a reparseable id table + pass table (the match
+	/// editor's id-rename / pass-edit save). Throwaway dir, never shipped assets.
+	#[test]
+	fn save_ids_pass_round_trips() {
+		let mut pack = TilePack::load(&assets_root(), "GREEN").expect("GREEN loads");
+		pack.rename_tile(0, "GLz000"); // a staged-style rename applied in memory
+		pack.set_tile_pass(0, 3);
+		let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../temp/test-idpass");
+		let _ = std::fs::remove_dir_all(&dir);
+		std::fs::create_dir_all(&dir).expect("temp dir");
+		assert!(pack.save_ids_pass(&dir).expect("save"));
+		let ids: json::JsonValue =
+			json::parse(&std::fs::read_to_string(dir.join("tiles-data.json")).unwrap()).unwrap();
+		assert_eq!(ids.as_array().unwrap()[0].as_str().unwrap(), "GLz000", "renamed id written");
+		let pass: json::JsonValue =
+			json::parse(&std::fs::read_to_string(dir.join("tiles.pass.json")).unwrap()).unwrap();
+		assert_eq!(pass.get("GLz000").and_then(|v| v.as_f64()).map(|f| f as u8), Some(3), "pass keyed by the new id");
+		assert!(!pack.save_ids_pass(&dir).expect("save2"), "unchanged save writes nothing");
+		std::fs::remove_dir_all(&dir).ok();
+	}
+
 	#[test]
 	fn from_reader_surfaces_sidecar_validation_errors() {
 		let one = vec![0u8; TILE_DATA_SIZE];
@@ -913,9 +1293,25 @@ mod tests {
 	}
 
 	#[test]
+	fn replace_id_token_is_boundary_precise() {
+		// Whole-token only: renaming WTR00 must not touch WTR000.
+		let (out, n) = replace_id_token(r#"["WTR000","WTR00:!N","GSd004"]"#, "WTR00", "XYZ00");
+		assert_eq!(n, 1);
+		assert_eq!(out, r#"["WTR000","XYZ00:!N","GSd004"]"#);
+		// Either end of a comma-separated multi-tile cell.
+		let (o2, c2) = replace_id_token("\"WTR000,GSd004:!N\"", "GSd004", "GSd009");
+		assert_eq!((o2.as_str(), c2), ("\"WTR000,GSd009:!N\"", 1));
+		let (o3, c3) = replace_id_token("\"GSd004,WTR000\"", "GSd004", "GSd009");
+		assert_eq!((o3.as_str(), c3), ("\"GSd009,WTR000\"", 1));
+		// No-op when old==new or absent.
+		assert_eq!(replace_id_token("\"GLa000\"", "GLa000", "GLa000").1, 0);
+		assert_eq!(replace_id_token("\"GLa000\"", "ZZZ999", "X").1, 0);
+	}
+
+	#[test]
 	fn family_of_strips_variant_digits() {
 		assert_eq!(family_of("GSh004"), "GSh");
-		assert_eq!(family_of("WATR03"), "WATR");
+		assert_eq!(family_of("WTR003"), "WTR");
 		assert_eq!(family_of("SLA000"), "SLA");
 	}
 }

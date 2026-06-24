@@ -219,6 +219,23 @@ impl Transform {
 			mirror: self.mirror ^ inner.mirror,
 		}
 	}
+
+	/// The transform that undoes `self`: `self.compose(self.inverse())` and
+	/// `self.inverse().compose(self)` both equal [`Transform::default`] (the
+	/// D4 group inverse). Used to author the reciprocal neighbor entry when the
+	/// match-data editor confirms a two-way adjacency.
+	pub fn inverse(self) -> Self {
+		if self.mirror { self } else { Self { rot: (4 - self.rot) % 4, mirror: false } }
+	}
+
+	/// The base-orientation direction (ring N=0,E=1,S=2,W=3) that faces screen
+	/// direction `dir` once a tile is placed with this transform - undo the
+	/// rotation, then the mirror. The match rules are stored base-relative, so
+	/// `shore.rs`'s seam matcher and the match-data editor share this mapping.
+	pub fn screen_to_base(self, dir: usize) -> usize {
+		let d = (dir + 4 - self.rot as usize) % 4;
+		if self.mirror { (4 - d) % 4 } else { d }
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -641,7 +658,7 @@ impl Project {
 		Err(format!("unknown tile id '{id}'"))
 	}
 
-	/// Encode a cell's stack in the save format (`"WATR05,GSd004:!N"`,
+	/// Encode a cell's stack in the save format (`"WTR005,GSd004:!N"`,
 	/// empty string for an empty stack) - also the `assert-cell` syntax.
 	pub fn cell_spec(&self, x: u16, y: u16) -> Option<String> {
 		let stack = self.cell(x, y)?;
@@ -971,6 +988,24 @@ impl Project {
 			return t;
 		}
 		TileRef { tile: group[rng.below(group.len() as u32) as usize], ..t }
+	}
+
+	/// The first pack + variant-group family of the given `kind` (LAND, WATER,
+	/// ...), chosen by **sorted** family name so the pick is deterministic
+	/// (`HashMap` order is not). The terrain generator and the terrain brush both
+	/// resolve "land"/"water" tiles through this, so a hand-painted coast matches
+	/// a generated one. `(pack index, family name)`; `None` if no pack ships one.
+	pub fn variant_family(&self, kind: crate::pack::TileKind) -> Option<(usize, String)> {
+		self.packs.iter().enumerate().find_map(|(i, pack)| {
+			let mut families: Vec<&String> = pack
+				.props
+				.iter()
+				.filter(|(_, fp)| fp.kind == Some(kind) && fp.has_variants)
+				.map(|(f, _)| f)
+				.collect();
+			families.sort();
+			families.first().map(|f| (i, (*f).clone()))
+		})
 	}
 
 	/// Flood-fill (4-connected) the region of cells whose `layer` entry equals
@@ -2411,6 +2446,31 @@ mod tests {
 						let chained = transform_tile(&transform_tile(&src, inner), outer);
 						assert_eq!(transform_tile(&src, outer.compose(inner)), chained, "{outer:?} ∘ {inner:?}",);
 					}
+				}
+			}
+		}
+	}
+
+	/// `inverse` undoes a transform from both sides, and `screen_to_base` is a
+	/// permutation of the 4 directions consistent with `compose`.
+	#[test]
+	fn transform_inverse_and_screen_to_base() {
+		for rot in 0..4u8 {
+			for mirror in [false, true] {
+				let t = Transform { rot, mirror };
+				let inv = t.inverse();
+				assert_eq!(t.compose(inv), Transform::default(), "{t:?} ∘ inv");
+				assert_eq!(inv.compose(t), Transform::default(), "inv ∘ {t:?}");
+				// screen_to_base is a bijection over {N,E,S,W}.
+				let mapped: Vec<usize> = (0..4).map(|d| t.screen_to_base(d)).collect();
+				let mut seen = [false; 4];
+				for &m in &mapped {
+					assert!(!seen[m], "{t:?} screen_to_base not a permutation");
+					seen[m] = true;
+				}
+				// Inverse direction map round-trips: base_to_screen ∘ screen_to_base = id.
+				for d in 0..4 {
+					assert_eq!(inv.screen_to_base(t.screen_to_base(d)), d, "{t:?} dir round-trip");
 				}
 			}
 		}

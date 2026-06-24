@@ -67,8 +67,11 @@ pub fn pan_target(map: (u16, u16), body: Rect, x: f32, y: f32) -> (f32, f32) {
 }
 
 fn radio_rect(body: Rect, i: usize) -> Rect {
-	let w = ((body.w - 4.0) / 3.0 - 2.0).clamp(20.0, 70.0);
-	Rect::new(body.x + 2.0 + i as f32 * (w + 2.0), body.y + 2.0, w, HEADER_H - 4.0)
+	// The three radios share the full header width evenly (2px outer margins +
+	// 2px gaps), so they always stretch to fill the panel.
+	let gap = 2.0;
+	let w = ((body.w - 4.0 - 2.0 * gap) / 3.0).max(20.0);
+	Rect::new(body.x + 2.0 + i as f32 * (w + gap), body.y + 2.0, w, HEADER_H - 4.0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -101,7 +104,7 @@ pub fn overlay(editor: &EditorState, body: Rect, w: f32, h: f32, map: SteelMap, 
 		let active = *m == editor.minimap_mode;
 		q.button_active(r, w, h, active, hot);
 		let label = ["over", "pass", "mini"][i];
-		q.label_in(label, r, 6.0, crate::ui::FONT_SMALL, w, h, if active { theme::ACCENT } else { theme::INK_DIM });
+		q.label_center(label, r, crate::ui::FONT_SMALL, w, h, if active { theme::ACCENT } else { theme::INK_DIM });
 	}
 
 	// View rectangle: the visible world window, mapped into the fitted rect.

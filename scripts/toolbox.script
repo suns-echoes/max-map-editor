@@ -7,7 +7,7 @@ tile GSa000
 # Rotate the brush once clockwise, paint, verify the suffix landed.
 transform cw
 paint 3 3
-assert-cell 3 3 WATR09,GSa000:W
+assert-cell 3 3 WTR009,GSa000:W
 
 # The eyedropper picks the top tile WITH its transform...
 tool picker
@@ -15,7 +15,7 @@ pick 3 3
 # ...and hands back to the pencil.
 transform flip-h
 paint 5 3
-assert-cell 5 3 WATR02,GSa000:!W
+assert-cell 5 3 WTR002,GSa000:!W
 
 # Round trips: cw then ccw is identity; double flip too.
 tile GLa000
@@ -24,6 +24,6 @@ transform ccw
 transform flip-v
 transform flip-v
 paint 7 3
-assert-cell 7 3 WATR03,GLa000
+assert-cell 7 3 WTR003,GLa000
 
 screenshot temp/toolbox.png

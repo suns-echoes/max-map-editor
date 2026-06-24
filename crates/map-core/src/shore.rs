@@ -1,6 +1,6 @@
 //! Auto-shore: generate shoreline on the **water cells** bordering
 //! land - the original maps' anatomy (a shore tile rides the water cell's
-//! ground layer: `"WATR06,GSh004"`), so painted land keeps its shape and the
+//! ground layer: `"WTR006,GSh004"`), so painted land keeps its shape and the
 //! coast grows seaward.
 //!
 //! Tile choice maximizes *unbroken* shoreline. Two layers of rules, matching
@@ -45,6 +45,7 @@
 
 use std::collections::HashMap;
 
+#[cfg(test)]
 use crate::pack::family_of;
 use crate::project::{LAYER_GROUND, LAYER_WATER, Project, Rng, TileRef, Transform};
 
@@ -64,8 +65,7 @@ fn opp(dir: usize) -> usize {
 /// tile is transformed by `t` - the direction form of `tile_pixel`'s
 /// dest→src mapping (undo the rotation, then undo the mirror).
 fn base_dir(dir: usize, t: Transform) -> usize {
-	let d = (dir + 4 - t.rot as usize) % 4;
-	if t.mirror { (4 - d) % 4 } else { d }
+	t.screen_to_base(dir)
 }
 
 /// One direction of a family's rules, parsed: wildcards + concrete
@@ -101,8 +101,14 @@ fn parse_families(project: &Project) -> Vec<Family> {
 	let mut heads: Vec<(u8, String, Vec<u16>)> = Vec::new();
 	for (pack_index, pack) in project.packs.iter().enumerate() {
 		for name in pack.matches.keys() {
-			let variants: Vec<u16> =
-				(0..pack.tile_count()).filter(|&i| family_of(&pack.ids[i as usize]) == name).collect();
+			// Group members that can actually sit on the ground as band tiles:
+			// water-pass tiles (the WATER pack's `WTR` group) are never placed
+			// as shore, so they stay out of the placeable set - which also keeps
+			// the all-`__WATER__` WTR family from ever being a ruled family.
+			let variants: Vec<u16> = (0..pack.tile_count())
+				.filter(|&i| pack.group_of(i) == name)
+				.filter(|&i| pack.pass.as_ref().map(|p| p[i as usize]) != Some(1))
+				.collect();
 			if !variants.is_empty() {
 				heads.push((pack_index as u8, name.clone(), variants));
 			}
@@ -300,7 +306,7 @@ fn snapshot_cells(project: &Project, name_idx: &HashMap<&str, u16>) -> Vec<Cell>
 			if pack.pass.as_ref().map(|p| p[top.tile as usize]) == Some(1) {
 				return Cell::Water;
 			}
-			match name_idx.get(family_of(&pack.ids[top.tile as usize])) {
+			match name_idx.get(pack.group_of(top.tile)) {
 				Some(&fam) => Cell::Ruled { fam, t: top.transform },
 				None => Cell::Plain,
 			}
@@ -366,9 +372,9 @@ fn landfill(
 					let (nx, ny) = (x + dx, y + dy);
 					let donor = project.cell(nx as u16, ny as u16)?[LAYER_GROUND]?;
 					let pack = &project.packs[donor.pack as usize];
-					let fam = family_of(&pack.ids[donor.tile as usize]);
+					let fam = pack.group_of(donor.tile);
 					let variants: Vec<u16> =
-						(0..pack.tile_count()).filter(|&i| family_of(&pack.ids[i as usize]) == fam).collect();
+						(0..pack.tile_count()).filter(|&i| pack.group_of(i) == fam).collect();
 					let mut rng = Rng::new(0x53484f5245 ^ ((x as u64) << 32 | y as u64));
 					let tile = variants[rng.below(variants.len() as u32) as usize];
 					Some(TileRef { pack: donor.pack, tile, transform: donor.transform })
@@ -1911,6 +1917,135 @@ impl Project {
 	/// idempotent, and it is one undo unit. Returns
 	/// `(cells changed, broken seams remaining)`.
 	pub fn fix_shore(&mut self, region: Option<(u16, u16, u16, u16)>) -> (usize, usize) {
+		self.fix_shore_with(region, FixStrength::Shore)
+	}
+
+	/// Count every defective coast cell against `tiles.match.json` - the source
+	/// of truth. A cell is a defect when it is:
+	/// * a **shore** tile whose placement is illegal on any edge (a water edge
+	///   not facing water, or a land edge pressed against water), OR whose seam
+	///   to an adjacent shore tile is not a listed continuation; or
+	/// * **open water orthogonally touching land** with no shore laid (a missing
+	///   coast).
+	///
+	/// This is stricter than either auto-shore's `unresolved` (which only judges
+	/// seams it re-tiled) or the fix session's own count (which never judges
+	/// shore-against-land), so it catches the broken/misplaced/missing tiles
+	/// those passes leave behind. Read-only. `0` = a perfect coast.
+	pub fn shore_defects(&self, region: Option<(u16, u16, u16, u16)>) -> usize {
+		let families = parse_families(self);
+		if families.iter().all(|f| !f.band) {
+			return 0;
+		}
+		let (w, h) = (self.width as i32, self.height as i32);
+		let name_idx: HashMap<&str, u16> =
+			families.iter().enumerate().map(|(i, f)| (f.name.as_str(), i as u16)).collect();
+		let comp = build_comp(&families);
+		let snap = snapshot_cells(self, &name_idx);
+		let (x0, y0, x1, y1) = region_rect(region, w, h);
+		let nb_at = |x: i32, y: i32, d: usize| -> Nb {
+			let (nx, ny) = (x + RING[d].0, y + RING[d].1);
+			match cell_at(&snap, w, h, nx, ny) {
+				None => Nb::Edge,
+				Some(Cell::Water) => Nb::OpenWater,
+				Some(Cell::Ruled { fam, t }) if families[fam as usize].band => Nb::Shore(fam, t),
+				Some(_) => Nb::Hard,
+			}
+		};
+		let mut defects = 0;
+		for y in y0..=y1 {
+			for x in x0..=x1 {
+				match cell_at(&snap, w, h, x, y) {
+					Some(Cell::Ruled { fam, t }) if families[fam as usize].band => {
+						let bad = (0..4).any(|d| {
+							let nb = nb_at(x, y, d);
+							!dir_ok(&families[fam as usize], t, d, nb)
+								|| matches!(nb, Nb::Shore(nf, nt) if comp_cseam(&comp, fam, t, d, nf, nt) == 0)
+						});
+						defects += bad as usize;
+					}
+					Some(Cell::Water) => {
+						// Open water touching land orthogonally wants a shore tile.
+						defects += (0..4).any(|d| matches!(nb_at(x, y, d), Nb::Hard)) as usize;
+					}
+					_ => {}
+				}
+			}
+		}
+		defects
+	}
+
+	/// Lay the coast and fix it **until it is clean** (one undo unit): place
+	/// missing shore (sweep or loop-walk), then loop [escalating fix -> re-place
+	/// -> re-check] until auto-shore reports zero unresolved seams, no further
+	/// progress, or a hard pass cap. `auto_shore` is the faithful detector - it
+	/// only ever lays tiles legal per `tiles.match.json`, so its `unresolved`
+	/// count is the true number of broken/misplaced/missing seams remaining.
+	///
+	/// A **fresh** fix session each pass resets the Destructive blast budget, so
+	/// `Destructive` keeps reshaping across passes and converges to a perfect
+	/// coast; `Mangle` stops once it plateaus (it may not reach zero without
+	/// reshaping terrain). Returns `(cells changed, broken seams remaining)`.
+	pub fn shore_repair(
+		&mut self,
+		region: Option<(u16, u16, u16, u16)>,
+		loop_walk: bool,
+		strength: FixStrength,
+	) -> (usize, usize) {
+		const MAX_PASSES: usize = 64;
+		self.begin_stroke();
+		let mut total = 0usize;
+		let mut best = usize::MAX;
+		let mut stall = 0usize;
+		let mut defects = 0usize;
+		// Aggressive starts at Mangle (re-tile only) and escalates to Destructive
+		// when it plateaus, so it preserves terrain where the coast is tileable
+		// and reshapes only the genuinely un-tileable residue. Full is Destructive
+		// throughout. Destructive itself blasts only where a window is *proven*
+		// unfixable, so both reach a perfect coast with minimal reshaping.
+		let mut cur = strength;
+		for _ in 0..MAX_PASSES {
+			// Place missing coast + repair what one pass can (law + targets).
+			let (placed, _) = if loop_walk { self.auto_shore_alt(region) } else { self.auto_shore(region) };
+			total += placed;
+			// The faithful (match.json) count of what's still wrong.
+			defects = self.shore_defects(region);
+			if defects == 0 {
+				break;
+			}
+			if defects < best {
+				best = defects;
+				stall = 0;
+			} else {
+				stall += 1;
+			}
+			if stall >= if cur == FixStrength::Destructive { 6 } else { 2 } {
+				if cur == FixStrength::Destructive {
+					break; // reshaping has plateaued - the tileset truly can't close it
+				}
+				// Re-tiling has stalled: escalate to reshaping for the residue.
+				cur = FixStrength::Destructive;
+				best = usize::MAX;
+				stall = 0;
+			}
+			// Escalate the residue; a fresh session resets the per-cell blast cap.
+			let (fixed, _) = self.fix_shore_with(region, cur);
+			total += fixed;
+		}
+		self.end_stroke();
+		(total, defects)
+	}
+
+	/// `fix_shore` at a chosen [`FixStrength`]: `Shore` re-tiles broken band
+	/// cells only, `Mangle` may also permute adjacent land, `Destructive`
+	/// reshapes water/shore/land until the coast is clean (the menu's
+	/// "+ Fix" actions and a script's `shore … fix` use this synchronously;
+	/// the modal drives a [`FixSession`] across frames instead).
+	pub fn fix_shore_with(
+		&mut self,
+		region: Option<(u16, u16, u16, u16)>,
+		strength: FixStrength,
+	) -> (usize, usize) {
 		// Drive the resumable session to convergence in one shot. The total
 		// budget scales with the break count and hard-bounds the work on any
 		// tileset; `SHORE_REPAIR_BUDGET` overrides, `SHORE_TIME=1` times it.
@@ -1918,7 +2053,7 @@ impl Project {
 		let stamp = std::env::var("SHORE_TIME").is_ok();
 		#[cfg(feature = "shore-instrument")]
 		let t0 = std::time::Instant::now();
-		let mut session = FixSession::new(self, region, FixStrength::Shore);
+		let mut session = FixSession::new(self, region, strength);
 		let found = session.found();
 		let default_budget = (found as i64 * 100_000).clamp(500_000, 20_000_000);
 		#[cfg(feature = "shore-instrument")]

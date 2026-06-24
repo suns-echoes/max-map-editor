@@ -23,7 +23,7 @@ pub use bake::{MAX_BAKED_TILES, WRL_HEADER, bake};
 pub use color::{hsl_to_rgb, rgb_to_hsl};
 pub use game_palette::{GAME_PALETTE, apply_game_statics};
 pub use image_import::{ConvertOpts, ConvertSession, Coverage, Dedupe, image_to_wrl};
-pub use pack::{FamilyProps, MatchRule, TileKind, TilePack, TilePattern, Transformable, family_of};
+pub use pack::{FamilyProps, MatchRule, TileKind, TilePack, TilePattern, Transformable, family_of, replace_id_token};
 pub use palette::{parse_palette, set_slot_rgb, slot_rgb, write_palette};
 pub use palette_convert::{ConvertOptions, ConvertReport};
 pub use project::{
@@ -33,5 +33,7 @@ pub use project::{
 pub use selection::{Edge, SelectMode, Selection};
 pub use shore::{FixSession, FixStrength};
 pub use template::{StampOp, Template, clear_selection, clear_selection_layer};
-pub use worldgen::{GenParams, GenPattern, GenSession, GenStats};
+pub use worldgen::{
+	AccessibilityMode, Generator, GenParams, GenSession, GenStats, Range, ShoreMethod, Span, Symmetry,
+};
 pub use wrl_import::{ExtrasDest, UnmappedTile, WrlImport};

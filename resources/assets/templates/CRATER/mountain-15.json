@@ -15,8 +15,8 @@
 	],
 	"map": [
 		[
-			"WATR01,CMb015",
-			"WATR04,CMb016"
+			"WTR001,CMb015",
+			"WTR004,CMb016"
 		]
 	]
 }

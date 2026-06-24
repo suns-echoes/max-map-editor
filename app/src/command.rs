@@ -35,6 +35,8 @@ pub enum FilePurpose {
 	NewFromImage,
 	/// Import a WRL onto chosen tilesets: resolves to `import-wrl PATH`.
 	ImportWrl,
+	/// Export the project to a WRL at a chosen path: resolves to `export PATH`.
+	ExportWrl,
 	/// Export the open Tile Painter's tile to a PNG: resolves to `tile-export PATH`.
 	ExportTilePng,
 	/// Load a PNG into the open Tile Painter (nearest palette match): resolves
@@ -45,16 +47,28 @@ pub enum FilePurpose {
 	ExportTemplatePng,
 }
 
-/// Which shore pass `shore` runs.
+/// Which shore pass `shore` runs. The first two only place + greedily repair
+/// the coast; the `*Fix` / `Full` variants place AND then run the bounded
+/// seam-repair to a chosen depth (one undo unit) - the "fast -> fully accurate"
+/// ladder the Tools menu and the Fix Shore dialog expose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShoreMode {
-	/// Sweep optimizer - uniform, deterministic coastline.
+	/// Sweep optimizer - place + greedy repair, uniform coastline. Instant.
 	Sweep,
-	/// Loop-walk - varied coastline (may leave the odd discontinuity).
-	Alt,
-	/// Fix existing shore - re-tile to close discontinuities. A deliberate,
-	/// bounded pass; never chained onto the auto passes.
+	/// Loop-walk - place + repair, varied coastline. Instant.
+	LoopWalk,
+	/// Re-tile broken existing shore only (Shore strength); does NOT place
+	/// missing coast. The deliberate, bounded legacy pass (`shore fix`).
 	Fix,
+	/// Sweep placement, then permute seams + adjacent land (Mangle) to
+	/// completion. The menu's "Shore Sweep + Fix"; the dialog's Aggressive.
+	SweepFix,
+	/// Loop-walk placement, then Mangle to completion. The menu's
+	/// "Shore Loop-Walk + Fix".
+	LoopFix,
+	/// Sweep placement, then reshape water/shore/land (Destructive) until the
+	/// coast is 100% clean. The dialog's Destructive.
+	Full,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -106,7 +120,7 @@ pub enum Command {
 		y: u16,
 		layer: Option<String>,
 	},
-	/// Assert a cell's stack spec (`"WATR05,GSd004:!N"`, `-` = empty).
+	/// Assert a cell's stack spec (`"WTR005,GSd004:!N"`, `-` = empty).
 	AssertCell {
 		x: u16,
 		y: u16,
@@ -136,6 +150,13 @@ pub enum Command {
 		x: u16,
 		y: u16,
 	},
+	/// Free-hand terrain brush ([`crate::state::Tool::PaintMask`]): paint the
+	/// active land/water material across the brush footprint at a cell. Issued by
+	/// the brush drag; the coast grows over the stroke on release.
+	PaintMask {
+		x: u16,
+		y: u16,
+	},
 	/// Toggle the randomize-variants paint mode (`None` = toggle).
 	Randomize {
 		on: Option<bool>,
@@ -147,6 +168,10 @@ pub enum Command {
 	/// Set the brush footprint shape: square | circle.
 	BrushShape {
 		shape: String,
+	},
+	/// Set the terrain brush's coast-on-release behaviour: off | sweep | loop-walk.
+	AutoShore {
+		mode: String,
 	},
 	/// Switch the editor mode: map | pass.
 	Mode {
@@ -326,17 +351,14 @@ pub enum Command {
 		region: Option<(u16, u16, u16, u16)>,
 		mode: ShoreMode,
 	},
-	/// Generate random terrain over the whole map: a pattern word
-	/// plus percent knobs. `None` seed = fresh random (reported, so any
-	/// generated map can be re-made); `alt_shore` picks the loop-walk
-	/// auto-shore pass over the sweep optimizer.
+	/// Generate random terrain over the whole map. `params` carries the chosen
+	/// generator, symmetry, shore, and knobs (the CLI sets the per-generator +
+	/// common counts, accessibility, and the selects; sizes use the shared
+	/// defaults - the modal exposes every range). `explicit_seed` is `None` for
+	/// a fresh random seed, reported so any map can be re-made.
 	Generate {
-		pattern: String,
-		water: u8,
-		obstructions: u8,
-		decorations: u8,
-		seed: Option<u64>,
-		alt_shore: bool,
+		params: map_core::GenParams,
+		explicit_seed: Option<u64>,
 	},
 	/// Open the Generate Random Terrain modal.
 	GenerateModal,
@@ -528,8 +550,13 @@ pub enum Command {
 	},
 	/// Open the Resize Map modal.
 	ResizeModal,
-	/// Open the Auto Fix Shore modal.
-	AutoFixModal,
+	/// Open the Fix Shore modal. An optional preset method word (`sweep-fix`,
+	/// `loop-fix`, `full`, ...) pre-selects it and auto-starts the run, so the
+	/// menu's one-click "+ Fix" actions show live progress + a Stop button and
+	/// never freeze the UI.
+	AutoFixModal {
+		method: Option<String>,
+	},
 	/// Bake a project to a game-ready WRL; `None` = project path as .wrl.
 	Export {
 		path: Option<PathBuf>,
@@ -610,6 +637,9 @@ pub enum Command {
 	/// Overwrite the map's original file in place - even a shipped (stock) map
 	/// that normally loads read-only (DEV ▸ Update Map, `--dev` only).
 	UpdateMap,
+	/// Open the visual Edit Tile Match Data modal (DEV ▸ Edit Match Data,
+	/// `--dev` only) for the active map's tile packs.
+	MatchEditor,
 	/// A text-edit action from a focused field's right-click menu, routed to the
 	/// open modal's focused text field.
 	Edit(EditOp),
@@ -797,10 +827,12 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		}
 		"tile" => Command::Tile { spec: opt_str(&args, 0) },
 		"paint" => Command::Paint { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
+		"paint-mask" => Command::PaintMask { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
 		"fill" => Command::Fill { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
 		"randomize" => Command::Randomize { on: on_off_toggle(&args, verb)? },
 		"brush-size" => Command::BrushSize { size: num(&args, 0, verb)? },
 		"brush-shape" => Command::BrushShape { shape: req_str(&args, 0, "brush-shape: expected square|circle")? },
+		"auto-shore" => Command::AutoShore { mode: req_str(&args, 0, "auto-shore: expected off|sweep|loop-walk")? },
 		"mode" => Command::Mode { name: req_str(&args, 0, "mode: expected map|pass|localpass")? },
 		"pass-pick" => Command::PassPick { value: num(&args, 0, verb)? },
 		"pass-paint" => {
@@ -888,10 +920,13 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		"transform" => Command::TransformTile { op: req_str(&args, 0, "transform: expected flip-h|flip-v|cw|ccw")? },
 		"pick" => Command::Pick { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
 		"shore" => {
-			// An optional leading mode word: `alt` (loop-walk) or `fix`.
+			// An optional leading mode word picks a point on the place->fix ladder.
 			let (mode, rest) = match args.first() {
-				Some(&"alt") => (ShoreMode::Alt, &args[1..]),
+				Some(&"alt") | Some(&"loop") | Some(&"loop-walk") => (ShoreMode::LoopWalk, &args[1..]),
 				Some(&"fix") => (ShoreMode::Fix, &args[1..]),
+				Some(&"sweep-fix") => (ShoreMode::SweepFix, &args[1..]),
+				Some(&"loop-fix") => (ShoreMode::LoopFix, &args[1..]),
+				Some(&"full") | Some(&"destructive") => (ShoreMode::Full, &args[1..]),
 				_ => (ShoreMode::Sweep, &args[..]),
 			};
 			let region = match rest.len() {
@@ -904,36 +939,62 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 			Command::Shore { region, mode }
 		}
 		"generate" => {
-			let pattern = req_str(&args, 0, "generate: missing pattern (islands|continent|land-mass|river-raid)")?;
-			// Order-independent options; percentages default to a middle-of-
-			// the-road map (45% water, 10% obstructions, 5% decorations).
-			let (mut water, mut obstructions, mut decorations, mut seed, mut alt_shore) =
-				(45u8, 10u8, 5u8, None, false);
+			let gen_word = req_str(
+				&args,
+				0,
+				"generate: missing generator (islands|continents|central-seas|land|rivers|river-raid)",
+			)?;
+			let generator = map_core::Generator::parse(&gen_word).map_err(|e| format!("generate: {e}"))?;
+			// Sizes/distances use the shared defaults; the CLI sets the selects,
+			// the per-generator + common counts, and accessibility (the modal
+			// exposes every range). Order-independent; irrelevant knobs ignored.
+			let mut p = map_core::GenParams::defaults(generator);
+			let mut explicit_seed = None;
+			let num = |v: &str, what: &str| v.parse::<u8>().map_err(|_| format!("generate: bad {what} '{v}'"));
 			for a in &args[1..] {
-				if let Some(v) = a.strip_prefix("water=") {
-					water = v.parse().map_err(|_| format!("generate: bad water '{v}'"))?;
-				} else if let Some(v) = a.strip_prefix("obstructions=") {
-					obstructions = v.parse().map_err(|_| format!("generate: bad obstructions '{v}'"))?;
-				} else if let Some(v) = a.strip_prefix("decorations=") {
-					decorations = v.parse().map_err(|_| format!("generate: bad decorations '{v}'"))?;
-				} else if let Some(v) = a.strip_prefix("seed=") {
-					seed = Some(v.parse().map_err(|_| format!("generate: bad seed '{v}'"))?);
+				if let Some(v) = a.strip_prefix("symmetry=") {
+					p.symmetry = map_core::Symmetry::parse(v).map_err(|e| format!("generate: {e}"))?;
 				} else if let Some(v) = a.strip_prefix("shore=") {
-					alt_shore = match v {
-						"alt" => true,
-						"sweep" => false,
-						_ => return Err(format!("generate: bad shore '{v}' (sweep|alt)")),
-					};
+					p.shore = map_core::ShoreMethod::parse(v).map_err(|e| format!("generate: {e}"))?;
+				} else if let Some(v) = a.strip_prefix("seed=") {
+					explicit_seed = Some(v.parse().map_err(|_| format!("generate: bad seed '{v}'"))?);
+				} else if let Some(v) = a.strip_prefix("accessibility=") {
+					p.accessibility = num(v, "accessibility")?;
+				} else if let Some(v) = a.strip_prefix("access-mode=") {
+					p.accessibility_mode =
+						map_core::AccessibilityMode::parse(v).map_err(|e| format!("generate: {e}"))?;
+				} else if let Some(v) = a.strip_prefix("main-islands=") {
+					p.main_islands.count = num(v, "main-islands")?;
+				} else if let Some(v) = a.strip_prefix("small-islands=") {
+					p.small_islands.count = num(v, "small-islands")?;
+				} else if let Some(v) = a.strip_prefix("continents=") {
+					p.continents.count = num(v, "continents")?;
+				} else if let Some(v) = a.strip_prefix("seas=") {
+					p.seas.count = num(v, "seas")?;
+				} else if let Some(v) = a.strip_prefix("rivers=") {
+					p.rivers.count = num(v, "rivers")?;
+				} else if let Some(v) = a.strip_prefix("lakes=") {
+					p.lakes.count = num(v, "lakes")?;
+				} else if let Some(v) = a.strip_prefix("maze=") {
+					p.maze.count = num(v, "maze")?; // braid (extra loops)
+				} else if let Some(v) = a.strip_prefix("drop-zones=") {
+					p.drop_zones.count = num(v, "drop-zones")?;
+				} else if let Some(v) = a.strip_prefix("obstructions=") {
+					p.obstructions.count = num(v, "obstructions")?;
+				} else if let Some(v) = a.strip_prefix("decorations=") {
+					p.decorations.count = num(v, "decorations")?;
 				} else {
 					return Err(format!(
-						"generate: unexpected '{a}' (water=N obstructions=N decorations=N seed=N shore=sweep|alt)",
+						"generate: unexpected '{a}' (symmetry= shore=sweep|loop|none seed=N accessibility=N \
+						 access-mode=random|paths|labyrinth main-islands=N small-islands=N continents=N seas=N rivers=N \
+						 lakes=N maze=N drop-zones=N obstructions=N decorations=N)",
 					));
 				}
 			}
-			if water > 100 || obstructions > 100 || decorations > 100 {
-				return Err("generate: water/obstructions/decorations are percentages (0..=100)".into());
+			if p.accessibility > 100 {
+				return Err("generate: accessibility is 0..=100".into());
 			}
-			Command::Generate { pattern, water, obstructions, decorations, seed, alt_shore }
+			Command::Generate { params: p, explicit_seed }
 		}
 		"generate-modal" => Command::GenerateModal,
 		"stroke" => match args.first() {
@@ -1074,6 +1135,7 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 				Some(&"export-palette") => FilePurpose::ExportPalette,
 				Some(&"new-from-image") => FilePurpose::NewFromImage,
 				Some(&"import-wrl") => FilePurpose::ImportWrl,
+				Some(&"export-wrl") => FilePurpose::ExportWrl,
 				Some(&"import-template") => FilePurpose::ImportTemplate,
 				Some(&"export-template") => FilePurpose::ExportTemplate,
 				Some(&"export-tile-png") => FilePurpose::ExportTilePng,
@@ -1081,8 +1143,8 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 				Some(&"export-template-png") => FilePurpose::ExportTemplatePng,
 				_ => {
 					return Err("file-dialog: expected load|save-as|save-copy|load-palette|save-palette|\
-						 new-from-image|import-wrl|import-template|export-template|export-tile-png|import-tile-png|\
-						 export-template-png"
+						 new-from-image|import-wrl|export-wrl|import-template|export-template|export-tile-png|\
+						 import-tile-png|export-template-png"
 						.into());
 				}
 			},
@@ -1094,7 +1156,7 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 			off_y: if args.len() > 3 { num(&args, 3, verb)? } else { 0 },
 		},
 		"resize-modal" => Command::ResizeModal,
-		"fix-shore-modal" => Command::AutoFixModal,
+		"fix-shore-modal" => Command::AutoFixModal { method: opt_str(&args, 0) },
 		"export" => Command::Export { path: args.first().map(PathBuf::from) },
 		"grid" => Command::Grid { on: on_off_toggle(&args, verb)? },
 		"status-bar" => Command::StatusBar { on: on_off_toggle(&args, verb)? },
@@ -1148,6 +1210,7 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		"tile-import" => Command::TileImportPng { path: args.first().ok_or("tile-import: missing PATH.png")?.into() },
 		"bake" => Command::Bake,
 		"update-map" => Command::UpdateMap,
+		"match-editor" => Command::MatchEditor,
 		"edit-cut" => Command::Edit(EditOp::Cut),
 		"edit-copy" => Command::Edit(EditOp::Copy),
 		"edit-paste" => Command::Edit(EditOp::Paste),
@@ -1406,47 +1469,60 @@ mod tests {
 
 	#[test]
 	fn generate_parses() {
+		// Bare generator = the shared defaults.
 		assert_eq!(
 			parse_line("generate islands").unwrap().unwrap(),
 			Command::Generate {
-				pattern: "islands".into(),
-				water: 45,
-				obstructions: 10,
-				decorations: 5,
-				seed: None,
-				alt_shore: false,
+				params: map_core::GenParams::defaults(map_core::Generator::Islands),
+				explicit_seed: None
 			}
 		);
+		// Keys set the selects, counts, and accessibility; sizes keep defaults.
+		let mut expect = map_core::GenParams::defaults(map_core::Generator::RiverRaid);
+		expect.symmetry = map_core::Symmetry::LeftRight;
+		expect.shore = map_core::ShoreMethod::LoopWalk;
+		expect.rivers.count = 12;
+		expect.obstructions.count = 0;
+		expect.accessibility = 30;
 		assert_eq!(
-			parse_line("generate river-raid seed=42 water=30 obstructions=0 decorations=2 shore=alt").unwrap().unwrap(),
-			Command::Generate {
-				pattern: "river-raid".into(),
-				water: 30,
-				obstructions: 0,
-				decorations: 2,
-				seed: Some(42),
-				alt_shore: true,
-			}
+			parse_line("generate river-raid seed=42 symmetry=lr shore=loop rivers=12 obstructions=0 accessibility=30")
+				.unwrap()
+				.unwrap(),
+			Command::Generate { params: expect, explicit_seed: Some(42) }
 		);
 		assert_eq!(parse_line("generate-modal").unwrap().unwrap(), Command::GenerateModal);
 		assert!(parse_line("generate").is_err());
-		assert!(parse_line("generate islands water=101").is_err());
+		assert!(parse_line("generate volcano").is_err(), "unknown generator");
+		assert!(parse_line("generate islands water=30").is_err(), "water= is gone");
+		assert!(parse_line("generate islands accessibility=101").is_err());
 		assert!(parse_line("generate islands 42").is_err());
 		assert!(parse_line("generate islands seed=x").is_err());
-		assert!(parse_line("generate islands shore=loop").is_err());
+		assert!(parse_line("generate islands shore=alt").is_err(), "shore is sweep|loop|none now");
+		// Accessibility mode parses random|paths|labyrinth.
+		let mut maze = map_core::GenParams::defaults(map_core::Generator::Land);
+		maze.accessibility_mode = map_core::AccessibilityMode::Labyrinth;
+		assert_eq!(
+			parse_line("generate land access-mode=labyrinth").unwrap().unwrap(),
+			Command::Generate { params: maze, explicit_seed: None }
+		);
+		assert!(parse_line("generate islands access-mode=spiral").is_err(), "unknown access mode");
 	}
 
 	#[test]
 	fn shore_parses() {
-		let commands =
-			parse_script("shore\nshore 2 3 10 12\nshore alt\nshore alt 2 3 10 12\nshore fix\nshore fix 2 3 10 12")
-				.unwrap();
+		let commands = parse_script(
+			"shore\nshore 2 3 10 12\nshore alt\nshore alt 2 3 10 12\nshore fix\nshore fix 2 3 10 12\nshore sweep-fix\nshore loop-fix\nshore full",
+		)
+		.unwrap();
 		assert_eq!(commands[0], Command::Shore { region: None, mode: ShoreMode::Sweep });
 		assert_eq!(commands[1], Command::Shore { region: Some((2, 3, 10, 12)), mode: ShoreMode::Sweep });
-		assert_eq!(commands[2], Command::Shore { region: None, mode: ShoreMode::Alt });
-		assert_eq!(commands[3], Command::Shore { region: Some((2, 3, 10, 12)), mode: ShoreMode::Alt });
+		assert_eq!(commands[2], Command::Shore { region: None, mode: ShoreMode::LoopWalk });
+		assert_eq!(commands[3], Command::Shore { region: Some((2, 3, 10, 12)), mode: ShoreMode::LoopWalk });
 		assert_eq!(commands[4], Command::Shore { region: None, mode: ShoreMode::Fix });
 		assert_eq!(commands[5], Command::Shore { region: Some((2, 3, 10, 12)), mode: ShoreMode::Fix });
+		assert_eq!(commands[6], Command::Shore { region: None, mode: ShoreMode::SweepFix });
+		assert_eq!(commands[7], Command::Shore { region: None, mode: ShoreMode::LoopFix });
+		assert_eq!(commands[8], Command::Shore { region: None, mode: ShoreMode::Full });
 		assert!(parse_script("shore 1 2").is_err());
 		assert!(parse_script("shore alt 1 2").is_err());
 		assert!(parse_script("shore fix 1 2").is_err());
@@ -1563,6 +1639,7 @@ mod tests {
 			("export-palette", ExportPalette),
 			("new-from-image", NewFromImage),
 			("import-wrl", ImportWrl),
+			("export-wrl", ExportWrl),
 			("import-template", ImportTemplate),
 			("export-template", ExportTemplate),
 			("export-tile-png", ExportTilePng),

@@ -164,7 +164,7 @@ impl Project {
 				return Err(format!("row {y} has {} cells, want {width}", row.len()));
 			}
 			for (x, cell) in row.iter().enumerate() {
-				// Cells appear as "WATR00,CSd001" or ["WATR00", "CSd001"]
+				// Cells appear as "WTR000,CSd001" or ["WTR000", "CSd001"]
 				// in the v1 corpus - accept both, save normalizes to the
 				// comma-string form.
 				let parts: Vec<&str> = if let Some(text) = cell.as_str() {

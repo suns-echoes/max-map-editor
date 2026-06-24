@@ -16,23 +16,23 @@
 	"map": [
 		[
 			"",
-			"WATR03,DMa031",
-			"WATR10,DMa032"
+			"WTR003,DMa031",
+			"WTR010,DMa032"
 		],
 		[
-			"WATR10,DMa033",
-			"WATR09,DMa034",
-			"WATR03,DMa035"
+			"WTR010,DMa033",
+			"WTR009,DMa034",
+			"WTR003,DMa035"
 		],
 		[
-			"WATR06,DMa036",
-			"WATR08,DMa037",
-			"WATR05,DMa038"
+			"WTR006,DMa036",
+			"WTR008,DMa037",
+			"WTR005,DMa038"
 		],
 		[
-			"WATR07,DMa039",
-			"WATR09,DMa040",
-			"WATR11,DMa041"
+			"WTR007,DMa039",
+			"WTR009,DMa040",
+			"WTR011,DMa041"
 		]
 	]
 }

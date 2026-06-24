@@ -15,16 +15,16 @@
 	],
 	"map": [
 		[
-			"WATR00,DLb047",
-			"WATR01,DLb048"
+			"WTR000,DLb047",
+			"WTR001,DLb048"
 		],
 		[
-			"WATR04,DLb049",
-			"WATR05,DLb050"
+			"WTR004,DLb049",
+			"WTR005,DLb050"
 		],
 		[
-			"WATR05,DLb051",
-			"WATR00,DLb052"
+			"WTR005,DLb051",
+			"WTR000,DLb052"
 		]
 	]
 }

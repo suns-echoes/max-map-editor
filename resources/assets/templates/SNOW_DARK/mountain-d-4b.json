@@ -17,12 +17,12 @@
 		[
 			"",
 			"",
-			"WATR11,SMC015"
+			"WTR011,SMC015"
 		],
 		[
-			"WATR01,SMC019",
-			"WATR08,SMC020",
-			"WATR04,SMC021"
+			"WTR001,SMC019",
+			"WTR008,SMC020",
+			"WTR004,SMC021"
 		]
 	]
 }

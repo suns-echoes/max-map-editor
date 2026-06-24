@@ -58,9 +58,24 @@ fn act(label: &str, command: &str) -> Item {
 	Item::Action { label: label.into(), command: command.into(), hint: None }
 }
 
+/// An action wired to a keybindable registry action by its [`ACTIONS`] id
+/// ([`crate::input`]): the command line comes from the registry, the single
+/// definition shared with the keyboard shortcut - so the menu item and its
+/// shortcut run the same thing and can't drift. Use this (not [`act`]) for any
+/// menu item that also has a keybinding.
+fn act_id(label: &str, id: &str) -> Item {
+	Item::Action { label: label.into(), command: crate::input::action_command(id).into(), hint: None }
+}
+
 /// A checkbox item: runs `command`, shows checked when `key` resolves true.
 fn toggle(label: &str, command: &str, key: &'static str) -> Item {
 	Item::Toggle { label: label.into(), command: command.into(), key, hint: None }
+}
+
+/// [`act_id`] for a checkbox item: the command line comes from the registry
+/// (shared with the keyboard shortcut), `key` resolves the checkmark.
+fn toggle_id(label: &str, id: &str, key: &'static str) -> Item {
+	Item::Toggle { label: label.into(), command: crate::input::action_command(id).into(), key, hint: None }
 }
 
 fn todo(label: &str, ticket: &'static str) -> Item {
@@ -176,7 +191,11 @@ impl MenuBar {
 		}
 		self.menus.push(Menu {
 			title: "DEV",
-			items: vec![act("Bake to Asset Packs", "bake"), act("Update Map", "update-map")],
+			items: vec![
+				act("Bake to Asset Packs", "bake"),
+				act("Update Map", "update-map"),
+				act("Edit Match Data...", "match-editor"),
+			],
 		});
 	}
 
@@ -204,18 +223,18 @@ impl MenuBar {
 			Menu {
 				title: "File",
 				items: vec![
-					act("New Map...", "new-map"),
+					act_id("New Map...", "NewMap"),
 					act("New from Image...", "file-dialog new-from-image"),
-					act("Load Map...", "file-dialog load"),
+					act_id("Load Map...", "FileDialogLoad"),
 					sub("Quick Load", quick_items(recent, "(no recent maps)")),
 					sub("Template Maps", quick_items(templates, "(no template maps)")),
 					Item::Sep,
-					act("Save Project", "save-project"),
-					act("Save Project As...", "file-dialog save-as"),
+					act_id("Save Project", "SaveProject"),
+					act_id("Save Project As...", "FileDialogSaveAs"),
 					act("Save Project Copy...", "file-dialog save-copy"),
-					act("Close Project", "close-project"),
+					act_id("Close Project", "CloseProject"),
 					Item::Sep,
-					act("Export to WRL", "export"),
+					act_id("Export to WRL...", "Export"),
 					act("Import WRL...", "file-dialog import-wrl"),
 					Item::Sep,
 					todo("Export as Image...", "IO-5"),
@@ -226,15 +245,15 @@ impl MenuBar {
 			Menu {
 				title: "Edit",
 				items: vec![
-					act("Undo", "undo"),
-					act("Redo", "redo"),
+					act_id("Undo", "Undo"),
+					act_id("Redo", "Redo"),
 					todo("Undo History", "CORE-15"),
 					Item::Sep,
-					act("Cut", "cut"),
-					act("Copy", "copy"),
-					act("Paste", "paste"),
-					act("Clear", "delete"),
-					act("Clear All Layers", "delete-all"),
+					act_id("Cut", "Cut"),
+					act_id("Copy", "Copy"),
+					act_id("Paste", "Paste"),
+					act_id("Clear", "Delete"),
+					act_id("Clear All Layers", "DeleteAll"),
 					Item::Sep,
 					act("Map Preferences...", "map-preferences"),
 				],
@@ -245,10 +264,10 @@ impl MenuBar {
 					sub(
 						"Zoom",
 						vec![
-							act("100%", "zoom-to 1"),
-							act("50%", "zoom-to 0.5"),
-							act("25%", "zoom-to 0.25"),
-							act("Fit All", "fit"),
+							act_id("100%", "ZoomTo100"),
+							act_id("50%", "ZoomTo50"),
+							act_id("25%", "ZoomTo25"),
+							act_id("Fit All", "Fit"),
 							todo("Custom...", "UI-7"),
 						],
 					),
@@ -260,9 +279,9 @@ impl MenuBar {
 							toggle("Large (150%)", "ui-scale large", "ui-scale:large"),
 						],
 					),
-					toggle("Show Grid", "grid toggle", "grid"),
-					toggle("Show Pass Overlay", "pass-overlay toggle", "pass-overlay"),
-					toggle("Show Units", "units toggle", "show-units"),
+					toggle_id("Show Grid", "GridToggle", "grid"),
+					toggle_id("Show Pass Overlay", "PassOverlayToggle", "pass-overlay"),
+					toggle_id("Show Units", "UnitsToggle", "show-units"),
 					toggle("Status Bar", "status-bar toggle", "status-bar"),
 					todo("Fullscreen", "SHELL-7"),
 					todo("Immersive Mode", "SHELL-7"),
@@ -311,14 +330,14 @@ impl MenuBar {
 			Menu {
 				title: "Select",
 				items: vec![
-					act("Select All", "select all"),
-					act("Invert Selection", "select invert"),
-					act("Clear Selection", "select clear"),
+					act_id("Select All", "SelectAll"),
+					act_id("Invert Selection", "SelectInvert"),
+					act_id("Clear Selection", "SelectClear"),
 					Item::Sep,
 					// Add/subtract are drag modifiers: Shift+drag adds,
 					// Ctrl+drag subtracts (with the select tools active).
-					act("Select Tool", "tool select"),
-					act("Rect Select Tool", "tool select-rect"),
+					act_id("Select Tool", "ToolSelect"),
+					act_id("Rect Select Tool", "ToolSelectRect"),
 					Item::Sep,
 					act("Select Similar", "select similar"),
 				],
@@ -343,9 +362,9 @@ impl MenuBar {
 					sub(
 						"Shore",
 						vec![
-							act("Auto Shore", "shore"),
-							act("Auto Shore ALT", "shore alt"),
-							act("Auto Fix Shore...", "fix-shore-modal"),
+							act("Shore Sweep + Fix", "fix-shore-modal sweep-fix"),
+							act("Shore Loop-Walk + Fix", "fix-shore-modal loop-fix"),
+							act("Fix Shore...", "fix-shore-modal"),
 							todo("Find Shore Bugs...", "TOOL-13"),
 						],
 					),
@@ -430,27 +449,28 @@ impl MenuBar {
 		self.hover = None;
 	}
 
-	/// Stamp shortcut hints onto every Action/Toggle whose command line has a
-	/// binding (`hints`: normalized command line → chord label). Called once
-	/// at startup after the bindings load.
-	pub fn apply_shortcuts(&mut self, hints: &[(String, String)]) {
-		fn walk(items: &mut [Item], hints: &[(String, String)]) {
+	/// Stamp a shortcut hint onto every Action/Toggle whose command `resolve`s to
+	/// one. `resolve` is the shell's single hint resolver (config binding, alias,
+	/// or fixed shell shortcut), so no item is wired up by hand. Called once at
+	/// startup after the bindings load.
+	pub fn apply_shortcuts(&mut self, resolve: &dyn Fn(&str) -> Option<String>) {
+		fn walk(items: &mut [Item], resolve: &dyn Fn(&str) -> Option<String>) {
 			for item in items {
 				match item {
-					// Only overwrite when the command is actually bound, so a
+					// Only overwrite when the command resolves to a chord, so a
 					// pre-set hint (e.g. a Template Maps file name) survives.
 					Item::Action { command, hint, .. } | Item::Toggle { command, hint, .. } => {
-						if let Some((_, label)) = hints.iter().find(|(line, _)| line == command) {
-							*hint = Some(label.clone());
+						if let Some(label) = resolve(command) {
+							*hint = Some(label);
 						}
 					}
-					Item::Sub { items, .. } => walk(items, hints),
+					Item::Sub { items, .. } => walk(items, resolve),
 					_ => {}
 				}
 			}
 		}
 		for menu in &mut self.menus {
-			walk(&mut menu.items, hints);
+			walk(&mut menu.items, resolve);
 		}
 	}
 
@@ -943,9 +963,54 @@ mod tests {
 	}
 
 	#[test]
+	fn bound_menu_items_use_the_registry_command_line() {
+		// Menu items that also have a keyboard shortcut pull their command line
+		// from the shared registry (via `act_id`/`toggle_id`), so the menu item
+		// and the shortcut can't drift. Pins the wiring for the ones that matter.
+		fn find(items: &[Item], label: &str) -> Option<String> {
+			for it in items {
+				match it {
+					Item::Action { label: l, command, .. } | Item::Toggle { label: l, command, .. } if l == label => {
+						return Some(command.clone());
+					}
+					Item::Sub { items, .. } => {
+						if let Some(c) = find(items, label) {
+							return Some(c);
+						}
+					}
+					_ => {}
+				}
+			}
+			None
+		}
+		let b = bar();
+		let menu_command = |label: &str| b.menus.iter().find_map(|m| find(&m.items, label));
+		for (label, id) in [
+			("Export to WRL...", "Export"),
+			("Save Project", "SaveProject"),
+			("Load Map...", "FileDialogLoad"),
+			("Select All", "SelectAll"),
+			("Fit All", "Fit"),
+			("Show Grid", "GridToggle"),
+		] {
+			assert_eq!(
+				menu_command(label).as_deref(),
+				Some(crate::input::action_command(id)),
+				"menu '{label}' drifted from registry action '{id}'",
+			);
+		}
+		// The specific regression: Export runs the save picker, not pathless export.
+		assert_eq!(menu_command("Export to WRL...").as_deref(), Some("file-dialog export-wrl"));
+	}
+
+	#[test]
 	fn shortcuts_stamp_hints_and_widen_rows() {
 		let mut b = bar();
-		b.apply_shortcuts(&[("cut".into(), "Ctrl+X".into()), ("zoom-to 1".into(), "1".into())]);
+		b.apply_shortcuts(&|command| match command {
+			"cut" => Some("Ctrl+X".into()),
+			"zoom-to 1" => Some("1".into()),
+			_ => None,
+		});
 		// Edit ▸ Cut gets its chord; unbound items stay clean.
 		let Item::Action { hint, .. } = &b.menus[1].items[4] else { panic!("Edit/Cut") };
 		assert_eq!(hint.as_deref(), Some("Ctrl+X"));

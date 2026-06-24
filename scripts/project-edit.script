@@ -12,21 +12,21 @@ screenshot temp/project-edit-before.png
 # Stamp a land tile over the ocean, then a shore piece next to it.
 place 3 3 GLa000
 place 4 3 GSa000:!N
-assert-cell 3 3 WATR00,GLa000
-assert-cell 4 3 WATR05,GSa000:!N
+assert-cell 3 3 WTR000,GLa000
+assert-cell 4 3 WTR005,GSa000:!N
 assert-dirty true
 hash                          # (2) edited
 screenshot temp/project-edit-after.png
 
 # Erase the ground layer only - water resurfaces underneath.
 erase 3 3 ground
-assert-cell 3 3 WATR00
+assert-cell 3 3 WTR000
 
 undo                          # undo the erase
-assert-cell 3 3 WATR00,GLa000
+assert-cell 3 3 WTR000,GLa000
 undo                          # undo the shore
 undo                          # undo the land stamp
-assert-cell 3 3 WATR00
-assert-cell 4 3 WATR05
+assert-cell 3 3 WTR000
+assert-cell 4 3 WTR005
 hash                          # (3) must equal (1)
 screenshot temp/project-edit-undone.png

@@ -3,7 +3,7 @@
 //! that uses the same tile packs.
 //!
 //! A template file is JSON: a `use` manifest naming the packs its tiles come
-//! from, and a cell grid in the **project save encoding** (`"WATR05,GSd004:!N"`
+//! from, and a cell grid in the **project save encoding** (`"WTR005,GSd004:!N"`
 //! per cell, layers comma-joined, `""` = a hole). Cells reference tiles by
 //! **id**, never by index, so a template survives pack reordering and resolves
 //! against whatever pack roster the open map has - [`Template::compatible`]

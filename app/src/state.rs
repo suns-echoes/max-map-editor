@@ -7,7 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use map_core::{
-	LAYER_GROUND, LAYER_WATER, Project, Rng, SelectMode, Selection, Template, clear_selection, clear_selection_layer,
+	LAYER_GROUND, LAYER_WATER, Project, Rng, SelectMode, Selection, Template, TileKind, TileRef, Transform,
+	clear_selection, clear_selection_layer,
 };
 use max_assets::wrl::{read_wrl_file, read_wrl_header, write_wrl_file};
 
@@ -160,6 +161,10 @@ pub enum Tool {
 	Eraser,
 	/// Flood-fill the connected same-tile region with the active tile.
 	Fill,
+	/// Free-hand terrain brush: paint a land/water mask (the active material is
+	/// `mask_water`). Drag lays flat land or water; the coast (beach + animated
+	/// coastal waves) grows over the stroke when it's released.
+	PaintMask,
 	/// Stamp a unit preview at the clicked cell (Units panel - palette aid).
 	Unit,
 	/// Remove the unit preview on the clicked cell.
@@ -192,6 +197,19 @@ pub enum BrushShape {
 	Circle,
 }
 
+/// What the terrain brush ([`Tool::PaintMask`]) does to the coast when a stroke
+/// is released: leave it raw, or auto-shore the painted region one way or the
+/// other (placement only - the heavy fixes live in the Fix Shore dialog).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BrushShore {
+	/// Leave the painted land/water raw (no coast).
+	Off,
+	/// Sweep auto-shore the painted region (uniform coast).
+	Sweep,
+	/// Loop-walk auto-shore the painted region (varied coast).
+	LoopWalk,
+}
+
 /// Pass-type swatch colors (simple-wrl-editor parity), straight RGBA:
 /// 0 land, 1 water, 2 shore, 3 blocked.
 pub const PASS_COLORS: [[f32; 4]; 4] = [
@@ -205,9 +223,13 @@ pub const PASS_LABELS: [&str; 4] = ["land", "water", "shore", "block"];
 /// One console line for a finished generation run - shared by the
 /// scripted `generate` command and the modal's live run.
 fn generate_report(p: &map_core::GenParams, s: &map_core::GenStats) -> String {
+	let sym = match p.symmetry {
+		map_core::Symmetry::None => String::new(),
+		other => format!(" [{}]", other.label()),
+	};
 	format!(
-		"generate {}: seed {} - {} water / {} land, {} obstruction / {} decoration cells, {} shore tiles{}",
-		p.pattern.name(),
+		"generate {}{sym}: seed {} - {} water / {} land, {} obstruction / {} decoration cells, {} shore tiles{}",
+		p.generator.name(),
 		p.seed,
 		s.water,
 		s.land,
@@ -226,8 +248,12 @@ fn generate_report(p: &map_core::GenParams, s: &map_core::GenStats) -> String {
 /// the dialog grows to fit (the seed line stays first: it's what you copy to
 /// re-make the map).
 fn generate_status_lines(p: &map_core::GenParams, s: &map_core::GenStats) -> Vec<String> {
+	let sym = match p.symmetry {
+		map_core::Symmetry::None => String::new(),
+		other => format!(" [{}]", other.label()),
+	};
 	let mut lines = vec![
-		format!("{}: seed {}", p.pattern.name(), p.seed),
+		format!("{}{sym}: seed {}", p.generator.name(), p.seed),
 		format!("{} water / {} land cells", s.water, s.land),
 		format!("{} obstructions, {} decorations", s.obstructions, s.decorations),
 		format!("{} shore tiles", s.shore),
@@ -258,6 +284,20 @@ pub enum Outcome {
 /// the caller didn't pin (interactive default); scripts pass one explicitly.
 fn roll_seed() -> u64 {
 	std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
+}
+
+/// Collect every `*.json` file under `dir` (recursively) into `out` - the match
+/// editor's id-rename cascade target set (maps + templates).
+fn collect_json_files(dir: &Path, out: &mut Vec<PathBuf>) {
+	let Ok(rd) = std::fs::read_dir(dir) else { return };
+	for entry in rd.flatten() {
+		let path = entry.path();
+		if path.is_dir() {
+			collect_json_files(&path, out);
+		} else if path.extension().is_some_and(|e| e == "json") {
+			out.push(path);
+		}
+	}
 }
 
 /// Guard a pass value to the editor's 0..=3 range; `Some(Failed)` (naming the
@@ -316,14 +356,19 @@ fn dialog_default_dir(
 fn dialog_suggested_name(purpose: FilePurpose, doc_path: Option<&Path>, project_name: &str) -> Option<String> {
 	use FilePurpose::*;
 	let raw = match purpose {
-		SaveAs | SaveCopy => doc_path
+		SaveAs | SaveCopy | ExportWrl => doc_path
 			.and_then(Path::file_name)
 			.map(|n| n.to_string_lossy().into_owned())
 			.or_else(|| Some(project_name.to_string())),
 		SavePalette | ExportPalette => Some(project_name.to_string()),
 		_ => None,
 	};
-	raw.map(|n| if n.ends_with(".json") { n } else { format!("{n}.json") })
+	// WRL export carries a `.wrl` name; everything else here is a `.json` doc.
+	let ext = if matches!(purpose, ExportWrl) { "wrl" } else { "json" };
+	raw.map(|n| {
+		let stem = n.strip_suffix(".json").or_else(|| n.strip_suffix(".wrl")).unwrap_or(n.as_str());
+		format!("{stem}.{ext}")
+	})
 }
 
 /// A project `.json`'s top-level `"name"` (for Template Maps labels); `None`
@@ -509,6 +554,9 @@ pub struct EditorState {
 	/// The concrete type is recovered by downcast - see `modal_as`,
 	/// `modal_as_mut`, `take_modal_as`, and the `open` constructor.
 	pub modal: Option<Box<dyn crate::modal::Modal>>,
+	/// Per-generator last-used terrain-generator parameters, remembered for the
+	/// session so reopening the Generate modal restores them.
+	pub gen_memory: crate::generator::GenMemory,
 	/// Headless run (`--headless`/`--screenshot`): native dialogs can't open.
 	pub headless: bool,
 	/// `--dev` mode: unlock editing shipped (stock) assets in the Tile Painter
@@ -573,6 +621,16 @@ pub struct EditorState {
 	pub brush_size: u16,
 	/// Brush footprint shape (square or circle).
 	pub brush_shape: BrushShape,
+	/// Terrain brush ([`Tool::PaintMask`]) material: `false` paints land, `true`
+	/// paints water. The toolbox "land"/"water" buttons (and the Q/W keys) set it.
+	pub mask_water: bool,
+	/// Terrain brush coast behaviour on stroke release (toolbox "auto shore"
+	/// select). Default Sweep.
+	pub brush_shore: BrushShore,
+	/// The cell bounds painted by the in-progress terrain-brush stroke (inclusive
+	/// `x0,y0,x1,y1`). Accumulated as the brush drags; consumed on release to
+	/// shore just that region. `None` between strokes.
+	mask_dirty: Option<(u16, u16, u16, u16)>,
 	/// Editor mode: tile painting vs pass-table painting.
 	pub mode: EditorMode,
 	/// Active pass value for the Pass Table Editor (0..3).
@@ -724,6 +782,18 @@ fn open_in_file_manager(dir: &std::path::Path) -> Result<(), String> {
 /// The supported UI scale factors (View ▸ UI Scale): small / medium / large.
 pub const UI_SCALES: [f32; 3] = [1.0, 1.25, 1.5];
 
+/// Resolve a menu/context-menu `command` to the chord label its row shows:
+/// its own binding (`hints`: normalized command line → chord), the binding of
+/// the action it confirms/varies ([`crate::input::binding_alias`]), or a fixed
+/// shell shortcut ([`crate::input::fixed_hint`]). Free fn so it can run while
+/// `EditorState` borrows `menu` mutably to bake the bar's hints.
+fn resolve_hint(hints: &[(String, String)], command: &str) -> Option<String> {
+	let direct = |line: &str| hints.iter().find(|(l, _)| l == line).map(|(_, label)| label.clone());
+	direct(command)
+		.or_else(|| crate::input::binding_alias(command).and_then(direct))
+		.or_else(|| crate::input::fixed_hint(command).map(str::to_string))
+}
+
 impl EditorState {
 	pub fn new(project: Project, screen: (u32, u32), path: Option<PathBuf>, resources_root: PathBuf) -> Self {
 		let assets_root = resources_root.join("assets/tilepacks");
@@ -765,6 +835,7 @@ impl EditorState {
 			context_menu: None,
 			shortcut_hints: Vec::new(),
 			modal: None,
+			gen_memory: crate::generator::GenMemory::default(),
 			headless: false,
 			units: None,
 			units_loaded: false,
@@ -790,6 +861,9 @@ impl EditorState {
 			active_layer: LAYER_GROUND,
 			brush_size: 1,
 			brush_shape: BrushShape::Square,
+			mask_water: false,
+			mask_dirty: None,
+			brush_shore: BrushShore::Sweep,
 			randomize: false,
 			paint_rng: Rng::new(0x004d_4158_5f56_4152), // "MAX_VAR"
 			mode: EditorMode::Map,
@@ -805,17 +879,24 @@ impl EditorState {
 		s
 	}
 
-	/// Install the loaded bindings' shortcut hints: stamped onto the main
-	/// menu items now, kept for context-menu builds later. Lines must match
-	/// the menus' canonical command strings exactly.
+	/// Install the loaded bindings' shortcut hints and bake them onto the main
+	/// menu through the shared resolver ([`Self::menu_hint`]), so aliases and
+	/// fixed shell shortcuts annotate rows too, not just exact-match bindings.
 	pub fn apply_shortcut_hints(&mut self, hints: Vec<(String, String)>) {
-		self.menu.apply_shortcuts(&hints);
 		self.shortcut_hints = hints;
+		// Disjoint borrows: the resolver reads `shortcut_hints` while
+		// `apply_shortcuts` mutates `menu`.
+		let table = &self.shortcut_hints;
+		self.menu.apply_shortcuts(&|command| resolve_hint(table, command));
 	}
 
-	/// The chord label bound to a command line, if any (`"copy"` → `"Ctrl+C"`).
-	fn hint_for(&self, line: &str) -> Option<String> {
-		self.shortcut_hints.iter().find(|(l, _)| l == line).map(|(_, label)| label.clone())
+	/// The chord a menu / context-menu row advertises for `command`: its own
+	/// configured binding, the binding of the action it confirms or varies
+	/// (Exit → quit), or a fixed shell shortcut (the text-field edit menu, the
+	/// stamp's Esc cancel). The single place every row resolves its shortcut -
+	/// new items need no per-item wiring.
+	fn menu_hint(&self, command: &str) -> Option<String> {
+		resolve_hint(&self.shortcut_hints, command)
 	}
 
 	/// The right-click context menu for the current state. `cell` is the map
@@ -824,7 +905,7 @@ impl EditorState {
 	fn context_menu_items(&self, cell: Option<(u16, u16)>) -> Vec<menu::Item> {
 		let act = |label: &str, command: &str| menu::Item::Action {
 			label: label.into(),
-			hint: self.hint_for(command),
+			hint: self.menu_hint(command),
 			command: command.into(),
 		};
 		// A focused text field in the open modal gets a text-edit menu (Cut/Copy/
@@ -849,11 +930,7 @@ impl EditorState {
 			if let Some((x, y)) = cell {
 				items.push(act("Place Here", &format!("stamp {x} {y}")));
 			}
-			items.push(menu::Item::Action {
-				label: "Cancel Stamp".into(),
-				hint: Some("Esc".into()),
-				command: "stamp cancel".into(),
-			});
+			items.push(act("Cancel Stamp", "stamp cancel"));
 			items.push(menu::Item::Sep);
 		}
 		if !self.selection.is_empty() {
@@ -883,7 +960,7 @@ impl EditorState {
 	fn template_context_items(&self) -> Vec<menu::Item> {
 		let act = |label: &str, command: &str| menu::Item::Action {
 			label: label.into(),
-			hint: self.hint_for(command),
+			hint: self.menu_hint(command),
 			command: command.into(),
 		};
 		let Some(i) = self.templates.sel else { return Vec::new() };
@@ -1069,6 +1146,17 @@ impl EditorState {
 		self.active_tile.is_some()
 	}
 
+	/// Take the painted-cell bounds of the just-finished terrain-brush stroke,
+	/// grown by one cell and clamped to the map, then clear them. `auto_shore`
+	/// re-tiles this region (it widens by another cell internally), growing the
+	/// beach + coastal waves along everything the stroke painted. `None` when the
+	/// stroke painted nothing. `(x0, y0, x1, y1)` inclusive.
+	pub fn take_mask_region(&mut self) -> Option<(u16, u16, u16, u16)> {
+		let (x0, y0, x1, y1) = self.mask_dirty.take()?;
+		let (w, h) = (self.project.width, self.project.height);
+		Some((x0.saturating_sub(1), y0.saturating_sub(1), (x1 + 1).min(w - 1), (y1 + 1).min(h - 1)))
+	}
+
 	/// Map dimensions in tiles.
 	pub fn map_size(&self) -> (u16, u16) {
 		(self.project.width, self.project.height)
@@ -1080,6 +1168,36 @@ impl EditorState {
 	/// the physical [`screen`](Self::screen) (it renders at native resolution).
 	pub fn ui_screen(&self) -> (f32, f32) {
 		(self.screen.0 as f32 / self.ui_scale, self.screen.1 as f32 / self.ui_scale)
+	}
+
+	/// The on-screen body rect of dockable `id`, or `None` when it isn't shown
+	/// (hidden panels aren't in the layout). `(w, h)` is the logical UI size.
+	fn panel_body(&self, id: &str, w: f32, h: f32) -> Option<crate::ui::Rect> {
+		let pi = self.workspace.find(id)?;
+		let r = self.workspace.layout(w, h).panels.into_iter().find(|(i, _)| *i == pi)?.1;
+		Some(self.workspace.body_of(pi, r))
+	}
+
+	/// Scroll the Tile Explorer so the active (just-picked) tile is in view. A
+	/// no-op when the explorer is closed; falls back to the All filter so a tile
+	/// the current filter would hide is still revealed.
+	fn reveal_active_tile_in_explorer(&mut self) {
+		let (w, h) = self.ui_screen();
+		let Some(body) = self.panel_body("tiles", w, h) else { return };
+		let Some(spec) = self.active_tile.clone() else { return };
+		let base = spec.split(':').next().unwrap_or(&spec);
+		let cur = self.picker.filter;
+		let (filter, idx) = match picker::items(&self.project, cur).iter().position(|it| it.id == base) {
+			Some(i) => (cur, i),
+			None => match picker::items(&self.project, picker::Filter::All).iter().position(|it| it.id == base) {
+				Some(i) => (picker::Filter::All, i),
+				None => return,
+			},
+		};
+		self.picker.filter = filter;
+		self.picker.filter_open = false;
+		let count = picker::items(&self.project, filter).len();
+		self.picker.scroll = picker::scroll_to_reveal(body, self.picker.tile_px, count, idx, self.picker.scroll);
 	}
 
 	/// Set the UI scale and mirror it into the font module's global (which label
@@ -1137,6 +1255,9 @@ impl EditorState {
 				Tool::Eraser => "Eraser: drag to clear cells on the active layer",
 				Tool::Picker => "Eyedropper: click a cell to make its tile the brush",
 				Tool::Fill => "Flood Fill: click to fill a region - an active selection confines it",
+				Tool::PaintMask => {
+					"Terrain Brush: drag to paint land or water (Q/W or the toolbox); the coast grows on release"
+				}
 				Tool::Select => "Select: drag to select cells (Shift adds, Ctrl subtracts); Del clears them",
 				Tool::SelectRect => "Rect Select: drag a rectangle (Shift adds, Ctrl subtracts)",
 				Tool::Unit => "Unit: click to stamp the active unit preview",
@@ -1216,8 +1337,17 @@ impl EditorState {
 		}
 	}
 
-	/// Dismiss whichever modal is open.
+	/// Dismiss whichever modal is open. The Generate modal's per-generator
+	/// settings are stashed first, so reopening it restores them this session.
 	pub fn close_modal(&mut self) {
+		if let Some(mem) = self.modal_as::<crate::generator::Generator>().map(|g| g.to_memory()) {
+			self.gen_memory = mem;
+		}
+		// A running Fix Shore holds its undo stroke open across passes; closing
+		// mid-run commits what was already laid/fixed (one clean undo step).
+		if self.modal_as::<crate::autofix::AutoFix>().is_some_and(|a| a.running) {
+			self.project.end_stroke();
+		}
 		self.modal = None;
 	}
 
@@ -1295,6 +1425,109 @@ impl EditorState {
 			has_clip,
 		));
 		Outcome::Redraw
+	}
+
+	/// Open the visual Edit Tile Match Data modal (DEV only) over the active
+	/// map's packs, preferring the pack of the tile selected in the Tile Explorer.
+	fn open_match_editor(&mut self) -> Outcome {
+		if !self.dev_mode {
+			return Outcome::Failed("match editor: requires --dev".into());
+		}
+		let preferred = self.active_tile_ref().ok().map(|(pk, _)| pk);
+		match crate::matcheditor::MatchEditor::new(&self.project, preferred) {
+			Some(m) => {
+				self.open(m);
+				Outcome::Redraw
+			}
+			None => Outcome::Failed("match editor: no pack has match rules to edit".into()),
+		}
+	}
+
+	/// Apply the open Edit Match Data modal's edits to the project packs and write
+	/// the changed `tiles.match.json` / `tiles.variants.json` (DEV: stock packs
+	/// to `assets_root`, user packs to `user/tilepacks`). The modal stays open.
+	pub fn match_editor_save(&mut self) -> Outcome {
+		let Some(editor) = self.modal_as::<crate::matcheditor::MatchEditor>() else {
+			return Outcome::Redraw;
+		};
+		let commits = editor.commits();
+		if commits.is_empty() {
+			return Outcome::Redraw;
+		}
+		let mut saved: Vec<String> = Vec::new();
+		for c in commits {
+			let name = self.project.packs[c.pack].name.clone();
+			let dir = if self.is_stock_pack(c.pack) {
+				if !self.dev_mode {
+					return Outcome::Failed("match editor: shipped packs need --dev".into());
+				}
+				self.assets_root.join(&name)
+			} else {
+				self.user_tilepacks_dir().join(&name)
+			};
+			// 1. Tile-id renames: in-memory, then cascade the old→new id across every
+			// shipped map + template (+ the pack's patterns sidecar).
+			for (old, new) in &c.renames {
+				if let Some(&idx) = self.project.packs[c.pack].index_of.get(old) {
+					self.project.packs[c.pack].rename_tile(idx, new);
+				}
+			}
+			if let Err(e) = self.cascade_renames(&dir, &c.renames) {
+				return Outcome::Failed(format!("match editor: {e}"));
+			}
+			// 2. Pass (pack table only - maps keep their own tilepass).
+			if c.pass_changed {
+				for (i, &p) in c.pass.iter().enumerate() {
+					self.project.packs[c.pack].set_tile_pass(i as u16, p);
+				}
+			}
+			// 3. Grouping + match rules.
+			self.project.packs[c.pack].set_match_data(c.groups, c.matches);
+			// 4. Persist the pack's own files.
+			if let Err(e) = self.project.packs[c.pack].save_match_data(&dir) {
+				return Outcome::Failed(format!("match editor: {e}"));
+			}
+			if let Err(e) = self.project.packs[c.pack].save_ids_pass(&dir) {
+				return Outcome::Failed(format!("match editor: {e}"));
+			}
+			saved.push(name);
+		}
+		if let Some(editor) = self.modal_as_mut::<crate::matcheditor::MatchEditor>() {
+			editor.mark_saved();
+		}
+		self.console.push_line(format!("match data saved: {}", saved.join(", ")));
+		Outcome::Redraw
+	}
+
+	/// Cascade tile-id renames (`old`→`new`) across every shipped map + template
+	/// (cells reference ids by string) and the pack's own `tiles.patterns.json`.
+	/// Token-precise (see [`map_core::replace_id_token`]); only rewrites files that
+	/// actually change.
+	fn cascade_renames(&self, pack_dir: &std::path::Path, renames: &[(String, String)]) -> Result<(), String> {
+		if renames.is_empty() {
+			return Ok(());
+		}
+		let mut files: Vec<PathBuf> = Vec::new();
+		collect_json_files(&self.resources_root.join("assets/maps"), &mut files);
+		collect_json_files(&self.resources_root.join("assets/templates"), &mut files);
+		let patterns = pack_dir.join("tiles.patterns.json");
+		if patterns.is_file() {
+			files.push(patterns);
+		}
+		for f in files {
+			let Ok(text) = std::fs::read_to_string(&f) else { continue };
+			let mut cur = text.clone();
+			let mut hits = 0usize;
+			for (old, new) in renames {
+				let (t, n) = map_core::replace_id_token(&cur, old, new);
+				cur = t;
+				hits += n;
+			}
+			if hits > 0 && cur != text {
+				std::fs::write(&f, cur).map_err(|e| format!("{}: {e}", f.display()))?;
+			}
+		}
+		Ok(())
 	}
 
 	/// Open the Tile Painter to clone the selected tile into a new one.
@@ -1757,55 +1990,160 @@ impl EditorState {
 		self.modal_as::<crate::autofix::AutoFix>().is_some_and(|a| a.running)
 	}
 
-	/// Begin an Auto Fix Shore run with the modal's chosen mode.
-	pub fn autofix_start(&mut self) {
-		let Some(strength) = self.modal_as::<crate::autofix::AutoFix>().map(|a| a.mode.strength()) else { return };
-		let session = self.project.fix_session(None, strength);
-		let found = session.found();
+	/// Undo the Fix Shore dialog's just-applied result (its one undo unit) and
+	/// reset the dialog's stats to the reverted coast, so the user can revert a
+	/// fix without leaving the modal.
+	pub fn autofix_undo(&mut self) {
+		if self.modal_as::<crate::autofix::AutoFix>().is_none_or(|a| a.applied.is_none() || a.running) {
+			return;
+		}
+		self.project.undo();
+		let defects = self.project.shore_defects(None);
 		if let Some(af) = self.modal_as_mut::<crate::autofix::AutoFix>() {
-			af.found = found;
+			af.found = defects;
 			af.fixed = 0;
-			af.remaining = found;
-			af.elapsed = 0.0;
+			af.remaining = defects;
+			af.total_changed = 0;
 			af.applied = None;
-			af.running = true;
-			af.session = Some(session);
+			af.elapsed = 0.0;
 		}
 	}
 
-	/// Step the live run by a bounded slice; `elapsed` is wall-clock since
-	/// Start (for the Fast cap + the display). Applies as one undo unit when
-	/// it finishes or the Fast budget elapses; `stop` forces a finish.
+	/// Begin a Fix Shore run with the modal's chosen method (one undo unit, held
+	/// open until the run finishes). Lay the missing coast first (an auto-shore
+	/// placement pass) and count the faithful defects; the placement-only tiers
+	/// (Sweep / Loop-Walk) finish here, the accurate tiers spin up the first
+	/// resumable fix session and `autofix_tick` loops passes until clean.
+	pub fn autofix_start(&mut self) {
+		let Some(method) = self.modal_as::<crate::autofix::AutoFix>().map(|a| a.method) else { return };
+		self.project.begin_stroke();
+		// Placement: lay missing shore + greedily repair the boundary.
+		let (placed, _) =
+			if method.loop_walk() { self.project.auto_shore_alt(None) } else { self.project.auto_shore(None) };
+		let defects = self.project.shore_defects(None);
+		match method.fix_strength() {
+			Some(strength) if defects > 0 => {
+				// Accurate tier: resolve the residue across frames + passes.
+				let session = self.project.fix_session(None, strength);
+				if let Some(af) = self.modal_as_mut::<crate::autofix::AutoFix>() {
+					af.total_changed = placed;
+					af.found = defects;
+					af.fixed = 0;
+					af.remaining = defects;
+					af.cur_strength = strength;
+					af.best = defects;
+					af.passes = 0;
+					af.stall = 0;
+					af.elapsed = 0.0;
+					af.applied = None;
+					af.running = true;
+					af.session = Some(session);
+				}
+			}
+			_ => {
+				// Placement-only tier, or already clean: commit now.
+				self.project.end_stroke();
+				if let Some(af) = self.modal_as_mut::<crate::autofix::AutoFix>() {
+					af.total_changed = placed;
+					af.found = defects;
+					af.fixed = 0;
+					af.remaining = defects;
+					af.running = false;
+					af.session = None;
+					af.applied = Some(placed);
+				}
+			}
+		}
+	}
+
+	/// Step the live fix run a bounded slice per frame, looping passes until the
+	/// coast is clean. When a pass's branch-and-bound finishes it applies, re-lays
+	/// and re-detects via the faithful `shore_defects`, then starts a fresh pass
+	/// or finishes; a fresh session resets the Destructive blast budget, and
+	/// `stop` finalises early. Everything commits as one undo unit via
+	/// `begin_stroke` in `autofix_start` and `end_stroke` here or on close, and
+	/// the per-frame budget keeps the UI from ever blocking.
 	pub fn autofix_tick(&mut self, elapsed: f32, stop: bool) -> Outcome {
-		use crate::autofix::FixMode;
 		let Some(mut af) = self.take_modal_as::<crate::autofix::AutoFix>() else { return Outcome::Ok };
-		let mut outcome = Outcome::Redraw;
 		if af.running {
+			use map_core::FixStrength;
 			af.elapsed = elapsed;
-			if let Some(session) = af.session.as_mut() {
-				// ~200k nodes/frame keeps a frame well under a millisecond of
-				// search while still closing fast.
+			let loop_walk = af.method.loop_walk();
+			let pass_over = if let Some(session) = af.session.as_mut() {
 				if !stop {
 					session.step(200_000);
 				}
-				af.fixed = session.fixed();
-				af.remaining = session.remaining();
-				let times_up = matches!(af.mode, FixMode::Fast) && elapsed >= 1.0;
-				if stop || times_up || session.is_done() {
+				stop || session.is_done()
+			} else {
+				true
+			};
+			if pass_over {
+				// Commit this pass, then re-lay + faithfully re-detect.
+				if let Some(session) = af.session.take() {
+					af.total_changed += session.apply(&mut self.project);
+				}
+				let (placed, _) =
+					if loop_walk { self.project.auto_shore_alt(None) } else { self.project.auto_shore(None) };
+				af.total_changed += placed;
+				let defects = self.project.shore_defects(None);
+				af.remaining = defects;
+				af.fixed = af.found.saturating_sub(defects);
+				if defects < af.best {
+					af.best = defects;
+					af.stall = 0;
+				} else {
+					af.stall += 1;
+				}
+				af.passes += 1;
+				let cap = if af.cur_strength == FixStrength::Destructive { 6 } else { 2 };
+				let escalate = af.stall >= cap && af.cur_strength != FixStrength::Destructive;
+				let finish = stop || defects == 0 || af.passes >= 64 || (af.stall >= cap && !escalate);
+				if finish {
 					af.running = false;
-					af.applied = Some(session.apply(&mut self.project));
-					outcome = Outcome::Redraw;
+					self.project.end_stroke();
+					af.applied = Some(af.total_changed);
+				} else {
+					if escalate {
+						// Re-tiling plateaued: reshape the un-tileable residue.
+						af.cur_strength = FixStrength::Destructive;
+						af.best = usize::MAX;
+						af.stall = 0;
+					}
+					// Next pass: a fresh session resets the per-cell blast cap.
+					af.session = Some(self.project.fix_session(None, af.cur_strength));
 				}
 			}
 		}
 		self.modal = Some(af);
-		outcome
+		Outcome::Redraw
 	}
 
 	/// Whether a terrain generation run is live (the shell keeps redrawing +
 	/// stepping it while so).
 	pub fn generate_running(&self) -> bool {
 		self.modal_as::<crate::generator::Generator>().is_some_and(|g| g.running)
+	}
+
+	/// The stock + user templates compatible with the current map - the feature
+	/// pool the generator stamps as obstructions / decorations (classified by
+	/// their tiles in `map-core`). Empty for a tileset with no templates.
+	pub fn feature_templates(&self) -> Vec<map_core::Template> {
+		self.templates
+			.entries
+			.iter()
+			.filter(|e| e.template.compatible(&self.project))
+			.map(|e| e.template.clone())
+			.collect()
+	}
+
+	/// Roll the generator modal's Surprise Me values. Done here (not in the modal)
+	/// so the body sizes (continents / central seas) can scale to the map.
+	pub fn generator_surprise(&mut self) -> Outcome {
+		let (w, h) = (self.project.width as usize, self.project.height as usize);
+		if let Some(g) = self.modal_as_mut::<crate::generator::Generator>() {
+			g.surprise(w, h);
+		}
+		Outcome::Redraw
 	}
 
 	/// Begin a generation run from the modal's settings. An empty
@@ -1817,7 +2155,8 @@ impl EditorState {
 			Err(e) => return Outcome::Failed(format!("generate: {e}")),
 		};
 		params.seed = seed.unwrap_or_else(roll_seed);
-		match map_core::GenSession::new(&self.project, params) {
+		let feats = self.feature_templates();
+		match map_core::GenSession::new(&self.project, params, &feats) {
 			Ok(session) => {
 				let modal = self.modal_as_mut::<crate::generator::Generator>().expect("generator modal checked above");
 				modal.session = Some(session);
@@ -2339,9 +2678,11 @@ impl EditorState {
 			| Tile { .. }
 			| Paint { .. }
 			| Fill { .. }
+			| PaintMask { .. }
 			| Randomize { .. }
 			| BrushSize { .. }
 			| BrushShape { .. }
+			| AutoShore { .. }
 			| ToolSelect { .. }
 			| Layer { .. }
 			| Mode { .. }
@@ -2405,7 +2746,7 @@ impl EditorState {
 			| FileDialog { .. }
 			| Resize { .. }
 			| ResizeModal
-			| AutoFixModal
+			| AutoFixModal { .. }
 			| GenerateModal
 			| Export { .. }
 			| ConvertPalette { .. }
@@ -2420,6 +2761,7 @@ impl EditorState {
 			| TileImportPng { .. }
 			| Bake
 			| UpdateMap
+			| MatchEditor
 			| OpenUrl { .. }
 			| HelpManual
 			| About) => self.exec_io(c),
@@ -2696,6 +3038,47 @@ impl EditorState {
 					Err(e) => Outcome::Failed(format!("fill: {e}")),
 				}
 			}
+			Command::PaintMask { x, y } => {
+				// Free-hand terrain brush: lay flat land or water (the active
+				// material) across the footprint, exactly the way the generator's
+				// Apply phase fills its mask. No shoring here - the coast (beach +
+				// animated coastal waves) grows over the whole stroke on release
+				// (`take_mask_region` -> `Command::Shore`), so the drag stays cheap
+				// and the whole stroke is one undo unit.
+				let water = self.mask_water;
+				let kind = if water { TileKind::Water } else { TileKind::Land };
+				let Some((pack_idx, family)) = self.project.variant_family(kind) else {
+					let g = if water { "WATER" } else { "LAND" };
+					return Outcome::Failed(format!(
+						"terrain brush: no pack has a {g} variant group (tiles.props.json)"
+					));
+				};
+				let tiles = self.project.packs[pack_idx].group_tiles(&family);
+				if tiles.is_empty() {
+					return Outcome::Failed(format!("terrain brush: '{family}' has no tiles"));
+				}
+				let cells = self.brush_cells(x, y);
+				let mut edits = Vec::with_capacity(cells.len() * 2);
+				for &(cx, cy) in &cells {
+					let tile = tiles[self.paint_rng.below(tiles.len() as u32) as usize];
+					let tref = TileRef { pack: pack_idx as u8, tile, transform: Transform::default() };
+					if water {
+						// Water shows through a cleared ground layer; the water-variant
+						// tile (the animated coastal band) sits on the bottom layer
+						// beneath, so erasing land later reveals waves.
+						edits.push((cx, cy, LAYER_WATER, Some(tref)));
+						edits.push((cx, cy, LAYER_GROUND, None));
+					} else {
+						edits.push((cx, cy, LAYER_GROUND, Some(tref)));
+					}
+					// Grow the stroke's painted bounds (consumed on release).
+					self.mask_dirty = Some(match self.mask_dirty {
+						Some((x0, y0, x1, y1)) => (x0.min(cx), y0.min(cy), x1.max(cx), y1.max(cy)),
+						None => (cx, cy, cx, cy),
+					});
+				}
+				if self.project.place_many(&edits) { Outcome::Redraw } else { Outcome::Ok }
+			}
 			Command::Randomize { on } => {
 				self.randomize = on.unwrap_or(!self.randomize);
 				self.console.push_line(format!("randomize variants: {}", if self.randomize { "on" } else { "off" }));
@@ -2715,6 +3098,16 @@ impl EditorState {
 				};
 				Outcome::Redraw
 			}
+			Command::AutoShore { mode } => {
+				self.brush_shore = match mode.as_str() {
+					"off" | "disabled" | "none" => BrushShore::Off,
+					"sweep" => BrushShore::Sweep,
+					"loop-walk" | "loop" | "alt" => BrushShore::LoopWalk,
+					other => return Outcome::Failed(format!("auto-shore: unknown '{other}' (off|sweep|loop-walk)")),
+				};
+				self.console.push_line(format!("terrain brush auto-shore: {mode}"));
+				Outcome::Redraw
+			}
 			Command::Layer { name } => {
 				self.active_layer = match name.as_str() {
 					"water" => LAYER_WATER,
@@ -2730,13 +3123,23 @@ impl EditorState {
 					"picker" | "pick" => Tool::Picker,
 					"eraser" | "erase" => Tool::Eraser,
 					"fill" | "flood" => Tool::Fill,
+					// The terrain brush, pre-set to a material: "land" / "water"
+					// both select it (one click arms the tool and picks the colour).
+					"paint-land" | "paint-mask" => {
+						self.mask_water = false;
+						Tool::PaintMask
+					}
+					"paint-water" => {
+						self.mask_water = true;
+						Tool::PaintMask
+					}
 					"unit" => Tool::Unit,
 					"unit-eraser" | "unit-erase" => Tool::UnitEraser,
 					"select" => Tool::Select,
 					"select-rect" | "rect" => Tool::SelectRect,
 					other => {
 						return Outcome::Failed(format!(
-							"tool: unknown '{other}' (pencil|picker|eraser|fill|unit|unit-eraser|select|select-rect)"
+							"tool: unknown '{other}' (pencil|picker|eraser|fill|paint-land|paint-water|unit|unit-eraser|select|select-rect)"
 						));
 					}
 				};
@@ -2857,6 +3260,8 @@ impl EditorState {
 				self.active_tile = Some(top.to_string());
 				// The eyedropper hands back to the pencil - pick, then paint.
 				self.tool = Tool::Pencil;
+				// Reveal the picked tile in the Tile Explorer (if it's open).
+				self.reveal_active_tile_in_explorer();
 				Outcome::Redraw
 			}
 			Command::Shore { region, mode } => {
@@ -2869,18 +3274,36 @@ impl EditorState {
 						));
 					}
 				}
+				use map_core::FixStrength;
+				// The `*Fix` / `Full` modes loop [place -> escalating fix -> re-check]
+				// until the coast is clean (`shore_repair`, one undo unit) - Mangle for
+				// the menu's "+ Fix", Destructive for Full. The console keeps these
+				// synchronous so scripts complete deterministically; the menu routes
+				// through the Fix Shore dialog instead so the UI never freezes.
 				let (changed, unresolved, how) = match mode {
 					ShoreMode::Sweep => {
 						let (c, u) = project.auto_shore(region);
 						(c, u, "auto-shore")
 					}
-					ShoreMode::Alt => {
+					ShoreMode::LoopWalk => {
 						let (c, u) = project.auto_shore_alt(region);
-						(c, u, "auto-shore alt")
+						(c, u, "auto-shore loop-walk")
 					}
 					ShoreMode::Fix => {
 						let (c, u) = project.fix_shore(region);
 						(c, u, "fix-shore")
+					}
+					ShoreMode::SweepFix => {
+						let (c, u) = project.shore_repair(region, false, FixStrength::Mangle);
+						(c, u, "shore sweep + fix")
+					}
+					ShoreMode::LoopFix => {
+						let (c, u) = project.shore_repair(region, true, FixStrength::Mangle);
+						(c, u, "shore loop-walk + fix")
+					}
+					ShoreMode::Full => {
+						let (c, u) = project.shore_repair(region, false, FixStrength::Destructive);
+						(c, u, "shore full")
 					}
 				};
 				let line = match unresolved {
@@ -2902,16 +3325,12 @@ impl EditorState {
 				}
 				Outcome::Ok
 			}
-			Command::Generate { pattern, water, obstructions, decorations, seed, alt_shore } => {
-				let pattern = match map_core::GenPattern::parse(&pattern) {
-					Ok(p) => p,
-					Err(e) => return Outcome::Failed(format!("generate: {e}")),
-				};
+			Command::Generate { mut params, explicit_seed } => {
 				// No seed given: fresh randomness, reported below so the map
 				// can be re-made (same convention as `new`).
-				let seed = seed.unwrap_or_else(roll_seed);
-				let params = map_core::GenParams { pattern, water, obstructions, decorations, seed, alt_shore };
-				match self.project.generate_terrain(&params) {
+				params.seed = explicit_seed.unwrap_or_else(roll_seed);
+				let feats = self.feature_templates();
+				match self.project.generate_terrain(&params, &feats) {
 					Ok(s) => {
 						self.console.push_line(generate_report(&params, &s));
 						Outcome::Redraw
@@ -4093,6 +4512,13 @@ impl EditorState {
 						.add_filter("M.A.X. WRL maps", &["wrl", "WRL"])
 						.add_filter("all files", &["*"])
 						.pick_file(),
+					FilePurpose::ExportWrl => {
+						let mut d = dialog.add_filter("M.A.X. WRL maps", &["wrl", "WRL"]);
+						if let Some(name) = &suggested {
+							d = d.set_file_name(name);
+						}
+						d.save_file()
+					}
 					FilePurpose::LoadPalette | FilePurpose::ImportPalette => {
 						dialog.add_filter("palettes", &["json"]).add_filter("all files", &["*"]).pick_file()
 					}
@@ -4140,6 +4566,7 @@ impl EditorState {
 						FilePurpose::ImportPalette => self.execute(Command::PaletteImport { path }),
 						FilePurpose::NewFromImage => self.execute(Command::NewFromImage { path }),
 						FilePurpose::ImportWrl => self.execute(Command::ImportWrl { path }),
+						FilePurpose::ExportWrl => self.execute(Command::Export { path: Some(path) }),
 						FilePurpose::ImportTemplate => self.execute(Command::TemplateImport { path }),
 						FilePurpose::ExportTemplate => self.execute(Command::TemplateExport { path }),
 						FilePurpose::ExportTilePng | FilePurpose::ImportTilePng | FilePurpose::ExportTemplatePng => {
@@ -4168,16 +4595,27 @@ impl EditorState {
 				self.menu.close();
 				Outcome::Redraw
 			}
-			Command::AutoFixModal => {
-				let project = &self.project;
-				// A throwaway session counts the current broken seams to show.
-				let found = project.fix_session(None, map_core::FixStrength::Shore).found();
+			Command::AutoFixModal { method } => {
+				// The faithful (match.json) count of broken/misplaced/missing shore.
+				let found = self.project.shore_defects(None);
 				self.open(crate::autofix::AutoFix::new(found));
 				self.menu.close();
+				// A preset method (the menu's one-click "+ Fix") pre-selects it and
+				// auto-starts the run, so it shows live progress + a Stop button and
+				// steps across frames instead of freezing.
+				if let Some(word) = method {
+					let Some(m) = crate::autofix::Method::parse(&word) else {
+						return Outcome::Failed(format!("fix-shore-modal: unknown method '{word}'"));
+					};
+					if let Some(af) = self.modal_as_mut::<crate::autofix::AutoFix>() {
+						af.method = m;
+					}
+					self.autofix_start();
+				}
 				Outcome::Redraw
 			}
 			Command::GenerateModal => {
-				self.open(crate::generator::Generator::new());
+				self.open(crate::generator::Generator::from_memory(&self.gen_memory));
 				self.menu.close();
 				Outcome::Redraw
 			}
@@ -4238,6 +4676,10 @@ impl EditorState {
 			Command::Bake => {
 				self.menu.close();
 				self.bake()
+			}
+			Command::MatchEditor => {
+				self.menu.close();
+				self.open_match_editor()
 			}
 			Command::UpdateMap => {
 				self.menu.close();
@@ -4595,6 +5037,39 @@ mod tests {
 		for want in ["edit-cut", "edit-copy", "edit-delete", "edit-paste", "edit-select-all"] {
 			assert!(cmds.iter().any(|c| c == want), "{want} offered with a selection: {cmds:?}");
 		}
+		// Each edit row advertises its fixed shell shortcut (these keys are wired
+		// into the modal handler, not the config), so the menu still teaches them.
+		let hint = |cmd: &str| {
+			e.context_menu_items(None).into_iter().find_map(|i| match i {
+				menu::Item::Action { command, hint, .. } if command == cmd => Some(hint),
+				_ => None,
+			})
+		};
+		assert_eq!(hint("edit-copy"), Some(Some("Ctrl+C".into())));
+		assert_eq!(hint("edit-paste"), Some(Some("Ctrl+V".into())));
+		assert_eq!(hint("edit-select-all"), Some(Some("Ctrl+A".into())));
+	}
+
+	#[test]
+	fn menu_hint_resolves_binding_alias_and_fixed_shortcut() {
+		let mut e = editor();
+		e.apply_shortcut_hints(vec![("undo".into(), "Ctrl+Z".into()), ("quit".into(), "Esc".into())]);
+		// Exact config binding.
+		assert_eq!(e.menu_hint("undo").as_deref(), Some("Ctrl+Z"));
+		// Alias: Exit runs `quit-request` but shows the `quit` chord, and follows
+		// a rebind (here the table maps `quit` to Esc).
+		assert_eq!(e.menu_hint("quit-request").as_deref(), Some("Esc"));
+		// Fixed shell shortcuts (not in the config table).
+		assert_eq!(e.menu_hint("edit-cut").as_deref(), Some("Ctrl+X"));
+		assert_eq!(e.menu_hint("stamp cancel").as_deref(), Some("Esc"));
+		// Unbound commands stay clean.
+		assert_eq!(e.menu_hint("map-preferences"), None);
+		// The bar bakes the alias too: File ▸ Exit gets the quit chord.
+		let exit = e.menu.menus.iter().flat_map(|m| &m.items).find_map(|i| match i {
+			menu::Item::Action { command, hint, .. } if command == "quit-request" => Some(hint.clone()),
+			_ => None,
+		});
+		assert_eq!(exit, Some(Some("Esc".into())), "Exit row baked with the quit chord");
 	}
 
 	#[test]
@@ -4714,6 +5189,143 @@ mod tests {
 		assert!(cells.contains(&(4, 2)) && cells.contains(&(2, 4)), "axis cells kept");
 		e.execute(Command::BrushShape { shape: "square".into() });
 		assert!(e.brush_cells(4, 4).contains(&(2, 2)), "square keeps corners");
+	}
+
+	#[test]
+	fn terrain_brush_paints_a_land_water_mask_and_grows_the_coast() {
+		let mut e = editor(); // 8×8 GREEN
+		let ground = |e: &EditorState, x, y| e.project.cell(x, y).unwrap()[LAYER_GROUND];
+		let water = |e: &EditorState, x, y| e.project.cell(x, y).unwrap()[LAYER_WATER];
+
+		// "water" button: arms the terrain brush AND picks the water material.
+		e.execute(Command::ToolSelect { name: "paint-water".into() });
+		assert_eq!(e.tool, Tool::PaintMask);
+		assert!(e.mask_water, "the water button paints water");
+		// One huge dab floods the whole 8×8 to open ocean (no active tile needed).
+		e.execute(Command::BrushShape { shape: "square".into() });
+		e.execute(Command::BrushSize { size: 15 });
+		e.execute(Command::PaintMask { x: 4, y: 4 });
+		for y in 0..8u16 {
+			for x in 0..8u16 {
+				assert!(ground(&e, x, y).is_none(), "({x},{y}) ground cleared for water");
+				assert!(water(&e, x, y).is_some(), "({x},{y}) water-variant beneath");
+			}
+		}
+		e.take_mask_region(); // discard the flood's bounds
+
+		// "land" button flips the material; paint a 3×3 island into the ocean.
+		e.execute(Command::ToolSelect { name: "paint-land".into() });
+		assert!(!e.mask_water, "the land button paints land");
+		e.execute(Command::BrushSize { size: 3 });
+		e.execute(Command::PaintMask { x: 4, y: 4 });
+		for dy in -1..=1i32 {
+			for dx in -1..=1i32 {
+				assert!(ground(&e, (4 + dx) as u16, (4 + dy) as u16).is_some(), "land at ({},{})", 4 + dx, 4 + dy);
+			}
+		}
+
+		// The stroke recorded its painted bounds, grown by one and clamped.
+		let region = e.take_mask_region().expect("the stroke painted something");
+		assert_eq!(region, (2, 2, 6, 6), "3×3 footprint at (4,4), grown by one");
+		assert!(e.take_mask_region().is_none(), "the bounds are consumed once");
+
+		// Shoring that region (what release does) tiles the new coast: the water
+		// ring around the island becomes shore on the ground layer.
+		let (changed, _unresolved) = e.project.auto_shore(Some(region));
+		assert!(changed > 0, "the land/water boundary grew shore tiles");
+		assert!(ground(&e, 2, 4).is_some(), "a shore tile landed on the island's coast");
+	}
+
+	#[test]
+	fn auto_shore_command_sets_the_brush_coast_mode() {
+		let mut e = editor();
+		assert_eq!(e.brush_shore, BrushShore::Sweep, "default is sweep");
+		e.execute(Command::AutoShore { mode: "loop-walk".into() });
+		assert_eq!(e.brush_shore, BrushShore::LoopWalk);
+		e.execute(Command::AutoShore { mode: "off".into() });
+		assert_eq!(e.brush_shore, BrushShore::Off);
+		assert!(matches!(e.execute(Command::AutoShore { mode: "bogus".into() }), Outcome::Failed(_)));
+	}
+
+	#[test]
+	fn fix_shore_modal_loops_to_a_clean_coast_then_undoes() {
+		// A 24x24 GREEN map with a RAW scattered-noise mask (auto-shore off):
+		// dense enough that a single placement pass leaves broken seams the GREEN
+		// set can't tile without reshaping - so the accurate tier must escalate.
+		let res = resources();
+		let project = Project::new(24, 24, &["GREEN".to_string()], &res.join("assets/tilepacks"), 1).unwrap();
+		let mut e = EditorState::new(project, (800, 600), None, res);
+		e.execute(Command::AutoShore { mode: "off".into() });
+		e.execute(Command::ToolSelect { name: "paint-water".into() });
+		e.execute(Command::BrushShape { shape: "square".into() });
+		e.execute(Command::BrushSize { size: 99 });
+		e.execute(Command::PaintMask { x: 12, y: 12 });
+		e.execute(Command::ToolSelect { name: "paint-land".into() });
+		e.execute(Command::BrushSize { size: 1 });
+		for y in 0..24u16 {
+			for x in 0..24u16 {
+				if (x.wrapping_mul(2654) ^ y.wrapping_mul(40503)) % 5 < 2 {
+					e.execute(Command::PaintMask { x, y });
+				}
+			}
+		}
+		// Placement alone leaves broken seams the accurate tier must escalate past.
+		let raw = e.project.shore_defects(None);
+		assert!(raw > 0, "the noise mask has defects");
+
+		// Open the dialog on the accurate tier (escalates) and drive its
+		// per-frame loop to completion - it must never report done with defects.
+		e.execute(Command::AutoFixModal { method: Some("sweep-fix".into()) });
+		assert!(e.autofix_running(), "a preset method auto-starts the run");
+		let mut guard = 0;
+		while e.autofix_running() {
+			e.autofix_tick(0.0, false);
+			guard += 1;
+			assert!(guard < 10_000, "the fix loop must terminate");
+		}
+		assert_eq!(e.project.shore_defects(None), 0, "the modal leaves a perfect coast");
+		let af = e.modal_as::<crate::autofix::AutoFix>().unwrap();
+		assert_eq!(af.remaining, 0, "the dialog reports zero remaining");
+		assert!(af.applied.is_some(), "and an applied result (so Undo is offered)");
+
+		// Undo reverts the whole fix (placement + every pass) in one step.
+		e.autofix_undo();
+		assert_eq!(e.project.shore_defects(None), raw, "undo restores the raw coast");
+		assert!(e.modal_as::<crate::autofix::AutoFix>().unwrap().applied.is_none(), "Undo clears the applied result");
+	}
+
+	#[test]
+	fn shore_ladder_lays_missing_coast_and_fixes_seams() {
+		use map_core::FixStrength;
+		// Paint a RAW land/water mask (terrain brush, auto-shore off) so there is
+		// no coast yet - the case the old fix modes couldn't handle.
+		let paint_raw = |e: &mut EditorState| {
+			e.execute(Command::AutoShore { mode: "off".into() });
+			e.execute(Command::ToolSelect { name: "paint-water".into() });
+			e.execute(Command::BrushShape { shape: "square".into() });
+			e.execute(Command::BrushSize { size: 15 });
+			e.execute(Command::PaintMask { x: 4, y: 4 }); // flood to ocean
+			e.execute(Command::ToolSelect { name: "paint-land".into() });
+			e.execute(Command::BrushSize { size: 3 });
+			e.execute(Command::PaintMask { x: 4, y: 4 }); // a 3x3 island
+		};
+		let ground = |e: &EditorState, x, y| e.project.cell(x, y).unwrap()[LAYER_GROUND].is_some();
+
+		// Full (Destructive): every seam closed and the coast is stable - a
+		// fresh auto_shore is a no-op. This is the 100% guarantee.
+		let mut e = editor();
+		paint_raw(&mut e);
+		assert!(!ground(&e, 2, 4), "raw: no coast laid beside the island");
+		e.execute(Command::Shore { region: None, mode: ShoreMode::Full });
+		assert_eq!(e.project.fix_session(None, FixStrength::Shore).found(), 0, "Full closes every seam");
+		assert_eq!(e.project.auto_shore(None), (0, 0), "Full's coast is complete and idempotent");
+
+		// Sweep + Fix (Aggressive): lays the missing coast - the water ring
+		// around the island becomes shore on the ground layer.
+		let mut e = editor();
+		paint_raw(&mut e);
+		e.execute(Command::Shore { region: None, mode: ShoreMode::SweepFix });
+		assert!(ground(&e, 2, 4), "Sweep + Fix laid the coast where it was missing");
 	}
 
 	#[test]
@@ -5526,6 +6138,11 @@ mod tests {
 		assert_eq!(dialog_suggested_name(SaveCopy, None, "My Map").as_deref(), Some("My Map.json"));
 		assert_eq!(dialog_suggested_name(SavePalette, None, "swamp").as_deref(), Some("swamp.json"));
 		assert_eq!(dialog_suggested_name(Load, Some(&doc), "x"), None);
+		// WRL export pre-fills a `.wrl` name (the doc's stem, else the project name)
+		// and lands in the same save dir as a project save.
+		assert_eq!(dialog_suggested_name(ExportWrl, Some(&doc), "Untitled").as_deref(), Some("forest.wrl"));
+		assert_eq!(dialog_suggested_name(ExportWrl, None, "My Map").as_deref(), Some("My Map.wrl"));
+		assert_eq!(dialog_default_dir(ExportWrl, &res, None, None, None), res.join("maps"));
 
 		let _ = std::fs::remove_dir_all(&tmp);
 	}
