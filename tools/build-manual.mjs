@@ -183,6 +183,12 @@ function escapeHtml(s) {
 	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/// Text-node escaping plus the quotes - for values that land *inside* an
+/// attribute, where a bare `"` or `'` would close it early.
+function escapeAttr(s) {
+	return escapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function inline(text) {
 	let s = escapeHtml(text);
 	// Protect code spans from the other inline rules.
@@ -216,7 +222,7 @@ function figureFor(headingText) {
 		console.warn(`  (skipping screenshot img/${shot.file} - not captured yet)`);
 		return '';
 	}
-	return `<figure><img src="img/${shot.file}" alt="${escapeHtml(shot.caption)}" loading="lazy">` +
+	return `<figure><img src="img/${shot.file}" alt="${escapeAttr(shot.caption)}" loading="lazy">` +
 		`<figcaption>${escapeHtml(shot.caption)}</figcaption></figure>\n`;
 }
 

@@ -11,6 +11,10 @@ env:
   # runners don't have - it self-skips when CI is set. Everything else runs.
   CI: "true"
 
+# Least privilege: every job here only ever reads the checkout.
+permissions:
+  contents: read
+
 jobs:
   # The cheap lane: map-core and the support crates, plus the tree-wide checks
   # (formatting, license policy). No graphics stack needed, so it stays fast
@@ -71,7 +75,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libwayland-dev libxkbcommon-dev libx11-dev \
             libxcursor-dev libxrandr-dev libxi-dev \
-            mesa-vulkan-drivers
+            mesa-vulkan-drivers vulkan-tools
+
+      # Which adapter the goldens actually rendered on, and at what mesa
+      # version - the first thing to know when a snapshot diff shows up below.
+      - name: Report the Vulkan adapter
+        continue-on-error: true
+        run: vulkaninfo --summary
 
       - name: Add clippy
         run: rustup component add clippy
@@ -85,3 +95,18 @@ jobs:
       # (wgpu-ui's own unit tests included), and the rest run.
       - name: Test (workspace)
         run: cargo test --workspace
+
+      # The visual snapshots assert AE=0 against baselines rendered on a real
+      # GPU; under the runner's software rasterizer they may differ by a LSB.
+      # On a failure, ship the `<name>.actual.png` / `<name>.diff.png` pairs the
+      # harness writes so the difference can be looked at rather than guessed.
+      - name: Upload snapshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-diffs
+          path: |
+            app/tests/snapshots/*.actual.png
+            app/tests/snapshots/*.diff.png
+          if-no-files-found: ignore
+          retention-days: 7

@@ -21,6 +21,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Least privilege by default; the `release` job re-grants `contents: write`.
+permissions:
+  contents: read
+
 jobs:
   build:
     strategy:
