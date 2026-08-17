@@ -1,4 +1,4 @@
-//! Tile pack loading (`resources/assets/<PACK>/`) - see
+//! Tile pack loading (`resources/assets/tilepacks/<PACK>/`) - see
 //! `docs/design/tileset-contract.md` §2. Loads tile pixels, the index→id table,
 //! the optional palette, pass values, the shore adjacency rules, and the family
 //! props / variant groups / multi-tile patterns the editor tools (worldgen,
@@ -117,6 +117,9 @@ pub struct TilePack {
 	pub index_of: HashMap<String, u16>,
 	/// 256×RGB - present only on palette-owning packs.
 	pub palette: Option<Vec<u8>>,
+	/// The palette's display name from `palette.json`'s object form
+	/// (`"Green Palette"`); `None` on palette-less packs and bare-array files.
+	pub palette_name: Option<String>,
 	/// Per-tile passability (0 land / 1 water / 2 shore / 3 blocked),
 	/// indexed by bin index - from `tiles.pass.json` (recovered from the
 	/// original WRL passtabs). `None` when the pack ships without it.
@@ -145,7 +148,7 @@ pub struct TilePack {
 	/// Multi-tile formations from `tiles.patterns.json` (worldgen).
 	/// Empty when the pack ships without it.
 	pub patterns: Vec<TilePattern>,
-	/// A user-owned pack (`resources/user/assets/<name>/`): editable without
+	/// A user-owned pack (`resources/user/tilepacks/<name>/`): editable without
 	/// `--dev`, persisted to its own folder (not beside the project, not into
 	/// the shipped `resources/assets`). Stock + synthetic-WRL packs are `false`.
 	pub user: bool,
@@ -329,7 +332,7 @@ impl TilePack {
 
 	/// Overwrite a tile's 64×64 palette indices (the Tile Painter's repaint).
 	pub fn set_tile_pixels(&mut self, index: u16, pixels: &[u8]) {
-		debug_assert_eq!(pixels.len(), TILE_DATA_SIZE, "tile pixels must be 64×64");
+		debug_assert_eq!(pixels.len(), TILE_DATA_SIZE, "tile pixels must be 64x64");
 		let at = index as usize * TILE_DATA_SIZE;
 		self.tiles[at..at + TILE_DATA_SIZE].copy_from_slice(pixels);
 	}
@@ -450,25 +453,16 @@ impl TilePack {
 			return Err(format!("{name}: tiles-data.json has {entry_count} entries, bin has {tile_count} tiles",));
 		}
 
-		// palette.json: ["#rrggbb", ...] - optional (WATER has none).
-		let palette = match read_json_opt("palette.json")? {
-			None => None,
-			Some(value) => {
-				let colors = value.as_array().ok_or(format!("{name}/palette.json: not an array"))?;
-				if colors.len() != 256 {
-					return Err(format!("{name}/palette.json: {} colors, want 256", colors.len()));
-				}
-				let mut rgb = Vec::with_capacity(768);
-				for color in colors {
-					let hex = color
-						.as_str()
-						.and_then(|s| s.strip_prefix('#'))
-						.ok_or(format!("{name}/palette.json: bad color entry"))?;
-					let parsed = crate::color::parse_hex_rgb(hex)
-						.ok_or_else(|| format!("{name}/palette.json: bad color '#{hex}'"))?;
-					rgb.extend_from_slice(&parsed);
-				}
-				Some(rgb)
+		// palette.json: the bare ["#rrggbb", ...×256] array or the object form
+		// { "name", "version", "colors": [...] } the shipped packs and user
+		// palettes share (crate::palette reads both) - optional (WATER has none).
+		let (palette, palette_name) = match read_text("palette.json")? {
+			None => (None, None),
+			Some(text) => {
+				let rgb = crate::palette::parse_palette(&text).map_err(|e| format!("{name}/palette.json: {e}"))?;
+				let pal_name =
+					json::parse(&text).ok().and_then(|v| v.get("name").and_then(|n| n.as_str().map(String::from)));
+				(Some(rgb), pal_name)
 			}
 		};
 
@@ -640,6 +634,7 @@ impl TilePack {
 			ids,
 			index_of,
 			palette,
+			palette_name,
 			pass,
 			matches,
 			variant_groups,
@@ -651,7 +646,7 @@ impl TilePack {
 		})
 	}
 
-	/// An empty user-owned pack (`resources/user/assets/<name>/`), ready to
+	/// An empty user-owned pack (`resources/user/tilepacks/<name>/`), ready to
 	/// receive new/cloned tiles. Carries no palette - it borrows the project's,
 	/// like any non-owner pack.
 	pub fn empty_user(name: &str) -> Self {
@@ -662,6 +657,7 @@ impl TilePack {
 			ids: Vec::new(),
 			index_of: HashMap::new(),
 			palette: None,
+			palette_name: None,
 			pass: None,
 			matches: HashMap::new(),
 			variant_groups: Vec::new(),
@@ -678,7 +674,7 @@ impl TilePack {
 	/// `props` for the tile's family if the pack lacks it (so the mask/kind
 	/// resolve). New tiles join no variant group.
 	pub fn push_tile(&mut self, id: String, pixels: &[u8], pass: u8) -> u16 {
-		debug_assert_eq!(pixels.len(), TILE_DATA_SIZE, "tile pixels must be 64×64");
+		debug_assert_eq!(pixels.len(), TILE_DATA_SIZE, "tile pixels must be 64x64");
 		let index = self.tile_count();
 		self.tiles.extend_from_slice(pixels);
 		self.index_of.insert(id.clone(), index);
@@ -879,19 +875,22 @@ impl TilePack {
 		out
 	}
 
+	/// `tiles-data.json` body in `order`. Delegates to [`serialize_ids`] so this
+	/// file has exactly one writer: Bake and the match editor's id-rename used to
+	/// emit different bytes for the same table (compact-and-unescaped here,
+	/// tab-indented there), so alternating between the two tools rewrote the file
+	/// back and forth under `write_if_changed` for no semantic change.
 	fn ids_json(&self, order: &[u16]) -> String {
-		let ids = order.iter().map(|&i| format!("\"{}\"", self.ids[i as usize])).collect::<Vec<_>>().join(",");
-		format!("[{ids}]")
+		let ordered: Vec<String> = order.iter().map(|&i| self.ids[i as usize].clone()).collect();
+		serialize_ids(&ordered)
 	}
 
 	fn palette_json(&self) -> Option<String> {
+		// The object form the user palettes share; a pack whose file carried no
+		// name gets one derived from the pack.
 		let palette = self.palette.as_ref()?;
-		let colors = palette
-			.chunks_exact(3)
-			.map(|c| format!("\"#{:02x}{:02x}{:02x}\"", c[0], c[1], c[2]))
-			.collect::<Vec<_>>()
-			.join(",");
-		Some(format!("[{colors}]"))
+		let name = self.palette_name.clone().unwrap_or_else(|| format!("{} Palette", self.name));
+		Some(crate::palette::write_palette(palette, &name))
 	}
 
 	/// `tiles.pass.json` body - **dense** (every tile, including passability 0),
@@ -899,12 +898,9 @@ impl TilePack {
 	/// dropping the zeros as "defaults".
 	fn pass_json(&self, order: &[u16]) -> Option<String> {
 		let pass = self.pass.as_ref()?;
-		let entries = order
-			.iter()
-			.map(|&i| format!("\"{}\":{}", self.ids[i as usize], pass[i as usize]))
-			.collect::<Vec<_>>()
-			.join(",");
-		Some(format!("{{{entries}}}"))
+		let ids: Vec<String> = order.iter().map(|&i| self.ids[i as usize].clone()).collect();
+		let dense: Vec<u8> = order.iter().map(|&i| pass[i as usize]).collect();
+		Some(serialize_pass(&ids, &dense))
 	}
 
 	/// `tiles.props.json` body, families sorted for a stable (git-friendly) diff.
@@ -1072,7 +1068,8 @@ mod tests {
 		let mut count = 0;
 		for (name, list) in obj {
 			count += 1;
-			let mut got: Vec<String> = list.as_array().unwrap().iter().map(|e| e.as_str().unwrap().to_string()).collect();
+			let mut got: Vec<String> =
+				list.as_array().unwrap().iter().map(|e| e.as_str().unwrap().to_string()).collect();
 			let (_, mut want) = groups.iter().find(|(n, _)| n == name).expect("group present").clone();
 			got.sort();
 			want.sort();
@@ -1145,8 +1142,7 @@ mod tests {
 		let _ = std::fs::remove_dir_all(&dir);
 		std::fs::create_dir_all(&dir).expect("temp dir");
 		assert!(pack.save_ids_pass(&dir).expect("save"));
-		let ids: json::JsonValue =
-			json::parse(&std::fs::read_to_string(dir.join("tiles-data.json")).unwrap()).unwrap();
+		let ids: json::JsonValue = json::parse(&std::fs::read_to_string(dir.join("tiles-data.json")).unwrap()).unwrap();
 		assert_eq!(ids.as_array().unwrap()[0].as_str().unwrap(), "GLz000", "renamed id written");
 		let pass: json::JsonValue =
 			json::parse(&std::fs::read_to_string(dir.join("tiles.pass.json")).unwrap()).unwrap();
@@ -1313,5 +1309,256 @@ mod tests {
 		assert_eq!(family_of("GSh004"), "GSh");
 		assert_eq!(family_of("WTR003"), "WTR");
 		assert_eq!(family_of("SLA000"), "SLA");
+	}
+
+	#[test]
+	fn match_rule_water_wildcard_queries() {
+		let rule = MatchRule {
+			dirs: [
+				vec!["__WATER__".to_string()],                    // N: water only
+				vec!["__WATER__".to_string(), "GSa".to_string()], // E: water allowed, not required
+				vec!["GSa".to_string()],                          // S: no water
+				vec![],                                           // W: nothing listed
+			],
+		};
+		assert!(rule.allows_water(DIR_N) && rule.requires_water(DIR_N), "a lone __WATER__ both allows and requires");
+		assert!(rule.allows_water(DIR_E) && !rule.requires_water(DIR_E), "mixed list allows but doesn't require");
+		assert!(!rule.allows_water(DIR_S) && !rule.requires_water(DIR_S), "no wildcard -> no water");
+		assert!(!rule.allows_water(DIR_W) && !rule.requires_water(DIR_W), "empty dir -> no water");
+	}
+
+	/// `json_string` must emit a valid JSON literal for arbitrary input, not
+	/// just the ASCII id alphabet (its documented safety margin).
+	#[test]
+	fn json_string_escapes_the_specials() {
+		assert_eq!(json_string("GSa000"), "\"GSa000\"");
+		assert_eq!(json_string("a\"b\\c\nd\te"), "\"a\\\"b\\\\c\\nd\\te\"");
+	}
+
+	/// Canonical match-list order (wildcards first, then groups by name and
+	/// transform bits) and the `[]` form for an empty direction.
+	#[test]
+	fn serialize_matches_orders_entries_and_writes_empty_dirs() {
+		let mut matches = HashMap::new();
+		matches.insert(
+			"AAA".to_string(),
+			MatchRule {
+				dirs: [
+					vec!["GSa:!N".to_string(), "GSa".to_string(), "__WATER__".to_string()], // N (unsorted)
+					vec![],                                                                 // E
+					vec![],                                                                 // S
+					vec![],                                                                 // W
+				],
+			},
+		);
+		let text = serialize_matches(&matches);
+		let n_at = text.find("\"__WATER__\"").expect("wildcard present");
+		let base_at = text.find("\"GSa\"").expect("identity entry present");
+		let mirrored_at = text.find("\"GSa:!N\"").expect("mirrored entry present");
+		assert!(n_at < base_at && base_at < mirrored_at, "wildcard, then identity, then mirrored:\n{text}");
+		assert!(text.contains("\"W\": []"), "an empty direction serializes as []:\n{text}");
+		// And the whole thing still reparses to the same entry sets.
+		let back = reparse_matches(&text);
+		assert_eq!(back["AAA"][DIR_N].len(), 3);
+		assert!(back["AAA"][DIR_W].is_empty());
+	}
+
+	#[test]
+	fn object_form_id_map_loads_and_scalar_form_is_rejected() {
+		let one = vec![0u8; TILE_DATA_SIZE];
+		// `{ "0": "SCa000" }` - the object shape some shipped packs use.
+		let ok = try_pack(one.clone(), &[("tiles-data.json", r#"{"0": "SCa000"}"#)]).expect("object form loads");
+		assert_eq!(ok.ids[0], "SCa000");
+		assert_eq!(ok.index_of.get("SCa000"), Some(&0));
+		// A bare scalar is neither an array nor an object.
+		let e = try_pack(one, &[("tiles-data.json", r#""SCa000""#)]).err().unwrap();
+		assert!(e.contains("not an array or object"), "{e}");
+	}
+
+	/// A variants group whose ids all miss the pack is dropped (no empty
+	/// groups), and a tile in no group reports no variants.
+	#[test]
+	fn variants_with_only_unknown_ids_are_dropped() {
+		let two = vec![0u8; TILE_DATA_SIZE * 2];
+		let pack = try_pack(
+			two,
+			&[
+				("tiles-data.json", r#"["GSa000", "GSa001"]"#),
+				("tiles.variants.json", r#"{"GHOST": ["ZZZ000", "ZZZ001"], "GSa": ["GSa000", "GSa001"]}"#),
+			],
+		)
+		.expect("pack loads");
+		assert!(!pack.variant_named.contains_key("GHOST"), "the all-unknown group is dropped");
+		assert_eq!(pack.variants_of(0).len(), 2, "the resolvable group survives");
+	}
+
+	#[test]
+	fn variants_of_without_a_group_is_empty() {
+		let mut pack = TilePack::empty_user("GREEN");
+		pack.push_tile("GLa900".to_string(), &[0u8; TILE_DATA_SIZE], 0);
+		assert!(pack.variants_of(0).is_empty(), "a groupless tile has no variants");
+	}
+
+	/// When a tile's variant-group name has no props entry, `tile_props` falls
+	/// back to the tile's id family (the documented resolution order).
+	#[test]
+	fn tile_props_falls_back_to_the_id_family() {
+		let one = vec![0u8; TILE_DATA_SIZE];
+		let pack = try_pack(
+			one,
+			&[
+				("tiles-data.json", r#"["GSa000"]"#),
+				("tiles.variants.json", r#"{"LINKED": ["GSa000"]}"#),
+				("tiles.props.json", r#"{"GSa": {"type": "SHORE", "mask": 5}}"#),
+			],
+		)
+		.expect("pack loads");
+		assert_eq!(pack.group_of(0), "LINKED", "the tile resolves to its group name");
+		let props = pack.tile_props(0).expect("family props found via the fallback");
+		assert_eq!(props.kind, Some(TileKind::Shore), "props came from the GSa family entry");
+		assert_eq!(pack.tile_mask(0), Some(5), "the mask resolves through the family too");
+	}
+
+	#[test]
+	fn transformable_defaults_to_no_when_absent() {
+		let one = vec![0u8; TILE_DATA_SIZE];
+		let pack = try_pack(
+			one,
+			&[("tiles-data.json", r#"["GSa000"]"#), ("tiles.props.json", r#"{"GSa": {"type": "LAND"}}"#)],
+		)
+		.expect("pack loads");
+		assert_eq!(pack.tile_transformable(0), Transformable::No, "no `transformable` key -> No");
+	}
+
+	#[test]
+	fn pattern_row_count_must_match_height() {
+		let one = vec![0u8; TILE_DATA_SIZE];
+		let e = try_pack(
+			one,
+			&[
+				("tiles-data.json", r#"["GSa000"]"#),
+				("tiles.patterns.json", r#"[{"name":"P","width":1,"height":2,"pattern":[["GSa000"]]}]"#),
+			],
+		)
+		.err()
+		.unwrap();
+		assert!(e.contains("size mismatch"), "1 row against height 2: {e}");
+	}
+
+	/// `push_tile`'s pass-table paths: an existing table grows, and a pass-0
+	/// push on a pass-less pack allocates nothing (0 is the default anyway).
+	#[test]
+	fn push_tile_pass_table_paths() {
+		let mut pack = TilePack::empty_user("GREEN");
+		pack.push_tile("GLa900".to_string(), &[1u8; TILE_DATA_SIZE], 2); // allocates [2]
+		pack.push_tile("GLa901".to_string(), &[2u8; TILE_DATA_SIZE], 3); // appends to it
+		assert_eq!(pack.pass.as_deref(), Some(&[2u8, 3][..]), "the existing table grew");
+		let mut plain = TilePack::empty_user("GREEN");
+		plain.push_tile("GLa900".to_string(), &[1u8; TILE_DATA_SIZE], 0);
+		assert!(plain.pass.is_none(), "an all-default pass table is not allocated");
+	}
+
+	#[test]
+	fn set_match_data_drops_empty_and_out_of_range_groups() {
+		let mut pack = TilePack::empty_user("GREEN");
+		pack.push_tile("GLa900".to_string(), &[0u8; TILE_DATA_SIZE], 0);
+		pack.set_match_data(vec![("GHOST".to_string(), vec![99, 200]), ("GLa".to_string(), vec![0])], HashMap::new());
+		assert!(!pack.variant_named.contains_key("GHOST"), "a group of out-of-range tiles is dropped");
+		assert_eq!(pack.group_of(0), "GLa", "the valid group registered");
+	}
+
+	/// `save_ids_pass` on a pack without a pass table writes only the id table.
+	#[test]
+	fn save_ids_pass_without_a_pass_table() {
+		let mut pack = TilePack::empty_user("GREEN");
+		pack.push_tile("GLa900".to_string(), &[0u8; TILE_DATA_SIZE], 0);
+		let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../temp/mc-cov-idsonly");
+		let _ = std::fs::remove_dir_all(&dir);
+		std::fs::create_dir_all(&dir).expect("temp dir");
+		assert!(pack.save_ids_pass(&dir).expect("save"), "the id table was written");
+		assert!(dir.join("tiles-data.json").exists());
+		assert!(!dir.join("tiles.pass.json").exists(), "no pass table -> no pass file");
+		std::fs::remove_dir_all(&dir).ok();
+	}
+
+	/// The props kinds/transformables the shipped packs never dump (WATER,
+	/// sync, invert, an entry with no type) survive a dump → load round trip;
+	/// absent palette/pass files are simply not written.
+	#[test]
+	fn dump_round_trips_every_kind_and_transformable() {
+		let three = vec![0u8; TILE_DATA_SIZE * 3];
+		let pack = try_pack(
+			three,
+			&[
+				("tiles-data.json", r#"["WAT000", "INV000", "NOK000"]"#),
+				(
+					"tiles.props.json",
+					r#"{"WAT": {"type": "WATER", "transformable": "sync"},
+					    "INV": {"transformable": "invert"},
+					    "NOK": {"hasVariants": true}}"#,
+				),
+			],
+		)
+		.expect("pack loads");
+		let tmp = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../temp/mc-cov-dump-kinds");
+		let _ = std::fs::remove_dir_all(&tmp);
+		pack.dump(&tmp).unwrap();
+		assert!(!tmp.join("palette.json").exists(), "no palette -> not written");
+		assert!(!tmp.join("tiles.pass.json").exists(), "no pass table -> not written");
+		let back = TilePack::load(tmp.parent().unwrap(), tmp.file_name().unwrap().to_str().unwrap()).unwrap();
+		let wat = back.props.get("WAT").expect("WAT props survive");
+		assert_eq!((wat.kind, wat.transformable), (Some(TileKind::Water), Transformable::Sync));
+		assert_eq!(back.props.get("INV").map(|p| p.transformable), Some(Transformable::Invert));
+		let nok = back.props.get("NOK").expect("NOK props survive");
+		assert_eq!((nok.kind, nok.has_variants), (None, true), "a kind-less entry stays kind-less");
+		let _ = std::fs::remove_dir_all(&tmp);
+	}
+
+	/// Baking into a fresh directory reports every sidecar it wrote.
+	#[test]
+	fn bake_changed_into_a_fresh_dir_writes_every_file() {
+		let green = TilePack::load(&assets_root(), "GREEN").unwrap();
+		let tmp = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../temp/mc-cov-bake-fresh");
+		let _ = std::fs::remove_dir_all(&tmp);
+		let wrote = green.bake_changed(&tmp).unwrap();
+		for file in ["tiles-data.bin", "tiles-data.json", "tiles.pass.json", "tiles.props.json", "tiles.variants.json"]
+		{
+			assert!(wrote.contains(&file), "{file} written on a fresh bake: {wrote:?}");
+		}
+		let _ = std::fs::remove_dir_all(&tmp);
+
+		// A pack with none of the optional tables writes only the bin + ids.
+		let mut bare = TilePack::empty_user("BARE");
+		bare.push_tile("BLa000".to_string(), &[0u8; TILE_DATA_SIZE], 0);
+		let tmp2 = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../temp/mc-cov-bake-bare");
+		let _ = std::fs::remove_dir_all(&tmp2);
+		assert_eq!(bare.bake_changed(&tmp2).unwrap(), vec!["tiles-data.bin", "tiles-data.json"]);
+		let _ = std::fs::remove_dir_all(&tmp2);
+	}
+
+	/// One writer per file, so the two tools that write the id/pass tables agree
+	/// byte for byte with what is shipped. They used to disagree - Bake emitted a
+	/// compact single line, the match editor's save emitted tab-indented rows -
+	/// so alternating between them rewrote these files back and forth under
+	/// `write_if_changed`, churning the repo for no semantic change.
+	#[test]
+	fn baking_a_shipped_pack_reproduces_its_id_and_pass_files_exactly() {
+		let root = assets_root();
+		if !root.join("GREEN").is_dir() {
+			eprintln!("skipping: no shipped packs at {}", root.display());
+			return;
+		}
+		for name in ["GREEN", "SNOW", "DESERT", "CRATER"] {
+			let pack = TilePack::load(&root, name).expect("shipped pack loads");
+			let order = pack.tile_order();
+			let on_disk = std::fs::read_to_string(root.join(name).join("tiles-data.json")).unwrap();
+			assert_eq!(pack.ids_json(&order), on_disk, "{name}: a Bake would rewrite tiles-data.json");
+			if let Some(pass) = pack.pass_json(&order) {
+				let on_disk = std::fs::read_to_string(root.join(name).join("tiles.pass.json")).unwrap();
+				assert_eq!(pass, on_disk, "{name}: a Bake would rewrite tiles.pass.json");
+			}
+			// The match editor's save path must produce those same bytes.
+			assert_eq!(serialize_ids(&pack.ids), pack.ids_json(&order), "{name}: the two id writers disagree");
+		}
 	}
 }

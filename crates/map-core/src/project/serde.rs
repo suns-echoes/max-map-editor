@@ -39,7 +39,7 @@ impl Project {
 		let version = PROJECT_VERSION.to_string();
 		let name = field("name")?.as_str().unwrap_or("").to_string();
 		let description = field("description")?.as_str().unwrap_or("").to_string();
-		// Optional Map Preferences metadata (all default to empty / unspecified).
+		// Optional Map Metadata (all default to empty / unspecified).
 		let str_field = |key: &str| root.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string();
 		// `players` is the max count, saved as its preferences label ("2"/"2-3"/
 		// "2-4"); a bare number is also accepted (legacy saves).
@@ -78,7 +78,7 @@ impl Project {
 			uses.push(use_entry);
 		}
 		// User-owned packs join before cells parse, so a saved map's custom-tile
-		// ids resolve (they live in resources/user/assets, not in `use`).
+		// ids resolve (they live in resources/user/tilepacks, not in `use`).
 		append_user_packs(&mut packs, assets_root);
 		let palette_owners: Vec<usize> = uses.iter().enumerate().filter(|(_, u)| u.palette).map(|(i, _)| i).collect();
 		let [owner] = palette_owners[..] else {
@@ -258,10 +258,28 @@ impl Project {
 			}
 		}
 
-		// Optional `"units"` block: unit-preview annotations as compact
-		// `"TAG x y team"` strings (editor aid - never baked into the WRL).
-		let mut units = Vec::new();
-		if let Some(list) = root.get("units") {
+		// Optional `"scenery"` block: cut-out objects placed by pixel. Loading the
+		// libraries is best-effort - a checkout without the baked assets opens the
+		// map with inert placements rather than refusing it, and they persist
+		// untouched so the assets can come back.
+		let mut scenery = Vec::new();
+		if let Some(list) = root.get("scenery") {
+			for (i, entry) in list.as_array().ok_or("'scenery' not an array")?.iter().enumerate() {
+				scenery.push(read_scenery(entry, i)?);
+			}
+		}
+		let scenery_packs = super::load_scenery_packs(assets_root, &uses);
+
+		// Optional `"objects"` block: first-class map objects (units / slabs /
+		// rubble / preview annotations) as JSON objects. Superseded the old
+		// compact `"units"` string block (still read below for migration).
+		let mut objects = Vec::new();
+		if let Some(list) = root.get("objects") {
+			for (i, entry) in list.as_array().ok_or("'objects' not an array")?.iter().enumerate() {
+				objects.push(read_object(entry, i, width, height)?);
+			}
+		} else if let Some(list) = root.get("units") {
+			// Legacy `"units"`: `"TAG x y team"` strings (pre-S2.1 preview notes).
 			for (i, entry) in list.as_array().ok_or("'units' not an array")?.iter().enumerate() {
 				let text = entry.as_str().ok_or(format!("units[{i}]: not a string"))?;
 				let parts: Vec<&str> = text.split_whitespace().collect();
@@ -274,7 +292,51 @@ impl Project {
 				if x >= width || y >= height || team > 4 {
 					return Err(format!("units[{i}] '{text}': out of range"));
 				}
-				units.push(UnitNote { tag: tag.to_string(), x, y, team });
+				let unit_type = max_assets::save::unit_type_id(tag)
+					.ok_or_else(|| format!("units[{i}] '{text}': unknown unit tag '{tag}'"))?;
+				objects.push(MapObject { unit_type, x, y, team, props: ObjectProps::default() });
+			}
+		}
+
+		// Optional `"save"` block: an embedded M.A.X. save (`.DTA`) as base64,
+		// re-decoded at the map's dimensions (a save-editor session, per D1). The
+		// `.DTA` has no stored dimensions, so it must be decoded at this project's
+		// width×height — the world the save was opened onto.
+		let save = match root.get("save") {
+			Some(v) => {
+				let b64 = v.as_str().ok_or("'save' not a string")?;
+				let raw = max_assets::base64::decode(b64).map_err(|e| format!("save: {e}"))?;
+				let file = read_save_bytes(&raw, (width, height)).map_err(|e| format!("decode embedded save: {e}"))?;
+				Some(EmbeddedSave { raw, file })
+			}
+			None => None,
+		};
+
+		// A pre-S2.1 save session embedded the `.DTA` but had no object model;
+		// seed it from the save so its units still overlay (later saves persist
+		// the edited `"objects"` block instead, so this only fires once).
+		if objects.is_empty() {
+			if let Some(save) = &save {
+				objects = objects_from_save(&save.file);
+			}
+		}
+
+		// The editable resource map (S5): seed from the embedded save's pristine
+		// cargo map, then apply the persisted edit diff (`"resources"`: a flat list
+		// of `[x, y, value]` triples for the cells the user changed).
+		let mut cargo_map = save.as_ref().map(|s| s.file.cargo_map.clone()).unwrap_or_default();
+		if let Some(res) = root.get("resources") {
+			let arr = res.as_array().ok_or("'resources' not an array")?;
+			for (i, entry) in arr.iter().enumerate() {
+				let t =
+					entry.as_array().filter(|t| t.len() == 3).ok_or(format!("resources[{i}]: expected [x, y, v]"))?;
+				let n = |k: usize| t[k].as_f64().ok_or(format!("resources[{i}]: non-numeric field"));
+				let (x, y, v) = (n(0)? as usize, n(1)? as usize, n(2)? as u16);
+				if x >= width as usize || y >= height as usize {
+					return Err(format!("resources[{i}]: ({x},{y}) outside the {width}x{height} map"));
+				}
+				let cell = y * width as usize + x;
+				*cargo_map.get_mut(cell).ok_or(format!("resources[{i}]: no cargo map (missing save)"))? = v;
 			}
 		}
 
@@ -296,13 +358,21 @@ impl Project {
 			pack_palette,
 			source_palette,
 			water_pack,
-			units,
+			objects,
+			scenery,
+			scenery_packs,
+			save,
+			cargo_map,
 			dirty: false,
 			revision: 0,
 			structure: 0,
+			pending_label: None,
+			undo_seq: 0,
 			undo_stack: Vec::new(),
 			redo_stack: Vec::new(),
 			stroke: None,
+			render_dirty_cells: None,
+			render_dirty_pass: None,
 		})
 	}
 
@@ -356,16 +426,11 @@ impl Project {
 			("height".to_string(), J::Number(self.height as f64)),
 			("use".to_string(), J::Array(use_entries)),
 		];
-		// Optional Map Preferences metadata - written only when set, so a map
-		// without preferences stays byte-identical.
+		// Optional Map Metadata - written only when set, so a map
+		// without metadata stays byte-identical.
 		if let Some(p) = self.players {
-			// Saved as the preferences label, not a bare number.
-			let label = match p {
-				2 => "2",
-				3 => "2-3",
-				_ => "2-4",
-			};
-			fields.push(("players".to_string(), J::String(label.to_string())));
+			// Saved as its label, not a bare number.
+			fields.push(("players".to_string(), J::String(players_label(p).to_string())));
 		}
 		for (key, value) in [("date", &self.date), ("map_version", &self.map_version), ("author", &self.author)] {
 			if !value.is_empty() {
@@ -414,14 +479,383 @@ impl Project {
 				.collect();
 			fields.push(("pass".to_string(), J::Array(rows)));
 		}
-		// Unit-preview annotations as compact `"TAG x y team"` strings -
-		// only when present, so unit-free projects stay byte-identical.
-		if !self.units.is_empty() {
-			let list: Vec<J> =
-				self.units.iter().map(|u| J::String(format!("{} {} {} {}", u.tag, u.x, u.y, u.team))).collect();
-			fields.push(("units".to_string(), J::Array(list)));
+		// Map objects (preview annotations / save units) as JSON objects -
+		// only when present, so object-free projects stay byte-identical. Props
+		// are omitted when default, so a preview annotation stays compact.
+		if !self.objects.is_empty() {
+			let list: Vec<J> = self.objects.iter().map(write_object).collect();
+			fields.push(("objects".to_string(), J::Array(list)));
+		}
+		// Scenery placements, only when present so scenery-free projects stay
+		// byte-identical. Unresolved placements are written back verbatim.
+		if !self.scenery.is_empty() {
+			let list: Vec<J> = self
+				.scenery
+				.iter()
+				.map(|s| {
+					let mut fields = vec![
+						("pack".to_string(), J::String(s.pack.clone())),
+						("piece".to_string(), J::String(s.piece.clone())),
+						("x".to_string(), J::Number(s.x as f64)),
+						("y".to_string(), J::Number(s.y as f64)),
+					];
+					// Only when it is not the default, so a project of plain
+					// placements stays byte-identical to one written before
+					// blending existed.
+					if s.blend != crate::scenery::SceneryBlend::Normal {
+						fields.push(("blend".to_string(), J::String(s.blend.name().to_string())));
+					}
+					J::Object(fields)
+				})
+				.collect();
+			fields.push(("scenery".to_string(), J::Array(list)));
+		}
+		// An opened M.A.X. save (`.DTA`) as base64 - the byte-exact export anchor
+		// for a save-editor session (D1). Only present when a save is embedded, so
+		// ordinary map projects stay byte-identical.
+		if let Some(save) = &self.save {
+			fields.push(("save".to_string(), J::String(max_assets::base64::encode(&save.raw))));
+			// Resource (cargo) edits (S5): only the cells whose value diverges from
+			// the save's pristine seed, as `[x, y, value]` triples — compact (the
+			// seed already round-trips inside the base64 `.DTA`), and absent entirely
+			// when nothing was painted.
+			let seed = &save.file.cargo_map;
+			let w = self.width as usize;
+			let diff: Vec<J> = self
+				.cargo_map
+				.iter()
+				.enumerate()
+				.filter(|(i, v)| seed.get(*i) != Some(*v))
+				.map(|(i, &v)| {
+					J::Array(vec![J::Number((i % w) as f64), J::Number((i / w) as f64), J::Number(v as f64)])
+				})
+				.collect();
+			if !diff.is_empty() {
+				fields.push(("resources".to_string(), J::Array(diff)));
+			}
 		}
 		fields.push(("map".to_string(), J::Array(rows)));
 		J::Object(fields).to_pretty()
+	}
+
+	/// The Map Metadata as a standalone JSON object, or `None` when every
+	/// field is unset. `export` appends it to the baked WRL after the binary
+	/// payload - a tail both the game and `read_wrl_file` ignore - so the
+	/// metadata travels with the exported map. Keys and the `players` label
+	/// match the project file's; `mme_map_metadata` tags the blob's format.
+	pub fn info_json(&self) -> Option<String> {
+		use json::JsonValue as J;
+		let mut fields = vec![("mme_map_metadata".to_string(), J::Number(1.0))];
+		if !self.name.is_empty() {
+			fields.push(("name".to_string(), J::String(self.name.clone())));
+		}
+		if let Some(p) = self.players {
+			fields.push(("players".to_string(), J::String(players_label(p).to_string())));
+		}
+		for (key, value) in [
+			("description", &self.description),
+			("date", &self.date),
+			("map_version", &self.map_version),
+			("author", &self.author),
+		] {
+			if !value.is_empty() {
+				fields.push((key.to_string(), J::String(value.clone())));
+			}
+		}
+		(fields.len() > 1).then(|| J::Object(fields).to_pretty())
+	}
+}
+
+/// Serialize one [`MapObject`] to a JSON object: the type name (`"t"`), cell,
+/// and team, then any non-default [`ObjectProps`]. Props are omitted at their
+/// default so a preview annotation stays compact (`{"t":"TANK","x":..}`); the
+/// type is written by name (`unit_type_name`), stable across `ResourceID` shifts.
+fn write_object(obj: &MapObject) -> json::JsonValue {
+	use json::JsonValue as J;
+	let name = max_assets::save::unit_type_name(obj.unit_type).unwrap_or("");
+	let mut fields = vec![
+		("t".to_string(), J::String(name.to_string())),
+		("x".to_string(), J::Number(obj.x as f64)),
+		("y".to_string(), J::Number(obj.y as f64)),
+		("team".to_string(), J::Number(obj.team as f64)),
+	];
+	let p = &obj.props;
+	if !p.name.is_empty() {
+		fields.push(("name".to_string(), J::String(p.name.clone())));
+	}
+	for (key, value) in [
+		("angle", p.angle as f64),
+		("turret", p.turret_angle as f64),
+		("hits", p.hits as f64),
+		("ammo", p.ammo as f64),
+		("orders", p.orders as f64),
+		("disabled", p.disabled_turns as f64),
+		("storage", p.storage as f64),
+		("connectors", p.connectors as f64),
+	] {
+		if value != 0.0 {
+			fields.push((key.to_string(), J::Number(value)));
+		}
+	}
+	if let Some(id) = p.source_id {
+		fields.push(("id".to_string(), J::Number(id as f64)));
+	}
+	// The per-unit max-stats override (S4.5), only when this unit was edited off
+	// its shared seed. Written as a nested object of every `UnitValues` field so
+	// the clone round-trips exactly (a future byte-aware export re-emits it).
+	if let Some(v) = &p.base_values {
+		fields.push(("values".to_string(), write_unit_values(v)));
+	}
+	J::Object(fields)
+}
+
+/// Serialize a [`UnitValues`] as a flat JSON object of all its numeric fields
+/// (`in_use` as 0/1), the inverse of [`read_unit_values`]. Every field is written
+/// so the per-unit override clone round-trips byte-for-byte.
+fn write_unit_values(v: &UnitValues) -> json::JsonValue {
+	use json::JsonValue as J;
+	J::Object(
+		[
+			("turns", v.turns as f64),
+			("hits", v.hits as f64),
+			("armor", v.armor as f64),
+			("attack", v.attack as f64),
+			("speed", v.speed as f64),
+			("range", v.range as f64),
+			("rounds", v.rounds as f64),
+			("move_and_fire", v.move_and_fire as f64),
+			("scan", v.scan as f64),
+			("storage", v.storage as f64),
+			("ammo", v.ammo as f64),
+			("attack_radius", v.attack_radius as f64),
+			("agent_adjust", v.agent_adjust as f64),
+			("version", v.version as f64),
+			("in_use", v.in_use as u8 as f64),
+		]
+		.into_iter()
+		.map(|(k, n)| (k.to_string(), J::Number(n)))
+		.collect(),
+	)
+}
+
+/// Parse one [`MapObject`] from a JSON object written by [`write_object`]:
+/// required `t` / `x` / `y` / `team`, optional props (missing = default). `i` is
+/// the array index for error messages; `width`/`height` bound the cell.
+fn read_object(entry: &json::JsonValue, i: usize, width: u16, height: u16) -> Result<MapObject, String> {
+	let obj = entry.as_object().ok_or(format!("objects[{i}]: not an object"))?;
+	let get = |key: &str| entry.get(key);
+	let num = |key: &str| -> Result<f64, String> {
+		get(key).and_then(|v| v.as_f64()).ok_or(format!("objects[{i}]: missing/invalid '{key}'"))
+	};
+	// Optional numeric prop, defaulting to 0 when absent (present-but-invalid errors).
+	let opt = |key: &str| -> Result<f64, String> {
+		match get(key) {
+			None => Ok(0.0),
+			Some(v) => v.as_f64().ok_or(format!("objects[{i}]: invalid '{key}'")),
+		}
+	};
+	let tag = get("t").and_then(|v| v.as_str()).ok_or(format!("objects[{i}]: missing 't'"))?;
+	let unit_type = max_assets::save::unit_type_id(tag).ok_or(format!("objects[{i}]: unknown unit type '{tag}'"))?;
+	let x = num("x")? as u16;
+	let y = num("y")? as u16;
+	let team = num("team")? as u8;
+	if x >= width || y >= height {
+		return Err(format!("objects[{i}] '{tag}': ({x},{y}) outside the {width}x{height} map"));
+	}
+	// Same bound the legacy `units` loader enforces: four players plus the alien
+	// slot. Downstream clamps rather than checks, so a hand-edited file is caught
+	// here or not at all.
+	if team > 4 {
+		return Err(format!("objects[{i}] '{tag}': team {team} outside 0..=4"));
+	}
+	let props = ObjectProps {
+		name: get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+		angle: opt("angle")? as u8,
+		turret_angle: opt("turret")? as u8,
+		hits: opt("hits")? as u16,
+		ammo: opt("ammo")? as u8,
+		orders: opt("orders")? as u8,
+		disabled_turns: opt("disabled")? as u8,
+		storage: opt("storage")? as i16,
+		connectors: opt("connectors")? as u16,
+		source_id: obj.iter().any(|(k, _)| k == "id").then(|| opt("id").map(|v| v as u16)).transpose()?,
+		base_values: get("values").map(|v| read_unit_values(v, i)).transpose()?,
+	};
+	Ok(MapObject { unit_type, x, y, team, props })
+}
+
+/// Parse a [`UnitValues`] override from the `"values"` block written by
+/// [`write_unit_values`]. Every field is optional (absent = 0 / `in_use` false),
+/// so a hand-written or partial block still loads; `i` names the object for
+/// errors. Present-but-non-numeric fields error rather than silently zeroing.
+fn read_unit_values(entry: &json::JsonValue, i: usize) -> Result<UnitValues, String> {
+	let field = |key: &str| -> Result<u16, String> {
+		match entry.get(key) {
+			None => Ok(0),
+			Some(v) => v.as_f64().map(|n| n as u16).ok_or(format!("objects[{i}].values: invalid '{key}'")),
+		}
+	};
+	Ok(UnitValues {
+		turns: field("turns")?,
+		hits: field("hits")?,
+		armor: field("armor")?,
+		attack: field("attack")?,
+		speed: field("speed")?,
+		range: field("range")?,
+		rounds: field("rounds")?,
+		move_and_fire: field("move_and_fire")? as u8,
+		scan: field("scan")?,
+		storage: field("storage")?,
+		ammo: field("ammo")?,
+		attack_radius: field("attack_radius")?,
+		agent_adjust: field("agent_adjust")?,
+		version: field("version")?,
+		in_use: field("in_use")? != 0,
+	})
+}
+
+/// A player count's on-disk label ("2-3" = two to three players). Two stays
+/// the legacy bare "2" so existing saves and readers keep matching; the Map
+/// Metadata dialog shows the same ranges (with "2-2" for two).
+fn players_label(p: u8) -> &'static str {
+	match p {
+		2 => "2",
+		3 => "2-3",
+		_ => "2-4",
+	}
+}
+
+/// One `"scenery"` entry. The position is unclamped on purpose: an object may
+/// legitimately hang off the map's left or top edge, and a placement whose
+/// piece is missing must survive the round-trip unaltered.
+fn read_scenery(entry: &json::JsonValue, i: usize) -> Result<ScenerySpot, String> {
+	let text = |key: &str| {
+		entry.get(key).and_then(|v| v.as_str()).map(str::to_string).ok_or(format!("scenery[{i}]: missing '{key}'"))
+	};
+	let coord = |key: &str| {
+		entry
+			.get(key)
+			.and_then(|v| v.as_f64())
+			.filter(|f| f.is_finite() && f.abs() <= i32::MAX as f64)
+			.map(|f| f as i32)
+			.ok_or(format!("scenery[{i}]: missing/invalid '{key}'"))
+	};
+	let blend = match entry.get("blend").and_then(|v| v.as_str()) {
+		None => crate::scenery::SceneryBlend::default(),
+		Some(name) => crate::scenery::SceneryBlend::parse(name)
+			.ok_or(format!("scenery[{i}]: unknown blend '{name}' (normal|brighter|darker|higher)"))?,
+	};
+	Ok(ScenerySpot { pack: text("pack")?, piece: text("piece")?, x: coord("x")?, y: coord("y")?, blend })
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn assets_root() -> std::path::PathBuf {
+		Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks")
+	}
+
+	/// A loadable 2×1 GREEN project with `extra` top-level fields spliced in
+	/// (same shape as the `project/mod.rs` malformed-body harness).
+	fn base(map: &str, extra: &str) -> String {
+		format!(
+			r#"{{"version":"1","name":"t","description":"","width":2,"height":1,"use":[{{"name":"GREEN","tileset":true,"palette":true,"version":"1"}}]{extra},"map":{map}}}"#
+		)
+	}
+
+	fn err(json: String) -> String {
+		match Project::from_str(&json, &assets_root()) {
+			Ok(_) => panic!("expected a load error for: {json}"),
+			Err(e) => e,
+		}
+	}
+
+	/// A placement's blend mode round-trips, an absent one is `normal`, and a
+	/// bad one is a load error rather than a silent default.
+	#[test]
+	fn a_scenery_blend_mode_round_trips() {
+		let root = assets_root();
+		let spots = r#","scenery":[{"pack":"GREEN","piece":"mountain-1","x":1,"y":2},
+			{"pack":"GREEN","piece":"mountain-2","x":3,"y":4,"blend":"darker"}]"#;
+		let p = Project::from_str(&base(r#"[["",""]]"#, spots), &root).expect("loads");
+		assert_eq!(p.scenery[0].blend, crate::scenery::SceneryBlend::Normal, "absent means normal");
+		assert_eq!(p.scenery[1].blend, crate::scenery::SceneryBlend::Darker);
+		let text = p.save_string();
+		assert!(text.contains(r#""blend": "darker""#), "the mode is written back: {text}");
+		assert_eq!(text.matches("\"blend\"").count(), 1, "...and a normal placement writes nothing");
+		let back = Project::from_str(&text, &root).expect("re-loads");
+		assert_eq!(back.scenery[1].blend, crate::scenery::SceneryBlend::Darker);
+
+		let bad = base(r#"[["",""]]"#, r#","scenery":[{"pack":"G","piece":"p","x":0,"y":0,"blend":"lighter"}]"#);
+		assert!(err(bad).contains("unknown blend"), "a typo is a load error");
+	}
+
+	#[test]
+	fn legacy_version_other_than_1_is_rejected() {
+		let json = base(r#"[["",""]]"#, "").replace(r#""version":"1""#, r#""version":"7""#);
+		assert!(err(json).contains("unsupported legacy project version '7'"));
+	}
+
+	/// A bare-number-in-a-string `players` (neither a label nor a JSON number)
+	/// still parses, clamped into 2..=4.
+	#[test]
+	fn players_accepts_stringified_numbers_with_clamping() {
+		let root = assets_root();
+		let three = Project::from_str(&base(r#"[["",""]]"#, r#","players":"3""#), &root).unwrap();
+		assert_eq!(three.players, Some(3), "a stringified count parses");
+		let nine = Project::from_str(&base(r#"[["",""]]"#, r#","players":"9""#), &root).unwrap();
+		assert_eq!(nine.players, Some(4), "out-of-range counts clamp to 4");
+		let junk = Project::from_str(&base(r#"[["",""]]"#, r#","players":"lots""#), &root).unwrap();
+		assert_eq!(junk.players, None, "an unparseable string is treated as unset");
+	}
+
+	#[test]
+	fn tilepass_values_over_3_are_rejected() {
+		let e = err(base(r#"[["",""]]"#, r#","tilepass":{"GLa000":9}"#));
+		assert!(e.contains("tilepass GLa000: value out of range"), "{e}");
+	}
+
+	#[test]
+	fn unknown_cell_ids_are_rejected_with_the_cell_position() {
+		let e = err(base(r#"[["","ZZZ999"]]"#, ""));
+		assert!(e.contains("cell 1,0") && e.contains("unknown tile id 'ZZZ999'"), "{e}");
+	}
+
+	#[test]
+	fn dense_pass_rows_reject_bad_cell_characters() {
+		let e = err(base(r#"[["",""]]"#, r#","pass":["4-"]"#));
+		assert!(e.contains("pass 0,0: bad cell '4'"), "digits above 3 are invalid: {e}");
+		let e = err(base(r#"[["",""]]"#, r#","pass":["-x"]"#));
+		assert!(e.contains("pass 1,0: bad cell 'x'"), "{e}");
+	}
+
+	#[test]
+	fn pass_block_must_be_rows_or_an_xy_object() {
+		let e = err(base(r#"[["",""]]"#, r#","pass":"nope""#));
+		assert!(e.contains("'pass' must be an array of rows or an x,y object"), "{e}");
+	}
+
+	#[test]
+	fn unit_lines_must_have_four_fields() {
+		let e = err(base(r#"[["",""]]"#, r#","units":["TANK 1 0"]"#));
+		assert!(e.contains(r#"want "TAG x y team""#), "{e}");
+		assert!(e.contains("TANK 1 0"), "the offending line is quoted: {e}");
+	}
+
+	#[test]
+	fn an_object_team_outside_the_slots_is_rejected() {
+		// The `objects` block gets the same bound the legacy `units` lines have:
+		// downstream clamps instead of checking, so this is the only gate.
+		let e = err(base(r#"[["",""]]"#, r#","objects":[{"t":"TANK","x":0,"y":0,"team":200}]"#));
+		assert!(e.contains("team 200 outside 0..=4"), "{e}");
+		assert!(
+			Project::from_str(
+				&base(r#"[["",""]]"#, r#","objects":[{"t":"TANK","x":0,"y":0,"team":4}]"#),
+				&assets_root()
+			)
+			.is_ok(),
+			"the alien slot stays legal"
+		);
 	}
 }

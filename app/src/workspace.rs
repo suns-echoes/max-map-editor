@@ -1,114 +1,81 @@
-//! Dockable workspace: four edge docks around the map view
-//! plus a floating layer - in-app windows, not OS windows. Behavior ports the
-//! finished Tauri prototype (workspace.component.ts, archived on the
-//! `bak/rust-1` branch under `_old-app/front/src/ui/main-window/workspace/`):
-//! drag a titlebar >3 px to undock into floating; dragging near an edge peeks
-//! that dock open as a drop target; drop inside it to dock at the
-//! midpoint-based insert position; splitters between dock windows, resizer
-//! strips between each dock and the center; empty docks auto-hide; the close
-//! glyph hides a panel (the `window` command re-shows it).
-//!
-//! Pure layout/state logic - headless-testable; rendering happens in [`draw`]
-//! from the computed [`Layout`], so the rects you click are the rects drawn.
+//! Dockable workspace: four edge docks around the map view plus a floating
+//! layer of in-app windows. The **docking model** — geometry, hit-testing,
+//! drag/resize/dock/float input, visibility, and a serializable layout — now
+//! lives in the toolkit ([`wgpu_ui::workspace`]); this module is the editor's
+//! thin wrapper: it delegates the model through [`Deref`], adds the editor's
+//! steel-material chrome ([`draw_panel`](Workspace::draw_panel)/
+//! [`draw_background`](Workspace::draw_background)/[`draw_peeks`](Workspace::draw_peeks)/
+//! [`steel_map`](Workspace::steel_map)), its default panel set, and `[Workspace]`
+//! INI persistence. Chrome + persistence stay here because they couple to the
+//! `SteelTheme` (anchored per-panel grain) and the `mme.ini` format.
 
 use ini::INISection;
+use wgpu_ui::workspace::{self as ws, PanelSpec};
+use wgpu_ui::{DrawList, Emboss, Fonts, Rect as WRect, TextRole, Theme, Vec2};
 
 use crate::theme;
-use crate::ui::{self, Rect, SteelMap, UiQuads};
+use crate::ui::{self, Rect, SteelMap};
+use crate::uikit_theme::{SteelTheme, rgba};
 
-pub const LEFT: usize = 0;
-pub const RIGHT: usize = 1;
-pub const TOP: usize = 2;
-pub const BOTTOM: usize = 3;
+/// Dock side indices + placement + the serializable layout snapshot,
+/// re-exported from the toolkit model.
+pub use wgpu_ui::workspace::{BOTTOM, LEFT, Place, RIGHT, TOP, WorkspaceLayout};
 
-const SPLIT: f32 = 6.0; // splitter / dock-edge resizer thickness
-const PEEK_DIST: f32 = 32.0; // edge proximity that peeks a dock during a drag
-const DRAG_START: f32 = 3.0; // titlebar movement before a drag undocks
-const MIN_PANEL: f32 = 50.0; // min extent of a docked panel
-const MIN_DOCK: f32 = 120.0;
-const MAX_DOCK: f32 = 520.0;
-const HANDLE: f32 = 14.0; // floating resize-handle square
-const FRAME_FLOAT: f32 = 2.0; // floating-window border ring (also content margin)
-const FRAME_DOCK: f32 = 2.0; // docked-panel border ring
-const MIN_VISIBLE: f32 = 32.0; // a floating window must keep this much on-screen
+/// The floating-window resize-handle square (mirrors the model's, for drawing
+/// the grip; the hit area lives in the toolkit).
+const HANDLE: f32 = 14.0;
 
-/// A panel's min size along a dock's stacking axis (height for L/R, width T/B).
-fn along_min(min: (f32, f32), side: usize) -> f32 {
-	if side == LEFT || side == RIGHT { min.1 } else { min.0 }
+/// An embossed chrome label clipped to `r`, left-aligned at `r.x + pad` and
+/// vertically centred - the panel-title / close-glyph drawing. Titlebar text is
+/// `Raised` (hilite + shadow).
+fn label(
+	dl: &mut DrawList,
+	skin: &SteelTheme,
+	fonts: &Fonts,
+	r: Rect,
+	pad: f32,
+	s: &str,
+	color: [f32; 4],
+	emboss: Emboss,
+) {
+	let px = skin.font_px(TextRole::Body);
+	dl.push_clip(r);
+	let baseline = Vec2::new(r.x + pad, r.y + r.h * 0.5 + px * 0.34);
+	skin.emboss_text(dl, fonts, baseline, s, px, rgba(color), emboss);
+	dl.pop_clip();
 }
 
-/// A panel's min size across a dock's axis (width for L/R, height for T/B).
-fn cross_min(min: (f32, f32), side: usize) -> f32 {
-	if side == LEFT || side == RIGHT { min.0 } else { min.1 }
+/// A word-wrapped engraved hint filling `r` from the top-left (padded by `pad`) -
+/// the placeholder shown in a content-less panel, measured in the wgpu-ui font so
+/// the breaks land where they're drawn.
+fn hint(dl: &mut DrawList, skin: &SteelTheme, fonts: &Fonts, r: Rect, pad: f32, s: &str, color: [f32; 4]) {
+	let px = skin.font_px(TextRole::Small);
+	let max_w = (r.w - 2.0 * pad).max(0.0);
+	let line_h = px + 4.0;
+	let mut y = r.y + pad + px * 0.8; // top → first baseline (≈ ascent)
+	let mut cur = String::new();
+	for word in s.split_whitespace() {
+		let trial = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
+		if cur.is_empty() || fonts.get(skin.font()).measure(&trial, px) <= max_w {
+			cur = trial;
+		} else {
+			skin.emboss_text(dl, fonts, Vec2::new(r.x + pad, y), &cur, px, rgba(color), Emboss::Engraved);
+			y += line_h;
+			cur = word.to_string();
+		}
+	}
+	if !cur.is_empty() {
+		skin.emboss_text(dl, fonts, Vec2::new(r.x + pad, y), &cur, px, rgba(color), Emboss::Engraved);
+	}
 }
 
-/// Where a panel lives. `Floating` holds its top-left; size is per-panel.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Place {
-	Docked(usize),
-	Floating(f32, f32),
-	Hidden,
-}
-
-pub struct Panel {
-	pub id: &'static str,
-	pub title: &'static str,
-	/// Body placeholder until the panel grows real content.
-	pub hint: &'static str,
-	pub place: Place,
-	/// Where `window ID on` restores a hidden panel to.
-	prev: Place,
-	/// Floating size.
-	pub w: f32,
-	pub h: f32,
-	/// Docked extent along the dock's stacking axis.
-	pub extent: f32,
-	/// Sensible size bounds (w, h) so content can't overflow a too-small window
-	/// nor a window grow absurdly large.
-	pub min: (f32, f32),
-	pub max: (f32, f32),
-}
-
-#[derive(Clone, Copy)]
-enum Drag {
-	None,
-	/// Titlebar drag: grab offset within the panel, undocked yet?
-	Move {
-		panel: usize,
-		grab: (f32, f32),
-		start: (f32, f32),
-		moved: bool,
-	},
-	DockEdge {
-		side: usize,
-	},
-	/// Resize the `nth` docked panel of `side` via the splitter below/right.
-	Splitter {
-		side: usize,
-		nth: usize,
-	},
-	FloatResize {
-		panel: usize,
-	},
-}
-
-pub struct Workspace {
-	pub panels: Vec<Panel>,
-	/// Reserved strip above the docks (the main menu bar). 0 in unit tests;
-	/// the editor sets it to `menu::BAR_H`.
-	pub top: f32,
-	/// Reserved strip below the docks (the status bar). 0 when hidden.
-	pub bottom: f32,
-	dock_size: [f32; 4],
-	drag: Drag,
-	cursor: (f32, f32),
-}
-
-/// What a primary-button press hit.
+/// What a primary-button press hit. Editor-side (`id` is a static panel key,
+/// mapped back from the model's owned id) so the shell's routing stays on
+/// `&'static str` matches.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Press {
 	None,
-	/// Titlebar / close / splitter / resizer - handled internally.
+	/// Titlebar / close / splitter / resizer - handled internally by the model.
 	Chrome,
 	/// A panel body - the shell routes content interaction (picker, …).
 	Body {
@@ -117,175 +84,93 @@ pub enum Press {
 	},
 }
 
-/// One frame's computed geometry (also the hit-test source).
-pub struct Layout {
-	pub center: Rect,
-	/// Visible dock areas (including drag-peeked empty ones).
-	pub docks: [Option<Rect>; 4],
-	/// Docked panels first (vec order), floating after - also draw order.
-	pub panels: Vec<(usize, Rect)>,
-	/// `(side, nth docked panel it resizes, rect)`.
-	pub splitters: Vec<(usize, usize, Rect)>,
-	/// Dock-edge resizer strips.
-	pub edges: [Option<Rect>; 4],
+/// The editor's known panel ids (also the map from a model `String` id back to
+/// the `&'static str` the shell routes on).
+///
+/// **Every panel with a hosted `Ui` must be listed here.** A missing id maps to
+/// `""`, which no [`panel_host`] arm answers to - so the panel is drawn, but
+/// every press, wheel notch and paging key routed by id is silently dropped and
+/// the panel looks alive and is completely dead. That is exactly what the
+/// Scenery panel did until it was added here.
+///
+/// [`panel_host`]: crate::panel_host
+const PANEL_IDS: [&str; 11] = [
+	"minimap",
+	"tiles",
+	"palette",
+	"wrlpalette",
+	"toolbox",
+	"units",
+	"templates",
+	"scenery",
+	"savetools",
+	"unitprops",
+	"passtools",
+];
+
+/// Map a model panel id back to its `&'static str` (all editor panels are known).
+fn static_id(id: &str) -> &'static str {
+	PANEL_IDS.iter().copied().find(|&s| s == id).unwrap_or("")
 }
 
-impl Default for Workspace {
-	fn default() -> Self {
-		#[allow(clippy::too_many_arguments)]
-		let panel = |id, title, hint, place, w, h, extent, min, max| Panel {
-			id,
-			title,
-			hint,
-			place,
-			prev: place,
-			w,
-			h,
-			extent,
-			min,
-			max,
-		};
-		Self {
-			panels: vec![
-				panel(
-					"minimap",
-					"Minimap",
-					"interactive minimap lands with UI-11",
-					Place::Docked(LEFT),
-					260.0,
-					220.0,
-					220.0,
-					(150.0, 150.0),
-					(480.0, 480.0),
-				),
-				panel(
-					"tiles",
-					"Tile Explorer",
-					"tile picker lands with UI-5",
-					Place::Docked(RIGHT),
-					300.0,
-					320.0,
-					320.0,
-					(170.0, 140.0),
-					(560.0, 900.0),
-				),
-				panel(
-					"palette",
-					"Color Palette",
-					"palette grid lands with UI-12",
-					Place::Docked(RIGHT),
-					300.0,
-					220.0,
-					220.0,
-					(180.0, 170.0),
-					// Max width = 8 max-size swatches + gaps + padding + scrollbar.
-					(251.0, 640.0),
-				),
-				// Hidden by default - a debugging aid (Windows menu shows it);
-				// `prev` points at a real dock so `window wrlpalette on` has
-				// somewhere sensible to restore to.
-				Panel {
-					prev: Place::Docked(RIGHT),
-					..panel(
-						"wrlpalette",
-						"WRL Internal Palette",
-						"the opened WRL's palette as stored in the file",
-						Place::Hidden,
-						300.0,
-						220.0,
-						220.0,
-						(180.0, 170.0),
-						// Same swatch math as the Color Palette, no toolbar row.
-						(251.0, 640.0),
-					)
-				},
-				panel(
-					"toolbox",
-					"Toolbox",
-					"tool buttons land with UI-13",
-					Place::Docked(BOTTOM),
-					360.0,
-					160.0,
-					360.0,
-					(300.0, 140.0),
-					// Height intentionally unbounded for now - the toolbox scrolls.
-					(1200.0, 4096.0),
-				),
-				// Hidden by default - needs MaxPath/MAX.RES; Windows menu shows
-				// it. `prev` points at a real dock so `window units on` has
-				// somewhere sensible to restore to.
-				Panel {
-					prev: Place::Docked(RIGHT),
-					..panel(
-						"units",
-						"Units",
-						"unit previews for palette tuning",
-						Place::Hidden,
-						300.0,
-						320.0,
-						320.0,
-						(170.0, 140.0),
-						(560.0, 900.0),
-					)
-				},
-				// Hidden by default - Windows menu / `window templates` shows it.
-				Panel {
-					prev: Place::Docked(RIGHT),
-					..panel(
-						"templates",
-						"Templates",
-						"select tiles, save them, stamp them anywhere",
-						Place::Hidden,
-						300.0,
-						320.0,
-						320.0,
-						(170.0, 140.0),
-						(560.0, 900.0),
-					)
-				},
-			],
-			top: 0.0,
-			bottom: 0.0,
-			dock_size: [240.0, 280.0, 130.0, 150.0],
-			drag: Drag::None,
-			cursor: (0.0, 0.0),
+/// An independent dock layout the user arranges and the editor persists. Each
+/// [`crate::state::EditorMode`] maps to exactly one group (see
+/// [`EditorMode::layout_group`](crate::state::EditorMode::layout_group)): the
+/// Map editor keeps the main layout, the two pass editors share one, and the
+/// save editor has its own. The discriminants index the slot array on
+/// [`EditorState`](crate::state::EditorState).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutGroup {
+	/// Map editor - the main `[Workspace]` section.
+	Main = 0,
+	/// Pass Table + Local Pass Override editors (shared) - `[Workspace.Pass]`.
+	Pass = 1,
+	/// Save editor (experimental) - `[Workspace.Save]`.
+	Save = 2,
+}
+
+impl LayoutGroup {
+	/// The INI section this group's layout persists into. Non-main groups use a
+	/// dotted suffix so a hand-editor can tell them apart from `[Workspace]`.
+	pub fn ini_section(self) -> &'static str {
+		match self {
+			LayoutGroup::Main => "Workspace",
+			LayoutGroup::Pass => "Workspace.Pass",
+			LayoutGroup::Save => "Workspace.Save",
 		}
+	}
+}
+
+/// The editor's dockable workspace: the toolkit docking model (via [`Deref`])
+/// plus the editor's steel chrome and INI persistence.
+pub struct Workspace(ws::Workspace);
+
+impl std::ops::Deref for Workspace {
+	type Target = ws::Workspace;
+	fn deref(&self) -> &ws::Workspace {
+		&self.0
+	}
+}
+
+impl std::ops::DerefMut for Workspace {
+	fn deref_mut(&mut self) -> &mut ws::Workspace {
+		&mut self.0
 	}
 }
 
 impl Workspace {
-	pub fn find(&self, id: &str) -> Option<usize> {
-		self.panels.iter().position(|p| p.id == id)
-	}
-
-	/// Is panel `id` currently on screen (not hidden)? Drives the Windows menu
-	/// checkboxes.
-	pub fn is_visible(&self, id: &str) -> bool {
-		self.find(id).is_some_and(|i| self.panels[i].place != Place::Hidden)
-	}
-
-	/// Show/hide a panel (`None` toggles). `Ok(line)` describes the result.
-	pub fn show(&mut self, id: &str, on: Option<bool>) -> Result<String, String> {
-		let Some(i) = self.find(id) else {
-			return Err(format!("unknown window '{id}' (have: {})", self.ids().join(" ")));
-		};
-		let p = &mut self.panels[i];
-		let visible = p.place != Place::Hidden;
-		let want = on.unwrap_or(!visible);
-		if want && !visible {
-			p.place = p.prev;
-		} else if !want && visible {
-			p.prev = p.place;
-			p.place = Place::Hidden;
+	/// Console verb `window ID [on|off]`: sets/toggles visibility, formatted for
+	/// the console (the toolkit API is typed; the strings live host-side).
+	pub fn show_cmd(&mut self, id: &str, on: Option<bool>) -> Result<String, String> {
+		match self.0.show(id, on) {
+			Ok(visible) => Ok(format!("window {id}: {}", if visible { "shown" } else { "hidden" })),
+			Err(e) => Err(describe(e)),
 		}
-		Ok(format!("window {id}: {}", if want { "shown" } else { "hidden" }))
 	}
 
-	/// Dock a panel to a side, or float it (optionally at a position).
-	pub fn dock_to(&mut self, id: &str, place: &str, at: Option<(f32, f32)>) -> Result<String, String> {
-		let Some(i) = self.find(id) else {
-			return Err(format!("unknown window '{id}' (have: {})", self.ids().join(" ")));
-		};
+	/// Console verb `dock ID PLACE [x y]`: parses the place word, docks/floats,
+	/// and formats the console line.
+	pub fn dock_cmd(&mut self, id: &str, place: &str, at: Option<(f32, f32)>) -> Result<String, String> {
 		let place = match place {
 			"left" => Place::Docked(LEFT),
 			"right" => Place::Docked(RIGHT),
@@ -297,496 +182,331 @@ impl Workspace {
 			}
 			other => return Err(format!("dock: bad place '{other}' (left|right|top|bottom|float)")),
 		};
-		self.panels[i].place = place;
-		self.panels[i].prev = place;
-		Ok(format!("window {id}: {place:?}"))
-	}
-
-	fn ids(&self) -> Vec<&'static str> {
-		self.panels.iter().map(|p| p.id).collect()
-	}
-
-	/// Panels docked to `side`, in stacking order.
-	fn docked(&self, side: usize) -> Vec<usize> {
-		self.panels.iter().enumerate().filter(|(_, p)| p.place == Place::Docked(side)).map(|(i, _)| i).collect()
-	}
-
-	/// A dock is force-shown while a titlebar drag hovers near its edge.
-	fn peek(&self, w: f32, h: f32) -> [bool; 4] {
-		let Drag::Move { moved: true, .. } = self.drag else { return [false; 4] };
-		let (cx, cy) = self.cursor;
-		[cx <= PEEK_DIST, w - cx <= PEEK_DIST, cy <= self.top + PEEK_DIST, h - cy <= PEEK_DIST]
-	}
-
-	/// Compute the frame's geometry for a `w`×`h` screen.
-	pub fn layout(&self, w: f32, h: f32) -> Layout {
-		// Reserve the status-bar strip at the bottom: every dock + the center
-		// map area lives above it.
-		let h = (h - self.bottom).max(1.0);
-		let peek = self.peek(w, h);
-		let occupied: [Vec<usize>; 4] = [self.docked(0), self.docked(1), self.docked(2), self.docked(3)];
-		let visible = [
-			!occupied[0].is_empty() || peek[0],
-			!occupied[1].is_empty() || peek[1],
-			!occupied[2].is_empty() || peek[2],
-			!occupied[3].is_empty() || peek[3],
-		];
-		let size = |side: usize| {
-			if visible[side] {
-				self.dock_size[side].min(match side {
-					TOP | BOTTOM => (h - MIN_DOCK).max(MIN_DOCK),
-					_ => (w - MIN_DOCK).max(MIN_DOCK),
-				})
-			} else {
-				0.0
-			}
-		};
-		let (lw, rw, th, bh) = (size(LEFT), size(RIGHT), size(TOP), size(BOTTOM));
-
-		let mut docks = [None; 4];
-		let mut edges = [None; 4];
-		// Top/bottom span the full width; left/right fill the middle band.
-		// Everything sits below the reserved `top` strip (the menu bar).
-		if visible[TOP] {
-			docks[TOP] = Some(Rect::new(0.0, self.top, w, th));
-			edges[TOP] = Some(Rect::new(0.0, self.top + th, w, SPLIT));
+		match self.0.dock_to(id, place) {
+			Ok(()) => Ok(format!("window {id}: {place:?}")),
+			Err(e) => Err(describe(e)),
 		}
-		if visible[BOTTOM] {
-			docks[BOTTOM] = Some(Rect::new(0.0, h - bh, w, bh));
-			edges[BOTTOM] = Some(Rect::new(0.0, h - bh - SPLIT, w, SPLIT));
-		}
-		let y0 = self.top + th + if visible[TOP] { SPLIT } else { 0.0 };
-		let y1 = h - bh - if visible[BOTTOM] { SPLIT } else { 0.0 };
-		if visible[LEFT] {
-			docks[LEFT] = Some(Rect::new(0.0, y0, lw, y1 - y0));
-			edges[LEFT] = Some(Rect::new(lw, y0, SPLIT, y1 - y0));
-		}
-		if visible[RIGHT] {
-			docks[RIGHT] = Some(Rect::new(w - rw, y0, rw, y1 - y0));
-			edges[RIGHT] = Some(Rect::new(w - rw - SPLIT, y0, SPLIT, y1 - y0));
-		}
-		let x0 = lw + if visible[LEFT] { SPLIT } else { 0.0 };
-		let x1 = w - rw - if visible[RIGHT] { SPLIT } else { 0.0 };
-		let center = Rect::new(x0, y0, (x1 - x0).max(1.0), (y1 - y0).max(1.0));
-
-		// Stack each dock's panels: all but the last keep their extent, the
-		// last takes the remainder; splitters between.
-		let mut panels = Vec::new();
-		let mut splitters = Vec::new();
-		for side in 0..4 {
-			let Some(dock) = docks[side] else { continue };
-			let ids = &occupied[side];
-			if ids.is_empty() {
-				continue;
-			}
-			let vertical = side == LEFT || side == RIGHT;
-			let total = if vertical { dock.h } else { dock.w };
-			let gaps = SPLIT * (ids.len() - 1) as f32;
-			let mut used = 0.0;
-			for (nth, &i) in ids.iter().enumerate() {
-				let last = nth == ids.len() - 1;
-				let ext =
-					if last { (total - gaps - used).max(MIN_PANEL) } else { self.panels[i].extent.max(MIN_PANEL) };
-				let r = if vertical {
-					Rect::new(dock.x, dock.y + used + SPLIT * nth as f32, dock.w, ext)
-				} else {
-					Rect::new(dock.x + used + SPLIT * nth as f32, dock.y, ext, dock.h)
-				};
-				panels.push((i, r));
-				if !last {
-					let s = if vertical {
-						Rect::new(dock.x, r.y + r.h, dock.w, SPLIT)
-					} else {
-						Rect::new(r.x + r.w, dock.y, SPLIT, dock.h)
-					};
-					splitters.push((side, nth, s));
-				}
-				used += ext;
-			}
-		}
-		// Floating panels draw after (= above) docked ones, in vec order.
-		for (i, p) in self.panels.iter().enumerate() {
-			if let Place::Floating(x, y) = p.place {
-				panels.push((i, Rect::new(x, y, p.w, p.h)));
-			}
-		}
-
-		Layout { center, docks, panels, splitters, edges }
 	}
+}
 
-	/// Is the cursor over any workspace chrome (panel, splitter, edge)?
-	/// Map input (paint/pan) should be suppressed when this is true.
-	pub fn over_ui(&self, x: f32, y: f32, w: f32, h: f32) -> bool {
-		// The status-bar strip counts as chrome (clicks there never reach the map).
-		if self.bottom > 0.0 && y >= h - self.bottom {
-			return true;
+/// The console text for a toolkit workspace error (same wording the model
+/// produced before the API went typed, so script/console output is stable).
+fn describe(e: ws::WorkspaceError) -> String {
+	match e {
+		ws::WorkspaceError::UnknownPanel { id, known } => {
+			format!("unknown window '{id}' (have: {})", known.join(" "))
 		}
-		let l = self.layout(w, h);
-		l.panels.iter().any(|(_, r)| r.contains(x, y))
-			|| l.splitters.iter().any(|(_, _, r)| r.contains(x, y))
-			|| l.edges.iter().flatten().any(|r| r.contains(x, y))
 	}
+}
 
-	/// The topmost panel under the cursor (id + body rect) - wheel routing.
-	pub fn body_at(&self, x: f32, y: f32, w: f32, h: f32) -> Option<(&'static str, Rect)> {
-		let l = self.layout(w, h);
-		l.panels.iter().rev().find(|(_, r)| r.contains(x, y)).map(|&(i, r)| (self.panels[i].id, self.body_of(i, r)))
+impl Default for Workspace {
+	fn default() -> Self {
+		let dock = |side| Place::Docked(side);
+		let inner = ws::Workspace::new()
+			.panel(
+				PanelSpec::new("minimap", "Minimap")
+					.hint("the whole map at a glance - click or drag to jump the view")
+					.place(dock(LEFT))
+					.size(260.0, 220.0)
+					.extent(220.0)
+					.bounds((150.0, 150.0), (480.0, 480.0)),
+			)
+			.panel(
+				PanelSpec::new("tiles", "Tile Explorer")
+					.hint("every tile in the open tilesets - pick one to paint with")
+					.place(dock(RIGHT))
+					.size(300.0, 320.0)
+					.extent(320.0)
+					.bounds((170.0, 140.0), (560.0, 900.0)),
+			)
+			.panel(
+				PanelSpec::new("palette", "Color Palette")
+					.hint("this map's colour palette - edit, save, import and export it")
+					.place(dock(RIGHT))
+					.size(300.0, 220.0)
+					.extent(220.0)
+					// Max width = 8 max-size swatches + gaps + padding + scrollbar.
+					.bounds((180.0, 170.0), (251.0, 640.0)),
+			)
+			.panel(
+				// Hidden by default - a debugging aid; `prev` points at a real
+				// dock so `window wrlpalette on` restores somewhere sensible.
+				PanelSpec::new("wrlpalette", "WRL Internal Palette")
+					.hint("the opened WRL's palette as stored in the file")
+					.place(Place::Hidden)
+					.prev(dock(RIGHT))
+					.size(300.0, 220.0)
+					.extent(220.0)
+					.bounds((180.0, 170.0), (251.0, 640.0)),
+			)
+			.panel(
+				PanelSpec::new("toolbox", "Toolbox")
+					.hint("brushes, shapes and the terrain tools")
+					.place(dock(BOTTOM))
+					.size(360.0, 160.0)
+					.extent(360.0)
+					// Height intentionally unbounded for now - the toolbox scrolls.
+					// The floor fits the widest block (the tile preview) — the
+					// icon-grid keys pack far narrower than the old text keys did.
+					.bounds((150.0, 120.0), (1200.0, 4096.0)),
+			)
+			.panel(
+				// Hidden by default - needs MaxPath/MAX.RES.
+				PanelSpec::new("units", "Units")
+					.hint("unit previews for palette tuning")
+					.place(Place::Hidden)
+					.prev(dock(RIGHT))
+					.size(300.0, 320.0)
+					.extent(320.0)
+					.bounds((170.0, 140.0), (560.0, 900.0)),
+			)
+			.panel(
+				// Hidden by default - Windows menu / `window templates` shows it.
+				PanelSpec::new("templates", "Templates")
+					.hint("select tiles, save them, stamp them anywhere")
+					.place(Place::Hidden)
+					.prev(dock(RIGHT))
+					.size(300.0, 320.0)
+					.extent(320.0)
+					.bounds((170.0, 140.0), (560.0, 900.0)),
+			)
+			.panel(
+				// Hidden by default - Windows menu / `window scenery` shows it.
+				PanelSpec::new("scenery", "Scenery")
+					.hint("drop trees, mountains and cliffs anywhere - any pixel, no grid")
+					.place(Place::Hidden)
+					.prev(dock(RIGHT))
+					.size(300.0, 320.0)
+					.extent(320.0)
+					.bounds((170.0, 140.0), (560.0, 900.0)),
+			)
+			.panel(
+				// Hidden by default - the save editor's object tools (Windows menu
+				// / `window savetools`). Docks bottom like the terrain toolbox.
+				PanelSpec::new("savetools", "Save Toolbox")
+					.hint("place / paint / move / delete a save's objects")
+					.place(Place::Hidden)
+					.prev(dock(BOTTOM))
+					.size(360.0, 130.0)
+					.extent(300.0)
+					// The floor fits the widest block (the five amount presets).
+					.bounds((160.0, 100.0), (1200.0, 4096.0)),
+			)
+			.panel(
+				// Hidden by default - the pass editors' swatches + cell tally
+				// (Windows menu / `window passtools`). Entering either pass mode shows
+				// it, and that mode's own layout group remembers where it was put.
+				// Docks bottom like the other two toolboxes.
+				PanelSpec::new("passtools", "Pass Types Palette")
+					.hint("pick a pass type to paint, and see how the map tallies")
+					.place(Place::Hidden)
+					.prev(dock(BOTTOM))
+					.size(360.0, 160.0)
+					.extent(300.0)
+					// The floor fits the widest block (the cell tally's columns).
+					.bounds((170.0, 100.0), (1200.0, 4096.0)),
+			)
+			.panel(
+				// Hidden by default - the save editor's selected-object inspector
+				// (Windows menu / `window unitprops`). Opens FLOATING (not docked):
+				// its 380px + 32px connector grid clips when squeezed into a full
+				// right column beside Tile Explorer + Color Palette, and a float is
+				// how the user actually uses it. Clamped on-screen by clamp_floating.
+				PanelSpec::new("unitprops", "Unit Properties")
+					.hint("inspect / edit the selected object's properties")
+					.place(Place::Hidden)
+					.prev(Place::Floating(880.0, 70.0))
+					// Tall enough for the appended max-values section (S4.5) on a
+					// typical unit; buildings + advanced mode overflow → resize (up to
+					// the 900px bound) or scroll the float.
+					.size(280.0, 500.0)
+					.extent(500.0)
+					.bounds((200.0, 150.0), (480.0, 900.0)),
+			);
+		Self(inner)
 	}
+}
 
-	/// Pointer press (the paint/primary button).
+impl Workspace {
+	/// Pointer press, mapping the model outcome to the editor's `&'static str`
+	/// [`Press`] (the shell routes body interaction on the static id).
 	pub fn on_press(&mut self, x: f32, y: f32, w: f32, h: f32) -> Press {
-		self.cursor = (x, y);
-		let layout = self.layout(w, h);
-
-		// Topmost first: floating panels are at the tail of `layout.panels`.
-		for &(i, r) in layout.panels.iter().rev() {
-			let frame = self.frame_of(i);
-			if ui::close_rect(r, frame).contains(x, y) {
-				self.panels[i].prev = self.panels[i].place;
-				self.panels[i].place = Place::Hidden;
-				return Press::Chrome;
-			}
-			if ui::titlebar_rect(r, frame).contains(x, y) {
-				// `raise` reorders the vec - re-resolve the index by id.
-				let id = self.panels[i].id;
-				self.raise(i);
-				self.drag = Drag::Move {
-					panel: self.find(id).unwrap_or(i),
-					grab: (x - r.x, y - r.y),
-					start: (x, y),
-					moved: false,
-				};
-				return Press::Chrome;
-			}
-			let floating = matches!(self.panels[i].place, Place::Floating(..));
-			let handle = Rect::new(r.x + r.w - HANDLE, r.y + r.h - HANDLE, HANDLE, HANDLE);
-			if floating && handle.contains(x, y) {
-				let id = self.panels[i].id;
-				self.raise(i);
-				self.drag = Drag::FloatResize { panel: self.find(id).unwrap_or(i) };
-				return Press::Chrome;
-			}
-			if r.contains(x, y) {
-				let id = self.panels[i].id;
-				if floating {
-					self.raise(i);
-				}
-				return Press::Body { id, body: ui::body_rect(r, frame) };
-			}
-		}
-		for &(side, nth, r) in &layout.splitters {
-			if r.contains(x, y) {
-				self.drag = Drag::Splitter { side, nth };
-				return Press::Chrome;
-			}
-		}
-		for side in 0..4 {
-			if layout.edges[side].is_some_and(|r| r.contains(x, y)) {
-				self.drag = Drag::DockEdge { side };
-				return Press::Chrome;
-			}
-		}
-		Press::None
-	}
-
-	/// `raise` moves a floating panel to the end of the vec (topmost) -
-	/// indices in an active drag are resolved by id afterwards.
-	fn raise(&mut self, i: usize) {
-		if matches!(self.panels[i].place, Place::Floating(..)) && i + 1 != self.panels.len() {
-			let p = self.panels.remove(i);
-			self.panels.push(p);
+		match self.0.on_press(x, y, w, h) {
+			ws::Press::None => Press::None,
+			ws::Press::Chrome => Press::Chrome,
+			ws::Press::Body { id, body } => Press::Body { id: static_id(&id), body },
 		}
 	}
 
-	/// Pointer move. Returns true when the workspace wants a redraw.
-	pub fn on_move(&mut self, x: f32, y: f32, w: f32, h: f32) -> bool {
-		self.cursor = (x, y);
-		match self.drag {
-			Drag::None => false,
-			Drag::Move { panel, mut grab, start, moved } => {
-				let mut i = panel;
-				if !moved {
-					if (x - start.0).abs() < DRAG_START && (y - start.1).abs() < DRAG_START {
-						return false;
-					}
-					// Undock: become floating at the cursor, keeping the grab
-					// point inside the (possibly narrower) floating titlebar -
-					// and take the top z-index immediately (`raise` reorders
-					// the vec, so re-resolve the dragged index by id).
-					grab.0 = grab.0.min(self.panels[i].w - ui::TITLEBAR_H);
-					self.panels[i].place = Place::Floating(x - grab.0, y - grab.1);
-					let id = self.panels[i].id;
-					self.raise(i);
-					i = self.find(id).unwrap_or(i);
-					self.drag = Drag::Move { panel: i, grab, start, moved: true };
-				}
-				self.panels[i].place = Place::Floating(x - grab.0, y - grab.1);
-				true
-			}
-			Drag::DockEdge { side } => {
-				let v = match side {
-					LEFT => x,
-					RIGHT => w - x,
-					TOP => y - self.top,
-					_ => h - y,
-				};
-				let lo = self.dock_cross_min(side);
-				self.dock_size[side] = v.clamp(lo, MAX_DOCK.max(lo));
-				true
-			}
-			Drag::Splitter { side, nth } => {
-				let ids = self.docked(side);
-				let layout = self.layout(w, h);
-				if let Some(&i) = ids.get(nth) {
-					let along = if side == LEFT || side == RIGHT { y } else { x };
-					let origin = layout
-						.panels
-						.iter()
-						.find(|(p, _)| *p == i)
-						.map(|(_, r)| if side == LEFT || side == RIGHT { r.y } else { r.x })
-						.unwrap_or(0.0);
-					self.panels[i].extent = (along - origin).max(along_min(self.panels[i].min, side));
-				}
-				true
-			}
-			Drag::FloatResize { panel } => {
-				let i = panel;
-				if let Place::Floating(px, py) = self.panels[i].place {
-					let (min, max) = (self.panels[i].min, self.panels[i].max);
-					self.panels[i].w = (x - px).clamp(min.0, max.0);
-					self.panels[i].h = (y - py).clamp(min.1, max.1);
-				}
-				true
-			}
-		}
+	/// The topmost panel under the cursor (static id + body rect) - wheel routing.
+	pub fn body_at(&self, x: f32, y: f32, w: f32, h: f32) -> Option<(&'static str, Rect)> {
+		self.0.body_at(x, y, w, h).map(|(id, r)| (static_id(id), r))
 	}
 
-	/// Pointer release. Returns true when a drag was finished.
-	pub fn on_release(&mut self, x: f32, y: f32, w: f32, h: f32) -> bool {
-		self.cursor = (x, y);
-		// Compute the layout while the drag is still live: a peeked-empty
-		// dock's drop rect only exists during the drag, and clearing
-		// `self.drag` first would make the drop miss it.
-		let layout = self.layout(w, h);
-		match std::mem::replace(&mut self.drag, Drag::None) {
-			Drag::None => false,
-			Drag::Move { panel, moved, .. } => {
-				if moved {
-					self.drop_at(panel, x, y, &layout);
-				}
-				true
-			}
-			_ => true,
-		}
-	}
-
-	/// Drop a dragged panel: into the dock under the cursor (insert position
-	/// by midpoint along the dock axis, per the prototype), or stay floating.
-	/// `layout` must be computed while the drag is live (peeks included).
-	fn drop_at(&mut self, i: usize, x: f32, y: f32, layout: &Layout) {
-		let Some(side) = (0..4).find(|&s| layout.docks[s].is_some_and(|r| r.contains(x, y))) else {
-			let p = &mut self.panels[i];
-			p.prev = p.place;
-			return;
-		};
-		self.panels[i].place = Place::Docked(side);
-		self.panels[i].prev = Place::Docked(side);
-		// Insert before the first dock-mate whose midpoint is past the cursor.
-		let vertical = side == LEFT || side == RIGHT;
-		let target = layout
-			.panels
-			.iter()
-			.filter(|(p, _)| *p != i && self.panels[*p].place == Place::Docked(side))
-			.find(|(_, r)| if vertical { y < r.y + r.h / 2.0 } else { x < r.x + r.w / 2.0 })
-			.map(|(p, _)| *p);
-		let moved = self.panels.remove(i);
-		match target {
-			Some(t) => {
-				let t = if t > i { t - 1 } else { t };
-				self.panels.insert(t, moved);
-			}
-			None => self.panels.push(moved),
-		}
-	}
-
-	/// Frame chrome below the panels: dock-edge resizers + splitters.
-	/// The shell composes a frame as: background → peeks → per-panel chrome +
-	/// content (in `layout().panels` order - that IS the z-order).
-	pub fn draw_background(&self, w: f32, h: f32) -> UiQuads {
-		let mut q = UiQuads::default();
-		let layout = self.layout(w, h);
-		for r in layout.edges.iter().flatten() {
-			q.rect(*r, w, h, theme::SPLITTER);
-		}
-		for (_, _, r) in &layout.splitters {
-			q.rect(*r, w, h, theme::SPLITTER);
-		}
-		q
+	/// Reset the whole layout to defaults (Windows ▸ Reset Dialogs), keeping the
+	/// reserved top strip (the menu/tab bar height).
+	pub fn reset(&mut self) {
+		let top = self.0.top;
+		*self = Self::default();
+		self.0.top = top;
 	}
 
 	/// The steel sampling for panel `i` at `r`: floating panels anchor a stable
 	/// crop to themselves (no swimming as they move); docked panels share the
-	/// stretched viewport sheet. The shell uses this for a panel's content
-	/// quads too, so chrome + content stay one coherent surface.
+	/// stretched viewport sheet.
 	pub fn steel_map(&self, i: usize, r: Rect) -> SteelMap {
-		if matches!(self.panels[i].place, Place::Floating(..)) { SteelMap::anchored(r) } else { SteelMap::Stretch }
+		if self.0.is_floating(i) { SteelMap::anchored(r) } else { SteelMap::Stretch }
 	}
 
-	/// Panel `i`'s border-ring width (a thin 2-px ring). The ring is also the
-	/// content margin (borders-as-margin), so this drives both the chrome draw
-	/// and the body/titlebar/close hit geometry.
-	pub fn frame_of(&self, i: usize) -> f32 {
-		if matches!(self.panels[i].place, Place::Floating(..)) { FRAME_FLOAT } else { FRAME_DOCK }
+	/// Frame chrome below the panels: dock-edge resizers + splitters.
+	pub fn draw_background(&self, w: f32, h: f32) -> DrawList {
+		let mut dl = DrawList::new();
+		let layout = self.0.layout(w, h);
+		let c = rgba(theme::SPLITTER);
+		for r in layout.edges.iter().flatten() {
+			dl.fill_rect(*r, c);
+		}
+		for (_, _, r) in &layout.splitters {
+			dl.fill_rect(*r, c);
+		}
+		dl
 	}
 
-	/// Panel `i`'s content area for rect `r` (inside its border-as-margin).
-	pub fn body_of(&self, i: usize, r: Rect) -> Rect {
-		ui::body_rect(r, self.frame_of(i))
+	/// Peeked empty docks: drop-target highlights, drawn on the map below the windows.
+	pub fn draw_peeks(&self, w: f32, h: f32) -> DrawList {
+		let mut dl = DrawList::new();
+		let c = rgba(theme::DOCK_PEEK);
+		for r in self.0.peeked_docks(w, h).into_iter().flatten() {
+			dl.fill_rect(r, c);
+		}
+		dl
 	}
 
-	/// One panel's chrome (+ its placeholder hint while `show_hint`).
-	pub fn draw_panel(&self, i: usize, r: Rect, w: f32, h: f32, show_hint: bool, hot: crate::ui::Hot) -> UiQuads {
-		let p = &self.panels[i];
-		// Floating panels carry their own stable steel crop; docked ones share
-		// the stretched viewport sheet.
-		let mut q = UiQuads::with_steel_map(self.steel_map(i, r));
-		let dragging = matches!(self.drag, Drag::Move { panel, moved: true, .. } if panel == i);
+	/// One panel's chrome (+ its placeholder hint while `show_hint`), drawn through
+	/// the steel `skin`. The caller sets the panel's steel mapping on `skin` first
+	/// (`MenuChrome::prepare_panel` with [`steel_map`](Self::steel_map)), so the
+	/// chrome grain matches the panel's native content - one coherent surface for
+	/// both docked (stretched plate) and floating (anchored crop).
+	pub fn draw_panel(&self, skin: &SteelTheme, fonts: &Fonts, i: usize, r: Rect, show_hint: bool) -> DrawList {
+		let p = &self.0.panels[i];
+		let mut dl = DrawList::new();
+		let dragging = self.0.is_dragging(i);
 		// A thin 2-px border ring that also margins the content.
-		let frame = self.frame_of(i);
-		ui::panel(&mut q, r, p.title, dragging, frame, w, h, hot);
+		let frame = self.0.frame_of(i);
+
+		// Body fill, titlebar band, 1px recessed seam, raised bevel ring - the
+		// same composition as `ui::panel`, through the steel theme.
+		skin.material(&mut dl, r, theme::PANEL);
+		let bar = ui::titlebar_band(r, frame);
+		// The shared rusted titlebar (brighter rust while dragged) + a 1px rust seam.
+		skin.material(&mut dl, bar, if dragging { theme::RUST_TITLE_DRAG } else { theme::RUST_TITLE });
+		skin.material(&mut dl, WRect::new(bar.x, bar.y + ui::TITLEBAR_H - 1.0, bar.w, 1.0), theme::RUST_EDGE);
+		skin.bevel(&mut dl, r, frame, true);
+
+		// Title (amber, raised, 12px left pad); the close "x" washed when hot.
+		label(
+			&mut dl,
+			skin,
+			fonts,
+			ui::titlebar_rect(r, frame),
+			ui::TITLE_PAD,
+			&p.title,
+			theme::TITLE_INK,
+			Emboss::Raised,
+		);
+		// The close `x` lights off the pointer the **model** tracks (U6.2): the
+		// same rect its press resolves, so the affordance and the click cannot
+		// disagree. There is no held state to draw - a close acts on the press.
+		let close = ui::close_rect(r, frame);
+		if self.0.close_hovered(i, r) {
+			dl.fill_rect(close, rgba(theme::HOVER));
+		}
+		label(&mut dl, skin, fonts, close, 6.0, "x", theme::CLOSE_INK, Emboss::Raised);
+
 		if show_hint {
 			let body = ui::body_rect(r, frame);
-			q.label_wrapped(p.hint, body.strip_top(24.0), 8.0, ui::FONT_SMALL, w, h, theme::INK_DIM);
+			hint(&mut dl, skin, fonts, crate::ui::strip_top(body, 24.0), 8.0, &p.hint, theme::INK_DIM);
 		}
 		if matches!(p.place, Place::Floating(..)) {
-			// A dark grip triangle in the bottom-right corner (the hit area is
-			// still the corner square - see `on_press`).
+			// A dark grip triangle in the bottom-right corner (the hit area is the
+			// corner square - see the model's `on_press`). No triangle primitive in
+			// the DrawList, so it's stepped 1px rows like the menu's submenu arrow.
 			let (x1, y1) = (r.x + r.w, r.y + r.h);
-			q.tri((x1 - HANDLE, y1), (x1, y1 - HANDLE), (x1, y1), w, h, theme::RESIZE_HANDLE);
-		}
-		q
-	}
-
-	/// Peeked empty docks: black 50 % drop-target highlights, drawn on the map
-	/// below the windows.
-	pub fn draw_peeks(&self, w: f32, h: f32) -> UiQuads {
-		let mut q = UiQuads::default();
-		let layout = self.layout(w, h);
-		let peek = self.peek(w, h);
-		for side in 0..4 {
-			if peek[side] && self.docked(side).is_empty() {
-				if let Some(r) = layout.docks[side] {
-					q.rect(r, w, h, theme::DOCK_PEEK);
-				}
+			let c = rgba(theme::RESIZE_HANDLE);
+			for k in 0..HANDLE as i32 {
+				let row_w = HANDLE - k as f32;
+				dl.fill_rect(WRect::new(x1 - row_w, y1 - 1.0 - k as f32, row_w, 1.0), c);
 			}
 		}
-		q
+		dl
 	}
 
 	// ----- layout persistence -------------------------------------
 
-	/// Reset the whole layout to defaults (Windows ▸ Reset Dialogs),
-	/// keeping the reserved top strip (the menu/tab bar height).
-	pub fn reset(&mut self) {
-		let top = self.top;
-		*self = Self::default();
-		self.top = top;
-	}
-
-	/// Clamp floating panels so at least [`MIN_VISIBLE`] px stays on-screen and
-	/// the titlebar never hides above the top strip. Applied on load and
-	/// on every window resize, so a window can't be lost off the edge.
-	pub fn clamp_floating(&mut self, w: f32, h: f32) {
-		for p in &mut self.panels {
-			if let Place::Floating(fx, fy) = &mut p.place {
-				let x_lo = MIN_VISIBLE - p.w;
-				*fx = fx.clamp(x_lo, (w - MIN_VISIBLE).max(x_lo));
-				*fy = fy.clamp(self.top, (h - MIN_VISIBLE).max(self.top));
-			}
-		}
-	}
-
-	/// The smallest a dock's cross-axis may be to fit its widest panel's content
-	/// (never below [`MIN_DOCK`]).
-	fn dock_cross_min(&self, side: usize) -> f32 {
-		self.docked(side).iter().fold(MIN_DOCK, |m, &i| m.max(cross_min(self.panels[i].min, side)))
-	}
-
-	/// Clamp every panel into its sensible size range so content can't overflow a
-	/// too-small window, nor a window grow past its max / the viewport. The
-	/// companion to [`clamp_floating`] (position); both run on load + resize.
-	pub fn clamp_sizes(&mut self, w: f32, h: f32) {
-		let avail_h = (h - self.top).max(MIN_VISIBLE);
-		for p in &mut self.panels {
-			match p.place {
-				Place::Floating(..) => {
-					p.w = p.w.clamp(p.min.0, p.max.0.min(w).max(p.min.0));
-					p.h = p.h.clamp(p.min.1, p.max.1.min(avail_h).max(p.min.1));
-				}
-				Place::Docked(side) => p.extent = p.extent.max(along_min(p.min, side)),
-				Place::Hidden => {}
-			}
-		}
-		for side in 0..4 {
-			let lo = self.dock_cross_min(side);
-			self.dock_size[side] = self.dock_size[side].clamp(lo, MAX_DOCK.max(lo));
-		}
-	}
-
-	/// Serialize the layout as the `[Workspace]` section of `mme.ini`:
+	/// Serialize a layout snapshot as a `[Workspace*]` section of `mme.ini`:
 	/// `Docks = left right top bottom`, plus one key per panel -
-	/// `Place X Y W H Extent` (`X`/`Y` only meaningful for `Float`).
-	pub fn to_ini(&self) -> INISection {
+	/// `Place X Y W H Extent` (`X`/`Y` only meaningful for `Float`). Taking a
+	/// snapshot (rather than `&self`) lets the non-active layout groups - whose
+	/// layouts live in stored snapshots, not the live workspace - persist
+	/// through the same format; serialize the live workspace with
+	/// `layout_to_ini(&ws.save_layout())`.
+	pub fn layout_to_ini(saved: &WorkspaceLayout) -> INISection {
 		const NAMES: [&str; 4] = ["Left", "Right", "Top", "Bottom"];
+		// Sizes persist as whole pixels (rounded) so the file stays clean and a
+		// restored layout lands on exact pixel boundaries.
+		let px = |v: f32| v.round() as i32;
 		let mut section = INISection::new();
-		let d = self.dock_size;
-		let _ = section.set_entry("Docks".to_string(), format!("{} {} {} {}", d[0], d[1], d[2], d[3]));
-		for p in &self.panels {
+		let d = saved.dock_size;
+		let _ = section.set_entry("Docks".to_string(), format!("{} {} {} {}", px(d[0]), px(d[1]), px(d[2]), px(d[3])));
+		for p in &saved.panels {
 			let (place, x, y) = match p.place {
 				Place::Docked(side) => (NAMES[side.min(3)], 0.0, 0.0),
 				Place::Floating(fx, fy) => ("Float", fx, fy),
 				Place::Hidden => ("Hidden", 0.0, 0.0),
 			};
-			let _ = section.set_entry(camel(p.id), format!("{place} {x} {y} {} {} {}", p.w, p.h, p.extent));
+			let _ = section.set_entry(
+				camel(&p.id),
+				format!("{place} {} {} {} {} {}", px(x), px(y), px(p.w), px(p.h), px(p.extent)),
+			);
 		}
 		section
 	}
 
-	/// Apply a `[Workspace]` section: set dock sizes + each known
-	/// panel's place/size, then clamp floats into the `w`×`h` screen. Unknown
-	/// keys and malformed fields are skipped (keeps defaults), so it's
-	/// forward-compatible with hand-edited files.
+	/// Apply a `[Workspace]` section: set dock sizes + each known panel's
+	/// place/size, then clamp into the `w`×`h` screen. Unknown keys and malformed
+	/// fields are skipped (keeps defaults), so it's forward-compatible with
+	/// hand-edited files.
 	pub fn apply_ini(&mut self, section: &INISection, w: f32, h: f32) {
+		let mut dock_size = self.0.dock_size();
 		if let Some(docks) = section.get_entry::<String>("Docks") {
 			for (i, text) in docks.split_whitespace().take(4).enumerate() {
 				if let Ok(n) = text.parse::<f32>() {
-					self.dock_size[i] = n;
+					dock_size[i] = n.round(); // whole pixels, even from a hand-edited file
 				}
 			}
 		}
+		let mut panels = Vec::new();
 		for (key, value) in section {
 			if key == "Docks" {
 				continue;
 			}
-			let Some(idx) = self.find(&key.to_lowercase()) else {
+			let id = key.to_lowercase();
+			let Some(idx) = self.0.find(&id) else {
 				continue;
+			};
+			// Missing size fields keep the panel's current value.
+			let (cw, ch, ce) = {
+				let p = &self.0.panels[idx];
+				(p.w, p.h, p.extent)
 			};
 			let text = value.to_string();
 			let mut parts = text.split_whitespace();
 			let Some(place_word) = parts.next() else {
 				continue;
 			};
-			let mut num = || parts.next().and_then(|t| t.parse::<f32>().ok());
+			// Round loaded sizes/positions to whole pixels.
+			let mut num = || parts.next().and_then(|t| t.parse::<f32>().ok()).map(f32::round);
 			let (x, y, wv, hv, ev) = (num(), num(), num(), num(), num());
-			if let Some(v) = wv {
-				self.panels[idx].w = v;
-			}
-			if let Some(v) = hv {
-				self.panels[idx].h = v;
-			}
-			if let Some(v) = ev {
-				self.panels[idx].extent = v;
-			}
 			let place = match place_word.to_ascii_lowercase().as_str() {
 				"left" => Place::Docked(LEFT),
 				"right" => Place::Docked(RIGHT),
@@ -794,27 +514,36 @@ impl Workspace {
 				"bottom" => Place::Docked(BOTTOM),
 				"float" => Place::Floating(x.unwrap_or(80.0), y.unwrap_or(80.0)),
 				"hidden" => Place::Hidden,
-				_ => self.panels[idx].place,
+				_ => self.0.panels[idx].place,
 			};
-			self.panels[idx].place = place;
-			// A hidden panel keeps its default `prev` so `window … on` restores
-			// it to a sensible dock; otherwise track the loaded place.
-			if !matches!(place, Place::Hidden) {
-				self.panels[idx].prev = place;
-			}
+			panels.push(ws::PanelLayout {
+				id,
+				place,
+				w: wv.unwrap_or(cw),
+				h: hv.unwrap_or(ch),
+				extent: ev.unwrap_or(ce),
+			});
 		}
-		// Loaded sizes are untrusted - clamp them into range before clamping
-		// position, so a stale/hand-edited file can't overflow content off-screen.
-		self.clamp_sizes(w, h);
-		self.clamp_floating(w, h);
+		// `load_layout` sets dock sizes + each known panel's place/size, preserves
+		// a hidden panel's `prev`, then clamps size + position into the screen.
+		self.0.load_layout(&WorkspaceLayout { dock_size, panels }, w, h);
+	}
+
+	/// Parse a `[Workspace*]` section into a standalone layout snapshot, filling
+	/// in a fresh default panel roster for any panel the section omits. Lets a
+	/// non-active mode's saved layout load at startup without disturbing the
+	/// live workspace.
+	pub fn layout_from_ini(section: &INISection, w: f32, h: f32) -> WorkspaceLayout {
+		let mut tmp = Workspace::default();
+		tmp.apply_ini(section, w, h);
+		tmp.0.save_layout()
 	}
 }
 
-/// Panel ids are single lowercase words (`"palette"`); their `[Workspace]`
-/// keys follow the CamelCase INI convention (`Palette`). `wrlpalette` is a
-/// compound (WRL + palette) with no separator to split on, so its key is spelled
-/// out. (`apply_ini` matches keys case-insensitively, so old `Wrlpalette` files
-/// still load.)
+/// Panel ids are single lowercase words (`"palette"`); their `[Workspace]` keys
+/// follow the CamelCase INI convention (`Palette`). `wrlpalette` is a compound
+/// (WRL + palette) with no separator to split on, so its key is spelled out.
+/// (`apply_ini` matches keys case-insensitively, so old `Wrlpalette` files load.)
 fn camel(id: &str) -> String {
 	if id == "wrlpalette" {
 		return "WrlPalette".to_string();
@@ -838,75 +567,29 @@ mod tests {
 	}
 
 	#[test]
-	fn settings_round_trip_preserves_layout() {
-		// serialize a customized layout, re-apply onto a fresh default,
-		// and every panel's place + the dock sizes come back identical.
+	fn ini_round_trip_preserves_layout() {
+		// Serialize a customized layout, re-apply onto a fresh default, and every
+		// panel's place + the dock sizes come back identical.
 		let mut a = ws();
-		a.dock_to("palette", "left", None).unwrap();
-		a.dock_to("minimap", "float", Some((120.0, 90.0))).unwrap();
+		a.dock_to("palette", Place::Docked(LEFT)).unwrap();
+		a.dock_to("minimap", Place::Floating(120.0, 90.0)).unwrap();
 		a.show("toolbox", Some(false)).unwrap();
-		a.dock_size[LEFT] = 333.0;
-		let section = a.to_ini();
+		a.set_dock_size([333.0, 280.0, 130.0, 150.0]);
+		let section = Workspace::layout_to_ini(&a.save_layout());
 		let mut b = ws();
 		b.apply_ini(&section, W, H);
 		for id in ["palette", "minimap", "toolbox", "tiles"] {
 			let (pa, pb) = (a.find(id).unwrap(), b.find(id).unwrap());
 			assert_eq!(a.panels[pa].place, b.panels[pb].place, "{id} place round-trips");
 		}
-		assert_eq!(a.dock_size, b.dock_size, "dock sizes round-trip");
-	}
-
-	#[test]
-	fn clamp_keeps_floats_on_screen() {
-		// a window dragged/loaded far off-screen is pulled back so ≥32px
-		// stays visible and its titlebar can't hide above the top strip.
-		let mut w = ws();
-		w.top = 24.0;
-		w.dock_to("minimap", "float", Some((5000.0, -500.0))).unwrap();
-		w.clamp_floating(W, H);
-		let p = &w.panels[w.find("minimap").unwrap()];
-		let Place::Floating(x, y) = p.place else { panic!("still floating") };
-		assert!(x <= W - MIN_VISIBLE && x + p.w >= MIN_VISIBLE, "≥32px visible horizontally");
-		assert!(y >= w.top && y <= H - MIN_VISIBLE, "titlebar below the top strip, ≥32px visible");
-	}
-
-	#[test]
-	fn clamp_sizes_bounds_floating_and_docks() {
-		let mut w = ws();
-		let i = w.find("minimap").unwrap();
-		let (min, max) = (w.panels[i].min, w.panels[i].max);
-		w.panels[i].place = Place::Floating(10.0, 50.0);
-		// Too small → grows to the per-panel min.
-		w.panels[i].w = 5.0;
-		w.panels[i].h = 5.0;
-		w.clamp_sizes(W, H);
-		assert_eq!((w.panels[i].w, w.panels[i].h), min, "min enforced");
-		// Too large → capped at the per-panel max (which is below the screen).
-		w.panels[i].w = 5000.0;
-		w.panels[i].h = 5000.0;
-		w.clamp_sizes(W, H);
-		assert_eq!((w.panels[i].w, w.panels[i].h), max, "max enforced");
-		// A max past the viewport still can't exceed the screen.
-		w.panels[i].max = (9999.0, 9999.0);
-		w.panels[i].w = 9999.0;
-		w.clamp_sizes(W, H);
-		assert_eq!(w.panels[i].w, W, "floating width capped at the viewport");
-		// A dock too thin for its widest panel's content is widened (fresh
-		// workspace - minimap docked LEFT by default).
-		let mut d = ws();
-		d.dock_size[LEFT] = 10.0;
-		d.clamp_sizes(W, H);
-		let mm = d.panels[d.find("minimap").unwrap()].min;
-		assert!(d.dock_size[LEFT] >= cross_min(mm, LEFT), "dock fits content min");
+		assert_eq!(a.dock_size(), b.dock_size(), "dock sizes round-trip");
 	}
 
 	#[test]
 	fn reset_restores_defaults_keeping_top() {
-		// Reset Dialogs returns every panel to its default place, but keeps
-		// the reserved top strip the editor set.
 		let mut w = ws();
 		w.top = 24.0;
-		w.dock_to("palette", "float", Some((10.0, 10.0))).unwrap();
+		w.dock_to("palette", Place::Floating(10.0, 10.0)).unwrap();
 		w.show("toolbox", Some(false)).unwrap();
 		w.reset();
 		let def = ws();
@@ -917,182 +600,7 @@ mod tests {
 	}
 
 	#[test]
-	fn default_layout_partitions_the_screen() {
-		let l = ws().layout(W, H);
-		// All four default panels laid out; center inset on three sides
-		// (no top dock by default → center touches the screen top).
-		assert_eq!(l.panels.len(), 4);
-		assert!(l.center.x > 0.0);
-		assert!(l.center.x + l.center.w < W);
-		assert!(l.center.y + l.center.h < H);
-		assert!(l.docks[TOP].is_none());
-		assert_eq!(l.center.y, 0.0);
-		assert_eq!(l.center.y, l.docks[LEFT].unwrap().y);
-		// Right dock stacks two panels with one splitter between them.
-		assert_eq!(l.splitters.len(), 1);
-		assert_eq!(l.splitters[0].0, RIGHT);
-	}
-
-	#[test]
-	fn hiding_a_dock_panel_grows_the_center() {
-		let mut w = ws();
-		let before = w.layout(W, H).center;
-		w.show("minimap", Some(false)).unwrap();
-		let after = w.layout(W, H).center;
-		assert!(after.x < before.x, "left dock auto-hides when emptied");
-		assert!(after.w > before.w);
-		// And re-showing restores the docked place.
-		w.show("minimap", Some(true)).unwrap();
-		assert_eq!(w.panels[w.find("minimap").unwrap()].place, Place::Docked(LEFT));
-	}
-
-	#[test]
-	fn window_toggle_round_trips() {
-		let mut w = ws();
-		w.show("toolbox", None).unwrap();
-		assert_eq!(w.panels[w.find("toolbox").unwrap()].place, Place::Hidden);
-		w.show("toolbox", None).unwrap();
-		assert_eq!(w.panels[w.find("toolbox").unwrap()].place, Place::Docked(BOTTOM));
-		assert!(w.show("nonsense", None).is_err());
-	}
-
-	#[test]
-	fn dock_command_moves_between_sides_and_float() {
-		let mut w = ws();
-		w.dock_to("palette", "left", None).unwrap();
-		assert_eq!(w.docked(LEFT).len(), 2);
-		assert_eq!(w.docked(RIGHT).len(), 1);
-		w.dock_to("palette", "float", Some((50.0, 60.0))).unwrap();
-		let i = w.find("palette").unwrap();
-		assert_eq!(w.panels[i].place, Place::Floating(50.0, 60.0));
-		assert!(w.dock_to("palette", "diagonal", None).is_err());
-	}
-
-	#[test]
-	fn titlebar_drag_undocks_then_drops_into_a_dock() {
-		let mut w = ws();
-		let l = w.layout(W, H);
-		// Find the minimap's titlebar.
-		let mm = w.find("minimap").unwrap();
-		let r = l.panels.iter().find(|(i, _)| *i == mm).unwrap().1;
-		let (px, py) = (r.x + 40.0, r.y + 8.0);
-		assert_eq!(Press::Chrome, w.on_press(px, py, W, H));
-		// A 2-px wiggle does not undock.
-		w.on_move(px + 2.0, py, W, H);
-		assert_eq!(w.panels[w.find("minimap").unwrap()].place, Place::Docked(LEFT));
-		// Crossing the threshold floats it at the cursor.
-		w.on_move(640.0, 400.0, W, H);
-		assert!(matches!(w.panels[w.find("minimap").unwrap()].place, Place::Floating(..)));
-		// Releasing over the right dock docks it there (after `tiles`+`palette`).
-		let right = w.layout(W, H).docks[RIGHT].unwrap();
-		w.on_move(right.x + right.w / 2.0, right.y + right.h - 10.0, W, H);
-		assert!(w.on_release(right.x + right.w / 2.0, right.y + right.h - 10.0, W, H));
-		assert_eq!(w.panels[w.find("minimap").unwrap()].place, Place::Docked(RIGHT));
-		assert_eq!(w.docked(RIGHT).len(), 3);
-		// Dropped at the bottom → it stacks last.
-		assert_eq!(*w.docked(RIGHT).last().unwrap(), w.find("minimap").unwrap());
-		// The left dock emptied and auto-hides.
-		assert!(w.layout(W, H).docks[LEFT].is_none());
-	}
-
-	#[test]
-	fn undocking_takes_top_z_immediately() {
-		let mut w = ws();
-		// An existing floating panel that would otherwise cover the drag.
-		w.dock_to("tiles", "float", Some((400.0, 200.0))).unwrap();
-		let l = w.layout(W, H);
-		let pi = w.find("palette").unwrap();
-		let r = l.panels.iter().find(|(i, _)| *i == pi).unwrap().1;
-		assert_eq!(Press::Chrome, w.on_press(r.x + 30.0, r.y + 8.0, W, H));
-		// Crossing the drag threshold undocks AND raises in the same move.
-		w.on_move(640.0, 300.0, W, H);
-		assert_eq!(w.panels.last().unwrap().id, "palette", "undocked panel is topmost");
-		// The drag keeps tracking the panel across the reorder.
-		w.on_move(700.0, 350.0, W, H);
-		let p = w.panels.last().unwrap();
-		assert_eq!(p.id, "palette");
-		assert!(matches!(p.place, Place::Floating(px, _) if px > 600.0));
-	}
-
-	#[test]
-	fn re_docks_into_an_emptied_peeked_dock() {
-		let mut w = ws();
-		// Drag the only left panel out - the left dock auto-hides...
-		let l = w.layout(W, H);
-		let mm = w.find("minimap").unwrap();
-		let r = l.panels.iter().find(|(i, _)| *i == mm).unwrap().1;
-		assert_eq!(Press::Chrome, w.on_press(r.x + 40.0, r.y + 8.0, W, H));
-		w.on_move(600.0, 400.0, W, H);
-		assert!(w.layout(W, H).docks[LEFT].is_none(), "emptied dock auto-hides");
-		// ...dragging back near the edge peeks it open as a drop target...
-		w.on_move(30.0, 400.0, W, H);
-		assert!(w.layout(W, H).docks[LEFT].is_some(), "peeked open during the drag");
-		// ...and releasing inside the peeked rect docks the panel.
-		assert!(w.on_release(30.0, 400.0, W, H));
-		assert_eq!(w.panels[w.find("minimap").unwrap()].place, Place::Docked(LEFT));
-	}
-
-	#[test]
-	fn drop_outside_any_dock_stays_floating() {
-		let mut w = ws();
-		let l = w.layout(W, H);
-		let mm = w.find("minimap").unwrap();
-		let r = l.panels.iter().find(|(i, _)| *i == mm).unwrap().1;
-		assert_eq!(Press::Chrome, w.on_press(r.x + 40.0, r.y + 8.0, W, H));
-		w.on_move(600.0, 300.0, W, H);
-		w.on_release(600.0, 300.0, W, H);
-		let p = &w.panels[w.find("minimap").unwrap()];
-		assert!(matches!(p.place, Place::Floating(..)));
-		assert_eq!(p.prev, p.place, "floating place survives a later hide/show");
-	}
-
-	#[test]
-	fn close_glyph_hides_and_window_command_restores() {
-		let mut w = ws();
-		let l = w.layout(W, H);
-		let tb = w.find("toolbox").unwrap();
-		let r = l.panels.iter().find(|(i, _)| *i == tb).unwrap().1;
-		let close = crate::ui::close_rect(r, FRAME_DOCK);
-		assert_eq!(Press::Chrome, w.on_press(close.x + 4.0, close.y + 4.0, W, H));
-		assert_eq!(w.panels[w.find("toolbox").unwrap()].place, Place::Hidden);
-		assert!(w.layout(W, H).docks[BOTTOM].is_none());
-		w.show("toolbox", Some(true)).unwrap();
-		assert_eq!(w.panels[w.find("toolbox").unwrap()].place, Place::Docked(BOTTOM));
-	}
-
-	#[test]
-	fn dock_edge_drag_resizes_and_clamps() {
-		let mut w = ws();
-		let l = w.layout(W, H);
-		let edge = l.edges[LEFT].unwrap();
-		assert_eq!(Press::Chrome, w.on_press(edge.x + 2.0, edge.y + 50.0, W, H));
-		w.on_move(400.0, edge.y + 50.0, W, H);
-		w.on_release(400.0, edge.y + 50.0, W, H);
-		assert_eq!(w.layout(W, H).docks[LEFT].unwrap().w, 400.0);
-		// Clamped on both ends.
-		let edge = w.layout(W, H).edges[LEFT].unwrap();
-		assert_eq!(Press::Chrome, w.on_press(edge.x + 2.0, edge.y + 50.0, W, H));
-		w.on_move(5000.0, edge.y + 50.0, W, H);
-		w.on_release(5000.0, edge.y + 50.0, W, H);
-		assert_eq!(w.layout(W, H).docks[LEFT].unwrap().w, MAX_DOCK);
-	}
-
-	#[test]
-	fn splitter_drag_resizes_the_dock_mate_above() {
-		let mut w = ws();
-		let l = w.layout(W, H);
-		let (side, nth, s) = l.splitters[0];
-		assert_eq!((side, nth), (RIGHT, 0));
-		assert_eq!(Press::Chrome, w.on_press(s.x + 2.0, s.y + 2.0, W, H));
-		let dock_top = l.docks[RIGHT].unwrap().y;
-		w.on_move(s.x + 2.0, dock_top + 150.0, W, H);
-		w.on_release(s.x + 2.0, dock_top + 150.0, W, H);
-		let i = w.docked(RIGHT)[0];
-		assert_eq!(w.panels[i].extent, 150.0);
-	}
-
-	#[test]
-	fn body_press_reports_panel_and_rect() {
+	fn on_press_maps_body_to_static_id() {
 		let mut w = ws();
 		let l = w.layout(W, H);
 		let ti = w.find("tiles").unwrap();
@@ -1100,37 +608,219 @@ mod tests {
 		match w.on_press(r.x + 50.0, r.y + 100.0, W, H) {
 			Press::Body { id, body } => {
 				assert_eq!(id, "tiles");
-				assert_eq!(body, ui::body_rect(r, FRAME_DOCK));
+				assert_eq!(body, w.body_of(ti, r));
 			}
 			other => panic!("expected Body, got {other:?}"),
 		}
-		// body_at finds the same panel (wheel routing); the center is free.
-		assert_eq!(w.body_at(r.x + 50.0, r.y + 100.0, W, H).unwrap().0, "tiles");
-		let c = w.layout(W, H).center;
-		assert!(w.body_at(c.x + c.w / 2.0, c.y + c.h / 2.0, W, H).is_none());
 	}
 
+	/// **Every panel the workspace holds must be in [`PANEL_IDS`].**
+	///
+	/// `static_id` maps an unknown id to `""`, and `""` is the id no `panel_host`
+	/// arm answers to - so a panel left out of the table is laid out and drawn
+	/// exactly like the others while every press, wheel notch and paging key
+	/// routed by id is dropped on the floor. It looks alive and is completely
+	/// dead, with nothing in the build or the goldens to say so. That is what the
+	/// Scenery panel shipped as, so the table gets a test rather than a comment.
 	#[test]
-	fn over_ui_separates_chrome_from_map() {
+	fn every_panel_has_a_static_id() {
 		let w = ws();
-		let l = w.layout(W, H);
-		let c = l.center;
-		assert!(!w.over_ui(c.x + c.w / 2.0, c.y + c.h / 2.0, W, H));
-		let r = l.panels[0].1;
-		assert!(w.over_ui(r.x + 5.0, r.y + 5.0, W, H));
+		for p in &w.panels {
+			assert_eq!(static_id(&p.id), p.id, "panel '{}' is missing from PANEL_IDS - its input is dead", p.id);
+		}
+		assert_eq!(w.panels.len(), PANEL_IDS.len(), "and PANEL_IDS names no panel that does not exist");
+		assert_eq!(static_id("nope"), "", "an id the workspace never had still resolves to nothing");
 	}
 
+	/// The arranged rect of panel `id` in the default layout.
+	fn panel_rect(w: &Workspace, id: &str) -> Rect {
+		let i = w.find(id).unwrap();
+		w.layout(W, H).panels.iter().find(|(p, _)| *p == i).map(|(_, r)| *r).unwrap()
+	}
+
+	/// A headless steel theme + fonts for inspecting produced `DrawList`s (a
+	/// dummy steel texture id - the list only records commands).
+	fn skin() -> (SteelTheme, Fonts) {
+		let mut fonts = Fonts::new();
+		let font = fonts.add(include_bytes!("../assets/MAX_Redesign_Square.ttf").to_vec()).unwrap();
+		let em = fonts.get(font).units_per_em();
+		(SteelTheme::new(font, wgpu_ui::TextureId::ATLAS, em), fonts)
+	}
+
+	/// The console verbs format success and failure the console way: `window`
+	/// reports shown/hidden (toggling without an explicit state), `dock` parses
+	/// its place word, and both spell out an unknown id with the known list.
 	#[test]
-	fn floating_resize_respects_minimums() {
+	fn console_verbs_format_success_and_errors() {
 		let mut w = ws();
-		w.dock_to("minimap", "float", Some((100.0, 100.0))).unwrap();
-		let i = w.find("minimap").unwrap();
-		let (pw, ph) = (w.panels[i].w, w.panels[i].h);
-		let handle = (100.0 + pw - 4.0, 100.0 + ph - 4.0);
-		assert_eq!(Press::Chrome, w.on_press(handle.0, handle.1, W, H));
-		w.on_move(100.0 + 10.0, 100.0 + 10.0, W, H);
-		w.on_release(100.0 + 10.0, 100.0 + 10.0, W, H);
-		let i = w.find("minimap").unwrap();
-		assert_eq!((w.panels[i].w, w.panels[i].h), w.panels[i].min);
+		assert_eq!(w.show_cmd("palette", Some(false)).unwrap(), "window palette: hidden");
+		assert_eq!(w.show_cmd("palette", None).unwrap(), "window palette: shown", "None toggles back on");
+		let err = w.show_cmd("nope", None).unwrap_err();
+		assert!(err.starts_with("unknown window 'nope' (have: "), "unknown id names itself: {err}");
+		assert!(err.contains("palette") && err.contains("toolbox"), "the known list is spelled out: {err}");
+
+		assert_eq!(w.dock_cmd("palette", "float", Some((50.0, 60.0))).unwrap(), "window palette: Floating(50.0, 60.0)");
+		assert_eq!(w.dock_cmd("palette", "left", None).unwrap(), format!("window palette: {:?}", Place::Docked(LEFT)));
+		assert_eq!(
+			w.dock_cmd("palette", "diagonal", None).unwrap_err(),
+			"dock: bad place 'diagonal' (left|right|top|bottom|float)"
+		);
+		let err = w.dock_cmd("ghost", "top", None).unwrap_err();
+		assert!(err.starts_with("unknown window 'ghost'"), "dock reports unknown ids too: {err}");
+	}
+
+	/// Press routing beyond the body case: empty map space is `None`, a
+	/// titlebar is `Chrome`; `body_at` resolves the panel under a point to its
+	/// static id (and nothing over the map).
+	#[test]
+	fn press_and_body_at_route_chrome_and_map_space() {
+		let mut w = ws();
+		// The map center: inside no panel → None (and no drag starts).
+		assert_eq!(w.on_press(W / 2.0, H / 2.0, W, H), Press::None);
+		assert!(w.body_at(W / 2.0, H / 2.0, W, H).is_none(), "map space has no panel body");
+		// A titlebar press is chrome (handled inside the model).
+		let r = panel_rect(&w, "minimap");
+		let mi = w.find("minimap").unwrap();
+		let tb = w.titlebar_of(mi, r);
+		assert_eq!(w.on_press(tb.x + 30.0, tb.y + tb.h / 2.0, W, H), Press::Chrome);
+		w.on_release(tb.x + 30.0, tb.y + tb.h / 2.0, W, H);
+		// body_at maps back to the editor's static id + body rect.
+		let (id, body) = w.body_at(r.x + 50.0, r.y + 100.0, W, H).expect("minimap under the point");
+		assert_eq!(id, "minimap");
+		assert_eq!(body, w.body_of(mi, r));
+	}
+
+	/// While a titlebar drag hovers near an empty dock edge, `draw_peeks`
+	/// paints that dock's drop-target highlight; idle, it paints nothing.
+	#[test]
+	fn draw_peeks_highlights_an_empty_dock_during_a_drag() {
+		let mut w = ws();
+		assert!(w.draw_peeks(W, H).cmds.is_empty(), "no peeks while idle");
+		// Drag the minimap by its titlebar toward the (empty) top dock.
+		let r = panel_rect(&w, "minimap");
+		let mi = w.find("minimap").unwrap();
+		let tb = w.titlebar_of(mi, r);
+		assert_eq!(w.on_press(tb.x + 30.0, tb.y + tb.h / 2.0, W, H), Press::Chrome);
+		w.on_move(W / 2.0, 2.0, W, H); // well past the drag threshold, at the top edge
+		let dl = w.draw_peeks(W, H);
+		assert!(!dl.cmds.is_empty(), "the empty top dock peeks as a drop target");
+		w.on_release(W / 2.0, 2.0, W, H);
+	}
+
+	/// The wrapped placeholder hint: words flow to a new line when the next
+	/// one won't fit the panel width, so a narrow rect yields multiple
+	/// baselines spanning at least one line height.
+	#[test]
+	fn hint_wraps_words_to_the_rect_width() {
+		let (skin, fonts) = skin();
+		let px = skin.font_px(TextRole::Small);
+		let baselines = |w: f32, text: &str| -> Vec<f32> {
+			let mut dl = DrawList::new();
+			hint(&mut dl, &skin, &fonts, Rect::new(0.0, 0.0, w, 300.0), 8.0, text, theme::INK_DIM);
+			let mut ys: Vec<f32> = dl
+				.cmds
+				.iter()
+				.filter_map(|c| match c {
+					wgpu_ui::DrawCmd::Glyph { pen, .. } => Some(pen.y),
+					_ => None,
+				})
+				.collect();
+			ys.sort_by(f32::total_cmp);
+			ys.dedup();
+			ys
+		};
+		let text = "interactive minimap lands with UI-11";
+		// Wide: everything on one baseline cluster (emboss layers sit within 2px).
+		let wide = baselines(600.0, text);
+		assert!(wide.last().unwrap() - wide.first().unwrap() < px + 4.0, "one line when wide: {wide:?}");
+		// Narrow: the words wrap - baselines span at least one line height.
+		let narrow = baselines(120.0, text);
+		assert!(narrow.last().unwrap() - narrow.first().unwrap() >= px + 4.0, "wraps when narrow: {narrow:?}");
+	}
+
+	/// Panel chrome: the hint only draws when asked, the close `x` washes under
+	/// the pointer the model tracks (and goes dark when it leaves - the rule a
+	/// cascade opening over the frame relies on), and a floating panel gets its
+	/// stepped resize-grip rows in the bottom-right corner.
+	#[test]
+	fn draw_panel_paints_hint_close_wash_and_float_grip() {
+		let (skin, fonts) = skin();
+		let mut w = ws();
+		let r = Rect::new(100.0, 100.0, 160.0, 160.0);
+		let mi = w.find("minimap").unwrap();
+		let frame = w.frame_of(mi);
+
+		let plain = w.draw_panel(&skin, &fonts, mi, r, false);
+		let hinted = w.draw_panel(&skin, &fonts, mi, r, true);
+		assert!(hinted.cmds.len() > plain.cmds.len(), "show_hint adds the engraved placeholder text");
+
+		// The close `x` washes while the pointer is on it.
+		let close = ui::close_rect(r, frame);
+		let washed = |dl: &DrawList| {
+			dl.cmds.iter().any(|c| match c {
+				wgpu_ui::DrawCmd::Solid { rect, color } => *rect == close && *color == rgba(theme::HOVER),
+				_ => false,
+			})
+		};
+		assert!(!washed(&plain), "no pointer, no wash");
+		w.0.on_move(close.x + 2.0, close.y + 2.0, 1280.0, 800.0);
+		assert!(washed(&w.draw_panel(&skin, &fonts, mi, r, false)), "the x washes under the pointer");
+		// A menu opening over the frame moves no pointer, so the leave is the only
+		// thing that can put it out (U6.2).
+		w.0.on_pointer_left();
+		assert!(!washed(&w.draw_panel(&skin, &fonts, mi, r, false)), "and the leave puts it out");
+
+		// Floating: the same panel gains the stepped grip rows (docked has none).
+		w.dock_to("minimap", Place::Floating(100.0, 100.0)).unwrap();
+		let mi = w.find("minimap").unwrap();
+		let floating = w.draw_panel(&skin, &fonts, mi, r, false);
+		let grip = |dl: &DrawList| {
+			dl.cmds
+				.iter()
+				.filter(|c| match c {
+					wgpu_ui::DrawCmd::Solid { rect, color } => {
+						rect.h == 1.0 && rect.y > r.y + r.h - 15.0 && *color == rgba(theme::RESIZE_HANDLE)
+					}
+					_ => false,
+				})
+				.count()
+		};
+		assert_eq!(grip(&floating), 14, "one 1px row per grip step");
+		assert_eq!(grip(&plain), 0, "docked panels draw no grip");
+	}
+
+	/// `apply_ini` is forgiving with hand-edited files: non-numeric dock sizes
+	/// are skipped (the rest still apply), unknown panel keys are ignored, an
+	/// empty value keeps the panel untouched, and an unknown place word keeps
+	/// the panel's current place while its sizes still load.
+	#[test]
+	fn apply_ini_skips_malformed_fields_and_unknown_keys() {
+		let mut w = ws();
+		let default_docks = w.dock_size();
+		let palette_place = w.panels[w.find("palette").unwrap()].place;
+		let tiles_place = w.panels[w.find("tiles").unwrap()].place;
+
+		let mut section = INISection::new();
+		let _ = section.set_entry("Docks".to_string(), "abc 280".to_string());
+		let _ = section.set_entry("Bogus".to_string(), "Left 0 0 100 100 100".to_string());
+		let _ = section.set_entry("Palette".to_string(), "".to_string());
+		let _ = section.set_entry("Tiles".to_string(), "diagonal 0 0 300 320 320".to_string());
+		w.apply_ini(&section, W, H);
+
+		assert_eq!(w.dock_size()[0], default_docks[0], "the unparsable dock size keeps its default");
+		assert_eq!(w.dock_size()[1], 280.0, "the numeric dock size still applies");
+		assert!(w.find("bogus").is_none(), "unknown keys add no panel");
+		assert_eq!(w.panels[w.find("palette").unwrap()].place, palette_place, "an empty value keeps the panel");
+		assert_eq!(w.panels[w.find("tiles").unwrap()].place, tiles_place, "a bad place word keeps the place");
+	}
+
+	/// Panel-id → INI-key casing: plain ids capitalize their first letter, the
+	/// compound `wrlpalette` is spelled `WrlPalette`, and the empty id (never
+	/// produced, but total) maps to the empty key.
+	#[test]
+	fn camel_cases_panel_ids_for_ini_keys() {
+		assert_eq!(camel("palette"), "Palette");
+		assert_eq!(camel("wrlpalette"), "WrlPalette");
+		assert_eq!(camel(""), "");
 	}
 }

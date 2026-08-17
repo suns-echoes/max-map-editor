@@ -77,26 +77,26 @@ impl INISection {
 			_ if TypeId::of::<i8>() == TypeId::of::<T>() => {
 				let i8_value = Box::new(value) as Box<dyn Any>;
 				let i8_value_ref = i8_value.downcast_ref::<i8>().unwrap();
-				let i32_value = *i8_value_ref as i32;
-				self.0.insert(key, INIValue(INIValueType::Integer, Box::new(i32_value)));
+				let i64_value = *i8_value_ref as i64;
+				self.0.insert(key, INIValue(INIValueType::Integer, Box::new(i64_value)));
 			}
 			_ if TypeId::of::<u8>() == TypeId::of::<T>() => {
 				let u8_value = Box::new(value) as Box<dyn Any>;
 				let u8_value_ref = u8_value.downcast_ref::<u8>().unwrap();
-				let i32_value = *u8_value_ref as i32;
-				self.0.insert(key, INIValue(INIValueType::Integer, Box::new(i32_value)));
+				let i64_value = *u8_value_ref as i64;
+				self.0.insert(key, INIValue(INIValueType::Integer, Box::new(i64_value)));
 			}
 			_ if TypeId::of::<i16>() == TypeId::of::<T>() => {
 				let i16_value = Box::new(value) as Box<dyn Any>;
 				let i16_value_ref = i16_value.downcast_ref::<i16>().unwrap();
-				let i32_value = *i16_value_ref as i32;
-				self.0.insert(key, INIValue(INIValueType::Integer, Box::new(i32_value)));
+				let i64_value = *i16_value_ref as i64;
+				self.0.insert(key, INIValue(INIValueType::Integer, Box::new(i64_value)));
 			}
 			_ if TypeId::of::<u16>() == TypeId::of::<T>() => {
 				let u16_value = Box::new(value) as Box<dyn Any>;
 				let u16_value_ref = u16_value.downcast_ref::<u16>().unwrap();
-				let i32_value = *u16_value_ref as i32;
-				self.0.insert(key, INIValue(INIValueType::Integer, Box::new(i32_value)));
+				let i64_value = *u16_value_ref as i64;
+				self.0.insert(key, INIValue(INIValueType::Integer, Box::new(i64_value)));
 			}
 			_ if TypeId::of::<i32>() == TypeId::of::<T>() => {
 				let i32_value = Box::new(value) as Box<dyn Any>;
@@ -447,5 +447,111 @@ mod tests {
 		assert!(keys.contains(&"a".to_string()));
 		assert!(keys.contains(&"b".to_string()));
 		assert_eq!(keys.len(), 2);
+	}
+
+	#[test]
+	fn test_iterate_owned_section() {
+		// Consuming iteration hands out owned (String, INIValue) pairs whose
+		// values still stringify through Display.
+		let mut section = INISection::new();
+		section.set_entry("a".to_string(), 1i64).unwrap();
+		section.set_entry("b".to_string(), "two".to_string()).unwrap();
+
+		let mut entries: Vec<(String, String)> = section.into_iter().map(|(k, v)| (k, v.to_string())).collect();
+		entries.sort();
+
+		assert_eq!(entries, [("a".to_string(), "1".to_string()), ("b".to_string(), "two".to_string())]);
+	}
+
+	#[test]
+	fn test_default_matches_new() {
+		// `INISection::default()` must be interchangeable with `INISection::new()`.
+		let section = INISection::default();
+		assert!(section.is_empty(), "a default-constructed section starts with no entries");
+	}
+
+	#[test]
+	fn test_into_val_string_respects_type_tag() {
+		// IntoINIValue<String>: yields the string for a String-typed value,
+		// None for a type mismatch and None for a missing entry.
+		let mut section = INISection::new();
+		section.set_entry("name".to_string(), "alice".to_string()).unwrap();
+		section.set_entry("count".to_string(), 7i64).unwrap();
+		let find = |key: &str| (&section).into_iter().find(|(k, _)| *k == key).map(|(_, v)| v);
+
+		let name: Option<String> = find("name").into_val();
+		assert_eq!(name, Some("alice".to_string()));
+		let mismatch: Option<String> = find("count").into_val();
+		assert!(mismatch.is_none(), "an Integer value must not read back as String");
+		let missing: Option<String> = find("absent").into_val();
+		assert!(missing.is_none(), "a missing entry reads as None");
+	}
+
+	#[test]
+	fn test_into_val_integer_respects_type_tag() {
+		// IntoINIValue<i64>: yields the number for an Integer-typed value and
+		// None for a type mismatch.
+		let mut section = INISection::new();
+		section.set_entry("count".to_string(), 7i64).unwrap();
+		section.set_entry("name".to_string(), "alice".to_string()).unwrap();
+		let find = |key: &str| (&section).into_iter().find(|(k, _)| *k == key).map(|(_, v)| v);
+
+		let count: Option<i64> = find("count").into_val();
+		assert_eq!(count, Some(7));
+		let mismatch: Option<i64> = find("name").into_val();
+		assert!(mismatch.is_none(), "a String value must not read back as i64");
+	}
+
+	#[test]
+	fn test_narrow_integer_types_widen_and_round_trip() {
+		// Every accepted integer width widens to i64 - the one type `get_entry`
+		// will hand back for `INIValueType::Integer`. i8/u8/i16/u16 used to widen
+		// to i32 instead, which no `get_entry::<T>` could downcast to, so a value
+		// stored through them was write-only in memory. This test passed anyway,
+		// because it only went the long way round (serialize -> reparse, where the
+		// text re-reads as i64); the direct reads at the end are what pin it.
+		let mut section = INISection::new();
+		section.set_entry("v_i8".to_string(), -5i8).unwrap();
+		section.set_entry("v_u8".to_string(), 200u8).unwrap();
+		section.set_entry("v_i16".to_string(), -1234i16).unwrap();
+		section.set_entry("v_u16".to_string(), 60000u16).unwrap();
+		section.set_entry("v_i32".to_string(), -70000i32).unwrap();
+		section.set_entry("v_u32".to_string(), 4_000_000_000u32).unwrap();
+		section.set_entry("v_u64".to_string(), 9_000_000_000u64).unwrap();
+
+		// Straight back out of the section it was set on, with no round trip
+		// through text - the path that was broken for the four narrow widths.
+		assert_eq!(section.get_entry::<i64>("v_i8"), Some(-5));
+		assert_eq!(section.get_entry::<i64>("v_u8"), Some(200));
+		assert_eq!(section.get_entry::<i64>("v_i16"), Some(-1234));
+		assert_eq!(section.get_entry::<i64>("v_u16"), Some(60000));
+		assert_eq!(section.get_entry::<i64>("v_i32"), Some(-70000));
+
+		let mut ini = crate::INI::new();
+		ini.insert_section("S".to_string(), section);
+		let re = crate::INI::from_str(&ini.to_string()).expect("serialized integers re-parse");
+
+		assert_eq!(re.get_entry::<i64>("S", "v_i8"), Some(-5));
+		assert_eq!(re.get_entry::<i64>("S", "v_u8"), Some(200));
+		assert_eq!(re.get_entry::<i64>("S", "v_i16"), Some(-1234));
+		assert_eq!(re.get_entry::<i64>("S", "v_u16"), Some(60000));
+		assert_eq!(re.get_entry::<i64>("S", "v_i32"), Some(-70000));
+		assert_eq!(re.get_entry::<i64>("S", "v_u32"), Some(4_000_000_000));
+		assert_eq!(re.get_entry::<i64>("S", "v_u64"), Some(9_000_000_000));
+	}
+
+	#[test]
+	fn test_display_of_mismatched_value_is_empty() {
+		// Defensive fall-through in the stringifier: a value whose boxed type
+		// disagrees with its type tag renders as empty output - not a panic.
+		let cases = [
+			INIValue(INIValueType::String, Box::new(42i64)),
+			INIValue(INIValueType::Integer, Box::new("x".to_string())),
+			INIValue(INIValueType::Float, Box::new(42i64)),
+			INIValue(INIValueType::Boolean, Box::new(42i64)),
+		];
+		for value in cases {
+			assert_eq!(value.to_string(), "", "a mismatched {:?} value renders as empty", value.0);
+		}
 	}
 }

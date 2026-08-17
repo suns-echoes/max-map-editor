@@ -26,6 +26,7 @@ use std::path::Path;
 
 use max_assets::wrl::{TILE_DATA_SIZE, WrlFile};
 
+use crate::deanimate::{deanimate_remap, deanimate_with};
 use crate::pack::TilePack;
 use crate::project::{
 	LAYER_GROUND, LAYER_WATER, Project, TileRef, Transform, pack_prefix, pass_class, pass_layer, transform_tile,
@@ -148,6 +149,13 @@ impl WrlImport {
 			}
 		}
 
+		// One de-animation remap per palette-owning pack. The shipped packs'
+		// LAND/OBSTRUCTION tiles were de-animated (cycled pixels moved to a static
+		// look-alike), so a non-water / non-shore WRL tile that stores the raw
+		// animated art must be de-animated the same way to find its pack twin.
+		let pack_remaps: Vec<Option<[u8; 256]>> =
+			project.packs.iter().map(|p| p.palette.as_deref().map(deanimate_remap)).collect();
+
 		let tile_count = wrl.tile_count as usize;
 		let mut used = vec![0usize; tile_count];
 		for &t in &wrl.bigmap {
@@ -158,9 +166,30 @@ impl WrlImport {
 
 		let mut matched: Vec<Option<(u8, u16, Transform)>> = vec![None; tile_count];
 		for (t, count) in used.iter().enumerate() {
-			if *count > 0 {
-				matched[t] = by_key.get(&canon(wrl_tile(&wrl, t), None)).copied();
+			if *count == 0 {
+				continue;
 			}
+			let pixels = wrl_tile(&wrl, t);
+			// Raw match first: unchanged behaviour, and the only path for water /
+			// shore tiles (their cycled pixels fold via `canon`).
+			let mut m = by_key.get(&canon(pixels, None)).copied();
+			// A non-water / non-shore tile that missed retries de-animated against
+			// each pack's palette; only animated tiles are worth re-keying (a
+			// no-op de-animation yields the same key that already missed).
+			let pass = wrl.pass_table.get(t).copied().unwrap_or(0);
+			if m.is_none() && (pass == 0 || pass == 3) {
+				for remap in pack_remaps.iter().flatten() {
+					let mut px = pixels.to_vec();
+					if deanimate_with(&mut px, remap) == 0 {
+						continue;
+					}
+					if let Some(hit) = by_key.get(&canon(&px, None)).copied() {
+						m = Some(hit);
+						break;
+					}
+				}
+			}
+			matched[t] = m;
 		}
 
 		// Place the matched cells: a water-pack tile rides the opaque base
@@ -434,6 +463,57 @@ mod tests {
 		let pack = &project.packs[ground.pack as usize];
 		assert!(pack.user && pack.name == "GREEN");
 		assert!(pack.tile_pixels(ground.tile).iter().all(|&p| p == BOGUS));
+	}
+
+	/// With every used tile matched there is nothing to place - `finish` hands
+	/// the project back untouched whatever the destination says.
+	#[test]
+	fn finish_with_nothing_unmapped_adds_no_pack() {
+		let mut wrl = fixture();
+		wrl.tiles.truncate(2 * TILE_DATA_SIZE); // drop the bogus tile
+		wrl.tile_count = 2;
+		wrl.pass_table = vec![1, 0];
+		wrl.bigmap = vec![0, 1, 0];
+		let imp = WrlImport::new(wrl, "Clean", "GREEN", &["GREEN".to_string()], &assets_root(), 0).unwrap();
+		assert!(imp.unmapped().is_empty());
+		let (project, persist) = imp.finish(ExtrasDest::ProjectPack);
+		assert_eq!(persist, None);
+		assert_eq!(project.packs.len(), 2, "no extras pack materializes: WATER + GREEN only");
+	}
+
+	/// When the owner user pack is already loaded (as `append_user_packs` would
+	/// have done), extras fold into it - deduping against the tiles it already
+	/// holds instead of appending twins.
+	#[test]
+	fn user_tileset_reuses_a_preloaded_user_pack() {
+		let mut imp = import();
+		let mut user = TilePack::empty_user("GREEN");
+		user.push_tile("XGX000".to_string(), &[BOGUS; TILE_DATA_SIZE], 0);
+		imp.project.packs.push(user);
+		let packs_before = imp.project.packs.len();
+		let (project, persist) = imp.finish(ExtrasDest::UserTileset);
+		assert_eq!(persist.as_deref(), Some("GREEN"));
+		assert_eq!(project.packs.len(), packs_before, "the preloaded user pack was reused, not duplicated");
+		let pack = project.packs.last().unwrap();
+		assert_eq!(pack.tile_count(), 1, "the extra deduped against the pack's existing pixels+pass");
+		let ground = project.cells[2][LAYER_GROUND].expect("the extra cell placed");
+		assert_eq!((ground.pack as usize, ground.tile), (packs_before - 1, 0), "the cell points at the existing tile");
+	}
+
+	/// A bigmap entry past the tile table (a malformed but tolerated WRL) is
+	/// skipped everywhere: the cell keeps its water fill and `finish` survives.
+	#[test]
+	fn out_of_range_bigmap_entries_are_tolerated() {
+		let mut wrl = fixture();
+		wrl.width = 4;
+		wrl.minimap = vec![0; 4];
+		wrl.bigmap = vec![0, 1, 2, 9]; // 9 ≥ tile_count (3)
+		let imp = WrlImport::new(wrl, "Odd", "GREEN", &["GREEN".to_string()], &assets_root(), 0).unwrap();
+		assert_eq!(imp.used_tiles(), 3, "the phantom index counts as no tile");
+		let (project, _) = imp.finish(ExtrasDest::ProjectPack);
+		assert!(project.cells[3][LAYER_GROUND].is_none(), "the phantom cell keeps only the water fill");
+		assert!(project.cells[3][LAYER_WATER].is_some());
+		assert!(project.cells[2][LAYER_GROUND].is_some(), "the real extra still placed");
 	}
 
 	#[test]

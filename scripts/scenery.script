@@ -1,0 +1,69 @@
+# Scenery (SCENERY.md): cut-out objects placed by pixel, undone as units, and
+# composed into the WRL export - where they mint their own baked tiles and
+# block the cells their source template blocked.
+# Run: cargo run -- --script scripts/scenery.script --headless
+
+new 16 12 GREEN 7
+tile GLa000
+fill 0 0
+assert-dirty true
+
+# Two objects, free-positioned - neither origin is on a cell boundary.
+scenery-place GREEN mountain-1 96 96
+scenery-place GREEN trees-1 450 98
+assert-hash 0xef3e0bb95e67bbac
+
+# Each placement is its own undo unit, and redo restores it exactly.
+undo
+assert-hash 0x752b71befd4ce0fc
+redo
+assert-hash 0xef3e0bb95e67bbac
+
+# A placement does not touch the tile grid it stands on.
+assert-cell 4 3 WTR002,GLa000
+
+# Removing one, then all of them, returns the map to plain ground.
+scenery-remove 0
+assert-hash 0xdcec03ed419376f2
+scenery-clear
+assert-hash 0x85e6a71b7d96912e
+
+# Undo walks all the way back out of the clear.
+undo
+undo
+assert-hash 0xef3e0bb95e67bbac
+
+# --- the tools (SCENERY.md stage D) -------------------------------------------
+# Arming a piece from the panel arms the place tool with it.
+scenery-pick 0
+tool scenery
+scenery-place GREEN mountain-1 300 300
+assert-hash 0xd8c6cbf337cd31b6
+
+# Move is one undo unit however many steps a drag takes.
+stroke begin
+scenery-move 0 310 305
+scenery-move 0 320 310
+scenery-move 0 330 315
+stroke end
+assert-hash 0xc8c0020c39c32309
+undo
+assert-hash 0xd8c6cbf337cd31b6
+
+# Disarming leaves the placements alone.
+scenery-pick none
+assert-hash 0xd8c6cbf337cd31b6
+
+# --- the Scenery layer (Layers > Scenery) ------------------------------
+# Selecting it re-points the pencil, the eraser and the arrow at the cut-outs
+# (pinned by `the_scenery_layer_re_points_the_pencil_eraser_and_arrow`); what a
+# script can see here is the other half of the rule - the Scenery layer is NOT a
+# tile-layer index, so a cell edit that runs anyway still lands on ground rather
+# than addressing a layer that does not exist.
+layer scenery
+tile GLb000
+paint 1 1
+assert-cell 1 1 WTR011,GLb000
+undo
+layer ground
+assert-hash 0xd8c6cbf337cd31b6

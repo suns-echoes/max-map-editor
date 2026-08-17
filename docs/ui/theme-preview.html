@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI Theme — preview</title>
+<style>
+  :root{
+    /* Bevel edges (raised): top .16 / left .24 / bottom .42 / right .55 */
+    --bev-raised: inset 0 1px 0 rgba(255,255,255,.16), inset 1px 0 0 rgba(255,255,255,.24),
+                  inset 0 -1px 0 rgba(0,0,0,.42), inset -1px 0 0 rgba(0,0,0,.55);
+    --bev-inset:  inset 0 1px 0 rgba(0,0,0,.42), inset 1px 0 0 rgba(0,0,0,.55),
+                  inset 0 -1px 0 rgba(255,255,255,.16), inset -1px 0 0 rgba(255,255,255,.24);
+    --bev-panel:  inset 0 2px 0 rgba(255,255,255,.16), inset 2px 0 0 rgba(255,255,255,.24),
+                  inset 0 -2px 0 rgba(0,0,0,.42), inset -2px 0 0 rgba(0,0,0,.55);
+    --focus: rgba(68,255,0,.5);
+    --ink:#e6e9ed; --ink-dim:#b0b4bb; --accent:#44ff00; --silver:#eaedf3; --disabled-ink:#bbbbbb;
+    --shadow: 1px 1px 0 rgba(0,0,0,.55);
+    --hilite: -1px -1px 0 rgba(255,255,255,.16);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font:13px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:#0e0f11; padding:0 0 80px;
+  }
+  /* subtle brushed-steel plate behind everything */
+  body::before{
+    content:""; position:fixed; inset:0; z-index:-1; opacity:.5;
+    background:
+      radial-gradient(120% 90% at 30% 0%, #26282c 0%, #17181b 55%, #0e0f11 100%);
+  }
+  header{
+    position:sticky; top:0; z-index:5; padding:14px 24px; background:rgba(14,15,17,.86);
+    backdrop-filter:blur(6px); border-bottom:1px solid #2a2d33; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;
+  }
+  header h1{font-size:15px; margin:0; letter-spacing:.3px}
+  header .sub{color:var(--ink-dim); font-size:12px}
+  header .controls{margin-left:auto; display:flex; gap:14px; align-items:center; font-size:12px; color:var(--ink-dim)}
+  header label{display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none}
+  main{max-width:1120px; margin:0 auto; padding:24px}
+  section{margin:34px 0}
+  h2{font-size:14px; letter-spacing:.4px; text-transform:uppercase; color:#9aa0a8; border-bottom:1px solid #2a2d33; padding-bottom:6px; margin:0 0 14px}
+  h3{font-size:12.5px; color:var(--ink-dim); margin:18px 0 8px; font-weight:600}
+  .muted{color:var(--ink-dim)}
+  .row{display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end}
+  .col{display:flex; flex-direction:column; gap:6px}
+  .grid{display:grid; gap:10px}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11.5px}
+  .caption{font-size:11px; color:#8a9098; margin-top:4px}
+
+  /* ---- steel material surface + bevel ---- */
+  .mat{position:relative; background:var(--bg); box-shadow:var(--bev-raised); overflow:hidden}
+  .mat.inset{box-shadow:var(--bev-inset)}
+  .mat.panel{box-shadow:var(--bev-panel)}
+  .grain .mat::after{
+    content:""; position:absolute; inset:0; pointer-events:none; opacity:.14; mix-blend-mode:soft-light;
+    background-image:var(--steel); background-size:180px 60px;
+  }
+  .raised{text-shadow:var(--shadow),var(--hilite)}
+  .engraved{text-shadow:var(--shadow)}
+
+  /* ---- controls ---- */
+  .ctl{height:24px; padding:0 10px; display:inline-flex; align-items:center; gap:6px; color:var(--ink);
+       border:0; border-radius:0; cursor:pointer; font:inherit; white-space:nowrap}
+  .ctl.sm{height:20px; font-size:12px; padding:0 8px}
+  .ctl:focus-visible{outline:1px solid var(--focus); outline-offset:1px}
+  .ctl:active{box-shadow:var(--bev-inset)}
+  .ctl[disabled]{cursor:default; color:var(--disabled-ink)}
+  .chip{display:inline-flex; align-items:center; justify-content:center; height:26px; min-width:64px; padding:0 10px}
+  .swatch{width:120px; height:52px; border-radius:2px; display:flex; align-items:flex-end; padding:4px 6px; font-size:10.5px}
+  .ink-swatch{width:120px; height:40px; border-radius:2px; display:flex; align-items:center; gap:8px; padding:0 8px; background:#1b1d20; box-shadow:var(--bev-inset)}
+  .dot{width:20px; height:20px; border-radius:50%}
+
+  table.states{border-collapse:separate; border-spacing:8px 8px}
+  table.states th{font-weight:600; color:#8a9098; font-size:11px; text-align:center; padding:0}
+  table.states td:first-child{color:var(--ink-dim); text-align:right; padding-right:6px; font-size:12px; white-space:nowrap}
+
+  /* select popup */
+  .popup{position:relative; width:120px}
+  .opt{height:18px; display:flex; align-items:center; padding:0 6px; font-size:12px}
+  .opt .wash{position:absolute; left:1px; right:1px; height:18px; background:var(--washcol)}
+
+  /* menu */
+  .menubar{display:flex; height:24px; align-items:stretch}
+  .menubar .mtitle{padding:0 12px; display:flex; align-items:center}
+  .menu{width:220px; padding:3px 0}
+  .mi{height:22px; display:flex; align-items:center; padding:0 10px 0 24px; position:relative; font-size:12.5px}
+  .mi .check{position:absolute; left:6px; width:11px; height:11px; background:#141619; box-shadow:var(--bev-inset)}
+  .mi .check i{position:absolute; inset:2px; background:var(--accent)}
+
+  /* checkbox/radio/field */
+  .box{width:16px; height:16px; background:var(--bg); box-shadow:var(--bev-inset); position:relative; flex:0 0 auto}
+  .box i{position:absolute; inset:4px; background:var(--accent)}
+  .radio{border-radius:50%} .radio i{border-radius:50%}
+  .field{height:24px; background:var(--bg); box-shadow:var(--bev-inset); display:flex; align-items:center; padding:0 8px; color:var(--ink); min-width:180px}
+  .field.focus{outline:1px solid var(--focus); outline-offset:1px}
+
+  /* window mock */
+  .win{width:340px}
+  .titlebar{height:24px; display:flex; align-items:center; padding:4px 4px 4px 12px; color:#ffcc00}
+  .rust{background:linear-gradient(#5a2f18,#3a1e0e)}
+  .close{margin-left:auto; color:#ff661f; font-weight:700}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-dim)}
+  .tag{display:inline-block; padding:1px 6px; border:1px solid #363a41; border-radius:10px; font-size:10.5px; color:#9aa0a8}
+  .note{background:#16181c; border:1px solid #2a2d33; border-left:3px solid var(--accent); padding:10px 12px; border-radius:3px; color:#c7ccd3; font-size:12px}
+  .formula{background:#111316; border:1px solid #2a2d33; padding:8px 10px; border-radius:3px; display:inline-block}
+  input[type=range]{accent-color:#44ff00}
+  a{color:#7fd; }
+</style>
+</head>
+<body class="grain">
+<header>
+  <h1>UI Theme — visual preview</h1>
+  <span class="sub">computed live from <code>docs/ui/theme.md</code> §4.3 blend (linear)</span>
+  <div class="controls">
+    <label><input type="checkbox" id="tGrain" checked> steel grain</label>
+    <label><input type="checkbox" id="tStates"> reveal states</label>
+  </div>
+</header>
+<main>
+
+  <div class="note">
+    Not a screenshot of the editor — a spec mockup. Every surface color is the real blend
+    <code>out = clamp01( base·(1 − f·(1 − accent)) + f·accent )</code> applied in linear light, then sRGB-encoded.
+    Steel grain is a CSS approximation (the real one samples <code>steel.png</code>). <b>Hover / click / tab-focus the live
+    controls</b> to see states; tick “reveal states” to lay them all out.
+  </div>
+
+  <section id="s-palette">
+    <h2>1 · Palette</h2>
+    <h3>Inks — pure colors, never blended</h3>
+    <div class="row" id="inks"></div>
+    <h3>Accents</h3>
+    <div class="row" id="accents"></div>
+  </section>
+
+  <section id="s-materials">
+    <h2>2 · Materials (brushed steel)</h2>
+    <div class="row" id="materials"></div>
+    <div class="caption">base tone + steel grain re-exposed; the accent blend recolors the <i>base</i> only, so grain survives.</div>
+  </section>
+
+  <section id="s-blend">
+    <h2>4.3 · The accent blend</h2>
+    <div class="row" style="gap:24px; align-items:flex-start">
+      <div class="col">
+        <div class="formula mono">out = clamp01( base·(1 − f·(1 − accent)) + f·accent )</div>
+        <div class="row" style="margin-top:12px; align-items:center">
+          <label class="col"><span class="muted">base</span><select id="bBase"></select></label>
+          <label class="col"><span class="muted">accent</span><select id="bAcc"></select></label>
+          <label class="col" style="min-width:180px"><span class="muted">floor f = <b id="fVal">0.30</b></span>
+            <input type="range" id="bF" min="0" max="0.8" step="0.01" value="0.30"></label>
+        </div>
+        <div class="row" style="margin-top:12px; align-items:center">
+          <div class="col"><span class="muted">rest</span><div class="mat swatch" id="bRest"></div></div>
+          <div style="font-size:24px; color:#555">→</div>
+          <div class="col"><span class="muted">tinted</span><div class="mat swatch" id="bOut"></div></div>
+          <div class="mono" id="bMath" style="margin-left:10px; color:var(--ink-dim)"></div>
+        </div>
+      </div>
+      <div class="col">
+        <h3 style="margin-top:0">Worked examples</h3>
+        <table class="mono" id="examples" style="border-collapse:collapse; font-size:11.5px"></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="s-buttons">
+    <h2>5 · Buttons — every kind × state</h2>
+    <div class="legend" style="margin-bottom:12px">
+      <span><span class="tag">Neutral</span> Cancel / Close / toolbar</span>
+      <span><span class="tag">Primary</span> Create / Save / Confirm</span>
+      <span><span class="tag">Secondary</span> Apply (amber)</span>
+      <span><span class="tag">Danger</span> Delete (red)</span>
+    </div>
+    <div id="btnMatrix"></div>
+    <h3>Live (hover · press · Tab-to-focus)</h3>
+    <div class="row" id="btnLive"></div>
+  </section>
+
+  <section id="s-toggle">
+    <h2>Toggles, tabs & active keys</h2>
+    <h3>Tab strip</h3>
+    <div class="row" id="tabs" style="gap:0"></div>
+    <h3 style="margin-top:18px">Toggle buttons / active tool keys</h3>
+    <div class="row" id="toggles"></div>
+  </section>
+
+  <section id="s-select">
+    <h2>Select (box + popup)</h2>
+    <div class="row" style="gap:40px; align-items:flex-start">
+      <div class="col"><span class="muted">closed (live)</span><div id="selLive"></div></div>
+      <div class="col"><span class="muted">open — 1px outset popup, wash inset off the frame</span>
+        <div id="selPopup"></div></div>
+    </div>
+  </section>
+
+  <section id="s-menu">
+    <h2>Menu bar + dropdown</h2>
+    <div class="row" style="gap:40px; align-items:flex-start">
+      <div class="col"><span class="muted">bar (live hover)</span><div class="mat" id="menubar" style="--bg:var(--title-bg)"></div></div>
+      <div class="col"><span class="muted">dropdown</span><div class="mat panel" id="menu" style="--bg:var(--panel-bg)"></div></div>
+    </div>
+  </section>
+
+  <section id="s-inputs">
+    <h2>Checkbox · radio · text field</h2>
+    <div class="row" style="gap:28px; align-items:flex-start" id="inputs"></div>
+    <div class="caption">wells tint green on hover; focus draws the 50% green ring, 1px, 1px outside.</div>
+  </section>
+
+  <section id="s-composite">
+    <h2>Composite — a dialog in the theme</h2>
+    <div class="mat panel win" id="dialog" style="--bg:var(--panel-bg)"></div>
+    <div class="caption">Primary “Create” (green), Secondary “Apply” (amber), Danger “Delete” (red), neutral “Cancel”, plus a select and fields.</div>
+  </section>
+
+  <p class="muted" style="margin-top:40px; font-size:11.5px">
+    Defaults previewed per §9: one green <code>#44FF00</code>; neutral buttons hover green; dedicated CTA materials;
+    disabled = fixed muted face; pressed = inset bevel (no extra darken); focus = 50% green ring outside.
+  </p>
+</main>
+
+<script>
+// ---------- color math (linear ⇄ sRGB), matching the spec ----------
+const clamp01 = x => Math.max(0, Math.min(1, x));
+const s2l = c => c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+const l2s = c => { c = clamp01(c); return c <= 0.0031308 ? 12.92*c : 1.055*Math.pow(c,1/2.4)-0.055; };
+const linToCss = lin => `rgb(${lin.map(x=>Math.round(l2s(x)*255)).join(',')})`;
+const round3 = x => Math.round(x*1000)/1000;
+
+// §4.3 blend (per channel, linear)
+const tint = (base, acc, f) => [0,1,2].map(i => clamp01(base[i]*(1 - f*(1-acc[i])) + f*acc[i]));
+
+// approximate the rendered steel surface: base tone + grain-exposed mid-steel
+const STEEL_MID = 0.5;
+const eff = (base, grain) => [0,1,2].map(i =>
+  clamp01(base[i]*(1-grain[3]) + clamp01(STEEL_MID*grain[i])*grain[3]));
+const matCss = (base, grain) => linToCss(eff(base, grain));
+
+// ---------- spec constants (from theme.md) ----------
+const INK={ink:[.80,.82,.85], dim:[.52,.54,.58], accent:[.058,1,0], silver:[.84,.86,.91], disabled:[.497,.497,.497], close:[.85,.45,.32]};
+const CSS={ink:linToCss(INK.ink), dim:linToCss(INK.dim), accent:linToCss(INK.accent), silver:linToCss(INK.silver), disabled:linToCss(INK.disabled)};
+
+const M = {
+  PANEL:{base:[.14,.15,.17], grain:[.72,.76,.82,.85]},
+  TITLE:{base:[.19,.19,.18], grain:[.92,.90,.84,.86]},
+  BUTTON:{base:[.22,.22,.21], grain:[1.08,1.05,.99,.87]},
+  PRIMARY:{base:[.10,.30,.10], grain:[.55,1.35,.42,.87]},
+  ACTIVE:{base:[.10,.30,.10], grain:[.55,1.35,.42,.87]},
+  SECONDARY:{base:[.34,.25,.12], grain:[1.35,1.02,.55,.87]},
+  DANGER:{base:[.34,.10,.09], grain:[1.40,.50,.45,.87]},
+  DISABLED:{base:[.165,.17,.18], grain:[.82,.84,.88,.78]},
+  TEXTAREA:{base:[.09,.10,.12], grain:[.62,.65,.72,.80]},
+  RUST:{base:[.22,.12,.07], grain:[1.0,.56,.32,.85]},
+};
+const ACC = { Primary:[.058,1,0], Secondary:[1,.604,0], Danger:[1,0,0] };
+const FLOOR = { hover:.30, active:.40, activeHover:.70 };
+
+// expose a few as CSS vars
+document.documentElement.style.setProperty('--panel-bg', matCss(M.PANEL.base, M.PANEL.grain));
+document.documentElement.style.setProperty('--title-bg', matCss(M.TITLE.base, M.TITLE.grain));
+// brushed-steel grain (horizontal streaks) as an SVG data-uri
+const steel = `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='60'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9 0.035' numOctaves='2' seed='7'/><feColorMatrix type='saturate' values='0'/></filter><rect width='180' height='60' filter='url(%23n)'/></svg>`
+)}")`;
+document.documentElement.style.setProperty('--steel', steel);
+
+// ---------- helpers ----------
+const el = (t, cls, txt) => { const e=document.createElement(t); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; };
+function surface(base, grain, {cls='', inset=false, panel=false}={}){
+  const d = el('div', 'mat '+cls);
+  if(inset) d.classList.add('inset'); if(panel) d.classList.add('panel');
+  d.style.setProperty('--bg', matCss(base, grain));
+  return d;
+}
+
+// ---------- 1 · palette ----------
+const inkList = [['INK',INK.ink,'#E6E9ED'],['INK_DIM',INK.dim,'#B0B4BB'],['ACCENT',INK.accent,'#44FF00'],
+  ['SILVER',INK.silver,'#EAEDF3'],['DISABLED_INK',INK.disabled,'#BBBBBB'],['CLOSE_INK',INK.close,'#FF661F']];
+const inksBox = document.getElementById('inks');
+inkList.forEach(([name,lin,hex])=>{
+  const w = el('div','ink-swatch'); const dot = el('div','dot'); dot.style.background=linToCss(lin);
+  const c = el('div','col'); c.append(el('div',null,name)); const h=el('code',null,hex); h.style.color='#8a9098'; c.append(h);
+  w.append(dot,c); inksBox.append(w);
+});
+const accBox = document.getElementById('accents');
+[['Primary','#44FF00',ACC.Primary],['Secondary','#FFCC00',ACC.Secondary],['Danger','#FF0000',ACC.Danger],['Disabled','#888888',null]]
+.forEach(([n,hex,mult])=>{
+  const w=el('div','ink-swatch'); const dot=el('div','dot'); dot.style.background=hex;
+  const c=el('div','col'); c.append(el('div',null,n)); const s=el('code',null, mult?`×[${mult.map(round3).join(', ')}]`:'fixed material'); s.style.color='#8a9098'; c.append(s);
+  w.append(dot,c); accBox.append(w);
+});
+
+// ---------- 2 · materials ----------
+const matBox = document.getElementById('materials');
+[['PANEL',M.PANEL],['TITLE',M.TITLE],['BUTTON',M.BUTTON],['PRIMARY',M.PRIMARY],['SECONDARY',M.SECONDARY],
+ ['DANGER',M.DANGER],['DISABLED',M.DISABLED],['TEXTAREA',M.TEXTAREA],['RUST_TITLE',M.RUST]].forEach(([n,m])=>{
+  const s = surface(m.base, m.grain, {cls:'swatch', inset:(n==='TEXTAREA')});
+  const lab = el('span','engraved', n); lab.style.color=CSS.ink; s.append(lab); matBox.append(s);
+});
+
+// ---------- 4.3 · blend playground ----------
+const baseOpts = {BUTTON:M.BUTTON, PRIMARY:M.PRIMARY, SECONDARY:M.SECONDARY, DANGER:M.DANGER, PANEL:M.PANEL, TEXTAREA:M.TEXTAREA};
+const bBase=document.getElementById('bBase'), bAcc=document.getElementById('bAcc'), bF=document.getElementById('bF');
+Object.keys(baseOpts).forEach(k=>bBase.append(new Option(k,k)));
+Object.keys(ACC).forEach(k=>bAcc.append(new Option(k,k)));
+function updateBlend(){
+  const m = baseOpts[bBase.value], a = ACC[bAcc.value], f = parseFloat(bF.value);
+  document.getElementById('fVal').textContent = f.toFixed(2);
+  const rest=document.getElementById('bRest'), out=document.getElementById('bOut');
+  rest.style.setProperty('--bg', matCss(m.base,m.grain));
+  const tb = tint(m.base, a, f);
+  out.style.setProperty('--bg', matCss(tb, m.grain));
+  document.getElementById('bMath').innerHTML =
+    `base [${m.base.map(round3)}]<br>→ tint [${tb.map(round3).join(', ')}]`;
+}
+[bBase,bAcc,bF].forEach(x=>x.addEventListener('input',updateBlend)); updateBlend();
+
+// worked examples table
+const ex = [
+  ['BUTTON → Hover (Primary,.30)', M.BUTTON.base, ACC.Primary, FLOOR.hover],
+  ['BUTTON → Active (Primary,.40)', M.BUTTON.base, ACC.Primary, FLOOR.active],
+  ['BUTTON → Act+Hover (Primary,.70)', M.BUTTON.base, ACC.Primary, FLOOR.activeHover],
+  ['BUTTON → Hover (Secondary,.30)', M.BUTTON.base, ACC.Secondary, FLOOR.hover],
+  ['BUTTON → Hover (Danger,.30)', M.BUTTON.base, ACC.Danger, FLOOR.hover],
+  ['PRIMARY → Hover (Primary,.30)', M.PRIMARY.base, ACC.Primary, FLOOR.hover],
+];
+const exT=document.getElementById('examples');
+ex.forEach(([label,b,a,f])=>{
+  const o=tint(b,a,f); const tr=el('tr');
+  const c1=el('td',null,label); c1.style.padding='2px 12px 2px 0';
+  const c2=el('td',null,`[${o.map(round3).join(', ')}]`); c2.style.padding='2px 10px';
+  const sw=el('td'); const d=el('div'); d.style.cssText=`width:34px;height:16px;border-radius:2px;background:${matCss(o,M.BUTTON.grain)};box-shadow:var(--bev-raised)`; sw.append(d);
+  tr.append(c1,c2,sw); exT.append(tr);
+});
+
+// ---------- 5 · buttons ----------
+// A labelled surface chip with text.
+function faceChip(base, grain, label, {inset=false, ink=CSS.ink, focus=false, w=88}={}){
+  const d = surface(base, grain, {cls:'chip', inset});
+  d.style.width = w+'px';
+  if(focus){ d.style.outline='1px solid var(--focus)'; d.style.outlineOffset='1px'; }
+  const t = el('span','raised', label); t.style.color=ink; d.append(t);
+  return d;
+}
+const KINDS = [
+  {name:'Neutral',   rest:M.BUTTON,    acc:ACC.Primary,   active:M.ACTIVE},
+  {name:'Primary',   rest:M.PRIMARY,   acc:ACC.Primary},
+  {name:'Secondary', rest:M.SECONDARY, acc:ACC.Secondary},
+  {name:'Danger',    rest:M.DANGER,    acc:ACC.Danger},
+];
+const STATES = ['rest','hover','active','pressed','focused','disabled'];
+const bm = document.getElementById('btnMatrix');
+const tbl = el('table','states'); const head=el('tr'); head.append(el('th'));
+STATES.forEach(s=>head.append(el('th',null,s))); tbl.append(head);
+KINDS.forEach(k=>{
+  const tr=el('tr'); tr.append(el('td',null,k.name));
+  STATES.forEach(state=>{
+    const td=el('td'); let base=k.rest.base, grain=k.rest.grain, opt={};
+    if(state==='hover') base=tint(k.rest.base,k.acc,FLOOR.hover);
+    else if(state==='active'){ if(!k.active){ td.append(el('span','muted','—')); tr.append(td); return; } base=k.active.base; grain=k.active.grain; }
+    else if(state==='pressed'){ base=tint(k.rest.base,k.acc,FLOOR.hover); opt.inset=true; }
+    else if(state==='focused'){ opt.focus=true; }
+    else if(state==='disabled'){ base=M.DISABLED.base; grain=M.DISABLED.grain; opt.ink=CSS.disabled; }
+    td.append(faceChip(base,grain,k.name==='Neutral'?'Button':k.name, opt));
+    tr.append(td);
+  });
+  tbl.append(tr);
+});
+bm.append(tbl);
+
+// live buttons (real :hover/:active/:focus via CSS vars)
+const live = document.getElementById('btnLive');
+KINDS.forEach(k=>{
+  const b = el('button','ctl mat'); b.textContent = k.name==='Neutral'?'Button':k.name+' action';
+  b.style.setProperty('--bg', matCss(k.rest.base,k.rest.grain));
+  b.style.color = CSS.ink; b.classList.add('raised');
+  b.onmouseenter=()=>b.style.setProperty('--bg', matCss(tint(k.rest.base,k.acc,FLOOR.hover),k.rest.grain));
+  b.onmouseleave=()=>b.style.setProperty('--bg', matCss(k.rest.base,k.rest.grain));
+  live.append(b);
+});
+// a disabled live example
+{ const b=el('button','ctl mat',''); b.textContent='Disabled'; b.disabled=true;
+  b.style.setProperty('--bg', matCss(M.DISABLED.base,M.DISABLED.grain)); b.style.color=CSS.disabled; b.classList.add('raised'); live.append(b); }
+
+// ---------- toggles / tabs ----------
+const tabsBox=document.getElementById('tabs');
+[['Overworld',true],['Passage',false],['Local',false]].forEach(([label,on])=>{
+  const m = on?M.ACTIVE:M.BUTTON;
+  const t=surface(m.base,m.grain,{cls:'chip'}); t.style.width='auto'; t.style.padding='0 16px';
+  const s=el('span','raised',label); s.style.color=on?CSS.accent:CSS.dim; t.append(s); tabsBox.append(t);
+});
+const togBox=document.getElementById('toggles');
+[['pencil',true],['fill',false],['picker',false],['erase',true]].forEach(([label,on])=>{
+  const m=on?M.ACTIVE:M.BUTTON;
+  const t=surface(m.base,m.grain,{cls:'chip'}); t.style.width='84px';
+  const s=el('span','raised',label); s.style.color=on?CSS.accent:CSS.ink; t.append(s); togBox.append(t);
+});
+
+// ---------- select ----------
+function caret(color){ const c=el('span'); c.style.cssText='margin-left:auto;width:0;height:0;border:4px solid transparent;border-top-color:'+color+';transform:translateY(2px)'; return c; }
+const selLive=document.getElementById('selLive');
+{ const s=el('div','ctl mat'); s.style.width='120px'; s.style.setProperty('--bg', matCss(M.BUTTON.base,M.BUTTON.grain)); s.style.color=CSS.ink; s.classList.add('raised');
+  s.append(el('span',null,'32 px')); s.append(caret(CSS.ink));
+  s.onmouseenter=()=>s.style.setProperty('--bg', matCss(tint(M.BUTTON.base,ACC.Primary,FLOOR.hover),M.BUTTON.grain));
+  s.onmouseleave=()=>s.style.setProperty('--bg', matCss(M.BUTTON.base,M.BUTTON.grain));
+  selLive.append(s); }
+// open popup: PANEL 1px outset, selected + hover rows tinted, wash inset off frame
+const popup = surface(M.PANEL.base, M.PANEL.grain, {cls:'popup'});
+const opts=['16 px','24 px','32 px','48 px','64 px','128 px'];
+opts.forEach((o,i)=>{
+  const r=el('div','opt'); const t=el('span','engraved',o); t.style.color=CSS.ink;
+  if(i===2||i===4){ // 2 = selected, 4 = hovered
+    const f = i===2?FLOOR.active:FLOOR.hover;
+    const w=el('div','wash'); w.style.setProperty('--washcol', matCss(tint(M.PANEL.base,ACC.Primary,f), M.PANEL.grain)); r.append(w);
+    r.style.position='relative';
+  }
+  r.append(t); popup.append(r);
+});
+document.getElementById('selPopup').append(popup);
+
+// ---------- menu ----------
+const mbar=document.getElementById('menubar'); mbar.classList.add('menubar');
+['File','Edit','View','Mode'].forEach((t,i)=>{
+  const m=el('div','mtitle raised',t); m.style.color=CSS.ink;
+  if(i===2){ m.style.background=matCss(tint(M.TITLE.base,ACC.Primary,FLOOR.active),M.TITLE.grain); } // "open"
+  m.onmouseenter=()=>{ if(i!==2) m.style.background=matCss(tint(M.TITLE.base,ACC.Primary,FLOOR.hover),M.TITLE.grain); };
+  m.onmouseleave=()=>{ if(i!==2) m.style.background=''; };
+  mbar.append(m);
+});
+const menu=document.getElementById('menu'); menu.classList.add('menu');
+const items=[['New Map…','ink',false,false],['Save Project','ink',false,false],['Show Grid','ink',true,true],
+  ['Show Units','ink',false,true],['Export as Image…','dim',false,false]];
+items.forEach(([label,inkKind,checked,hoverable],i)=>{
+  const mi=el('div','mi engraved'); mi.style.color = inkKind==='dim'?CSS.dim:CSS.ink;
+  if(checked){ const c=el('div','check'); c.append(el('i')); mi.append(c); }
+  mi.append(el('span',null,label));
+  if(i===1){ mi.style.background = matCss(tint(M.PANEL.base,ACC.Primary,FLOOR.hover),M.PANEL.grain); } // hovered row
+  menu.append(mi);
+});
+
+// ---------- inputs ----------
+const inBox=document.getElementById('inputs');
+function labeled(node,text){ const c=el('div','col'); const r=el('div','row'); r.style.alignItems='center'; r.style.gap='8px'; r.append(node); r.append(el('span',null,text)); c.append(r); return c; }
+function checkbox({checked=false,radio=false,hover=false,focus=false,disabled=false}={}){
+  let base=M.TEXTAREA.base;
+  if(hover) base=tint(M.TEXTAREA.base,ACC.Primary,FLOOR.hover);
+  const b=el('div','box'+(radio?' radio':'')); b.style.setProperty('--bg', matCss(base,M.TEXTAREA.grain));
+  if(checked){ const i=el('i'); if(disabled)i.style.background=CSS.disabled; b.append(i); }
+  if(focus){ b.style.outline='1px solid var(--focus)'; b.style.outlineOffset='1px'; }
+  return b;
+}
+inBox.append(
+  labeled(checkbox({checked:true}),'checked'),
+  labeled(checkbox({}),'unchecked'),
+  labeled(checkbox({hover:true}),'hover'),
+  labeled(checkbox({checked:true,focus:true}),'focused'),
+  labeled(checkbox({radio:true,checked:true}),'radio on'),
+  labeled(checkbox({disabled:true,checked:true}),'disabled'),
+);
+{ const f=el('div','field engraved'); f.textContent='112'; f.style.color=CSS.ink;
+  inBox.append(labeled(f,'field (rest)'));
+  const f2=el('div','field focus engraved'); f2.textContent='224'; f2.style.color=CSS.ink;
+  inBox.append(labeled(f2,'field (focus)')); }
+
+// ---------- composite dialog ----------
+const dlg=document.getElementById('dialog');
+dlg.style.padding='0'; dlg.innerHTML='';
+const tb=el('div','titlebar raised','Create New Map'); tb.style.background=matCss(M.RUST.base,M.RUST.grain);
+const x=el('span','close','×'); tb.append(x); dlg.append(tb);
+const body=el('div'); body.style.padding='14px';
+function fieldRow(label, valueNode){ const r=el('div','row'); r.style.cssText='justify-content:space-between;align-items:center;margin:8px 0'; const l=el('span','muted',label); r.append(l, valueNode); return r; }
+function selBox(val){ const s=el('div','ctl mat'); s.style.width='140px'; s.style.setProperty('--bg', matCss(M.BUTTON.base,M.BUTTON.grain)); s.style.color=CSS.ink; s.classList.add('raised'); s.append(el('span',null,val)); s.append(caret(CSS.ink)); return s; }
+function inp(val){ const f=el('div','field engraved'); f.textContent=val; f.style.color=CSS.ink; f.style.minWidth='140px'; return f; }
+body.append(fieldRow('Preset', selBox('Mega 224×224')));
+body.append(fieldRow('Width', inp('224')));
+body.append(fieldRow('Height', inp('224')));
+const btnRow=el('div','row'); btnRow.style.cssText='justify-content:flex-end;gap:8px;margin-top:16px';
+function dlgBtn(text, mat, acc){ const b=el('button','ctl mat raised',''); b.textContent=text; b.style.setProperty('--bg', matCss(mat.base,mat.grain)); b.style.color=CSS.ink;
+  b.onmouseenter=()=>b.style.setProperty('--bg', matCss(tint(mat.base,acc,FLOOR.hover),mat.grain));
+  b.onmouseleave=()=>b.style.setProperty('--bg', matCss(mat.base,mat.grain)); return b; }
+btnRow.append(dlgBtn('Delete', M.DANGER, ACC.Danger), dlgBtn('Cancel', M.SECONDARY, ACC.Secondary),
+  dlgBtn('Apply', M.SECONDARY, ACC.Secondary), dlgBtn('Create', M.PRIMARY, ACC.Primary));
+body.append(btnRow); dlg.append(body);
+
+// ---------- toggles: grain / reveal-states ----------
+document.getElementById('tGrain').addEventListener('change', e=> document.body.classList.toggle('grain', e.target.checked));
+document.getElementById('tStates').addEventListener('change', e=>{
+  document.getElementById('btnMatrix').style.display = e.target.checked ? '' : '';
+});
+</script>
+</body>
+</html>

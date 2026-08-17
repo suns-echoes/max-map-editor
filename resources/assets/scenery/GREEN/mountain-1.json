@@ -1,0 +1,15 @@
+{
+	"version": "1",
+	"id": "mountain-1",
+	"name": "Mountain 1",
+	"family": "mountain",
+	"transform": false,
+	"pass": [
+		"..333.",
+		"33333.",
+		"33333.",
+		"333333",
+		".3333.",
+		"..330."
+	]
+}

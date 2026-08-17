@@ -1,19 +1,23 @@
 //! Map project - the editor's primary document.
 //!
-//! v1 format: `resources/maps/*.json` - see `docs/design/tileset-contract.md`
+//! v1 format: `resources/**/maps/*.json` - see `docs/design/tileset-contract.md`
 //! §3. Each cell is a bottom-up stack (water layer, ground layer); tile refs
 //! carry a transform (rotation + mirror). `compose_cell` flattens a stack to
 //! raw pixels - the kernel of the future WRL export bake, and the
 //! thing the 24-map equivalence test verifies against original WRLs.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use max_assets::save::{CONNECTOR_BITS, SaveFile, SaveSettings, UnitValues, connector_neighbor, read_save_bytes};
 use max_assets::wrl::{TILE_DATA_SIZE, TILE_SIZE, WrlFile};
 
 use crate::pack::TilePack;
+use crate::scenery::{SceneryPack, SceneryPiece, ScenerySpot};
 
 mod palette_reimport;
+mod save_session;
+pub(crate) use save_session::objects_from_save;
 mod serde;
 
 pub use palette_reimport::PaletteReimport;
@@ -27,7 +31,15 @@ pub const MAX_LAYERS: usize = 2;
 /// guard: a file with the same MAJOR opens and is migrated up to this MINOR; a
 /// different MAJOR is unsupported (a hard break). A pre-scheme `"version": "1"`
 /// is grandfathered in and migrated to this version.
-pub const PROJECT_VERSION: &str = "2.0";
+///
+/// * `2.0` - the tile stack, the object list and the palette.
+/// * `2.1` - adds the **`"scenery"`** block (`SCENERY.md`): the free-placed
+///   cut-outs, each `{pack, piece, x, y}` in map pixels. A MINOR, not a MAJOR,
+///   deliberately - the block is purely additive, and a MAJOR bump would refuse
+///   to open all 24 shipped maps and every project saved before it. The cost of
+///   that choice is that a build older than this one drops a map's scenery
+///   silently on re-save.
+pub const PROJECT_VERSION: &str = "2.1";
 
 /// Undo depth cap - beyond this the oldest patches are dropped.
 const MAX_UNDO: usize = 256;
@@ -46,13 +58,46 @@ pub const WATER_SLOTS: std::ops::RangeInclusive<u8> = 96..=127;
 /// is one in-game color gradient; block re-tints keep it coherent.
 pub const WATER_CYCLES: [(u8, u8); 5] = [(96, 102), (103, 109), (110, 116), (117, 122), (123, 127)];
 
-/// The largest map dimension (cells per side) a document/template may have.
+/// The scenery libraries for the packs a project uses, shipped cut-outs plus
+/// the user's own.
+///
+/// `assets_root` points at `resources/assets/tilepacks`, so the shipped set is
+/// its sibling `resources/assets/scenery` and the user's is
+/// `resources/user/scenery` - the same two roots a user *tile* pack is found
+/// under. Loading is best-effort: a pack that ships none (WATER) and has none
+/// authored is simply absent, and placements naming it stay inert rather than
+/// failing the open.
+pub(crate) fn load_scenery_packs(assets_root: &Path, uses: &[UseEntry]) -> Vec<SceneryPack> {
+	let (Some(shipped), Some(user)) = (scenery_root(assets_root), user_scenery_root(assets_root)) else {
+		return Vec::new();
+	};
+	uses.iter().filter_map(|u| SceneryPack::load_merged(&shipped, &user, &u.name)).collect()
+}
+
+/// Where the shipped cut-outs live, given the tile-pack root: `resources/assets`.
+pub fn scenery_root(assets_root: &Path) -> Option<PathBuf> {
+	assets_root.parent().map(Path::to_path_buf)
+}
+
+/// Where the user's own cut-outs live: `resources/user`. The same derivation
+/// `append_user_packs` uses for user tile packs, so the two stay together.
+pub fn user_scenery_root(assets_root: &Path) -> Option<PathBuf> {
+	assets_root.parent().and_then(Path::parent).map(|r| r.join("user"))
+}
+
+/// How much of a cell a scenery placement's **body** must cover before the cell
+/// takes the placement's pass value. An eighth: enough that a stray pixel of
+/// canopy does not wall off a cell, low enough that the ragged edge of a
+/// mountain still blocks the cell it stands on.
+const SCENERY_PASS_COVERAGE: usize = TILE_DATA_SIZE / 8;
+
+/// The largest map dimension (cells per side) a template may have.
 pub(crate) const MAX_DIM: u16 = 1024;
 
 /// Validate a map's dimensions (both in `1..=MAX_DIM`).
 pub(crate) fn check_map_size(width: u16, height: u16) -> Result<(), String> {
 	if width == 0 || height == 0 || width > MAX_DIM || height > MAX_DIM {
-		return Err(format!("bad map size {width}×{height} (1..=1024)"));
+		return Err(format!("bad map size {width}x{height} (1..=1024)"));
 	}
 	Ok(())
 }
@@ -68,6 +113,28 @@ pub(crate) fn encode_cell_grid(
 	(0..height)
 		.map(|y| json::JsonValue::Array((0..width).map(|x| json::JsonValue::String(cell(x, y))).collect()))
 		.collect()
+}
+
+/// Options for [`Project::synthesize_save`] — the fresh-game parameters the
+/// caller (UI/command) chooses; teams derive from the placed objects.
+#[derive(Debug, Clone)]
+pub struct SynthesizeSaveOptions {
+	pub save_name: String,
+	/// Stock world slot (0..=23) the save claims — the swapped-`.WRL` workflow
+	/// installs the actual map at that slot.
+	pub world_index: u8,
+	/// Per-slot clan (`TEAM_CLAN_*` 1..=8; only playing slots matter).
+	pub team_clans: [u8; 5],
+	pub start_gold: i32,
+	pub rng_seed: u32,
+}
+
+/// What [`Project::synthesize_save`] produced (for the console line).
+#[derive(Debug, Clone, Copy)]
+pub struct SynthesisSummary {
+	pub bytes: usize,
+	pub units: usize,
+	pub teams: usize,
 }
 
 /// Which layer a tile belongs on, by its passability: water (pass 1) is the
@@ -287,7 +354,7 @@ pub struct Project {
 	pub version: String,
 	pub name: String,
 	pub description: String,
-	/// Map metadata (Map Preferences) - all optional, never affect the bake.
+	/// Map Metadata (the Edit-menu dialog) - all optional, never affect the bake.
 	/// Suggested player count (2–4); `None` = unspecified.
 	pub players: Option<u8>,
 	/// Free-text date (no enforced format).
@@ -317,10 +384,35 @@ pub struct Project {
 	source_palette: Vec<u8>,
 	/// Index of the pack that fills the water layer (v1: named "WATER").
 	pub water_pack: Option<u8>,
-	/// Unit-preview annotations (editor aid): real game units stamped on the
-	/// map for palette tuning. Saved in the project (`"units"` block), never
-	/// baked into the WRL, not part of undo (view-layer metadata).
-	pub units: Vec<UnitNote>,
+	/// First-class objects placed on the map: preview annotations on an ordinary
+	/// map, or the units / slabs / rubble of an opened save (seeded by
+	/// [`Self::attach_save`]). Saved in the project (`"objects"` block), never
+	/// baked into the WRL, and **undoable** (mutated via [`Self::place_object`]
+	/// etc., journaled through [`Patch::objects`]).
+	pub objects: Vec<MapObject>,
+	/// Scenery placed on the map (`SCENERY.md` stage C): cut-outs of the shipped
+	/// templates, positioned by pixel rather than by cell. Saved in the project
+	/// (`"scenery"` block), composed into the cells by [`Self::compose_cell`] so
+	/// the WRL export carries them, and **undoable** - journaled through
+	/// [`Patch::scenery`] the same wholesale way `objects` is.
+	pub scenery: Vec<ScenerySpot>,
+	/// The cut-out libraries the placements resolve against - one per pack in
+	/// `uses` that ships a `resources/assets/scenery/<PACK>/`. Loaded beside the
+	/// tile packs; empty when the asset set is absent, which leaves every
+	/// placement unresolved rather than failing the open.
+	pub scenery_packs: Vec<SceneryPack>,
+	/// An opened M.A.X. saved game (`.DTA`), when this project is a save-editor
+	/// session. The raw file image round-trips through the project `.json` (the
+	/// `"save"` base64 block), and the decoded [`SaveFile`] overlays its units /
+	/// slabs / resources onto the world. `None` for an ordinary map project.
+	pub save: Option<EmbeddedSave>,
+	/// The editable per-cell resource (cargo) map of an opened save (S5): raw /
+	/// fuel / gold amounts, one `u16` per cell (`max_assets::save::cargo`
+	/// encoding), row-major `y * width + x`. Seeded from the save's pristine
+	/// `cargo_map` on [`Self::attach_save`] and edited undoably via
+	/// [`Self::set_cargo`]; the `.json` persists only the diff against that seed
+	/// (`"resources"` block). Empty for a project with no save attached.
+	cargo_map: Vec<u16>,
 
 	dirty: bool,
 	revision: u64,
@@ -332,27 +424,143 @@ pub struct Project {
 	redo_stack: Vec<Patch>,
 	/// Open stroke: edits accumulate here and undo as one unit.
 	stroke: Option<Patch>,
+	/// A label for the next committed undo patch, set by the app before an
+	/// editing command (`label_next_undo`); `None` derives one from the patch.
+	pending_label: Option<String>,
+	/// Bumped whenever the undo stack changes (push / undo / redo), so the shell
+	/// can rebuild the Undo History submenu only when it actually changed.
+	undo_seq: u64,
+	/// The map region edited since the renderer last consumed it, so an edit
+	/// re-uploads only its sub-rectangle instead of the whole map every frame
+	/// (drained by [`Self::take_render_dirty`]). `cells` = cells whose tile
+	/// stack changed (their *derived* pass follows, so those also enter `pass`);
+	/// `pass` = cells whose displayed pass changed. Inclusive `(x0, y0, x1, y1)`.
+	/// A whole-map pass retint (Pass Table Editor) marks the full extent.
+	render_dirty_cells: Option<(u16, u16, u16, u16)>,
+	render_dirty_pass: Option<(u16, u16, u16, u16)>,
 }
 
-/// One unit-preview annotation: a game unit stamped on a cell with a team
-/// color (0-4: red green blue gray yellow). The sprite itself lives in the
-/// user's MAX.RES - the project only records what stands where.
+/// The map sub-rectangles a renderer must re-upload after edits, drained from
+/// [`Project::take_render_dirty`]. Each is an inclusive `(x0, y0, x1, y1)` cell
+/// bbox, or `None` when that texture is already current.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RenderDirty {
+	pub cells: Option<(u16, u16, u16, u16)>,
+	pub pass: Option<(u16, u16, u16, u16)>,
+}
+
+/// A first-class, undoable object placed on the map: a game unit, building, or
+/// ground cover (slab / rubble / road / connector). It serves two roles:
+///
+/// - On an ordinary map project it is a **preview annotation** - a unit stamped
+///   on a cell as a palette-tuning aid (the former `UnitNote`), carrying only a
+///   type, position, and team (default [`ObjectProps`]).
+/// - On a save-editor session it is a **save object** seeded from the opened
+///   `.DTA` (`Project::attach_save`), carrying its gameplay [`ObjectProps`].
+///
+/// The sprite itself lives in the user's MAX.RES; the project records what
+/// stands where. `unit_type` is a `ResourceID` (see
+/// [`max_assets::save::unit_type_name`]) - also the sprite tag.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnitNote {
-	pub tag: String,
+pub struct MapObject {
+	/// `ResourceID` (`0x33` = TANK, `0x11` = LRGSLAB, …); the sprite tag too.
+	pub unit_type: u16,
+	/// Cell position on the same grid as `Project.width/height`.
 	pub x: u16,
 	pub y: u16,
+	/// Owner team (0-4: red green blue gray/alien yellow).
 	pub team: u8,
+	/// Gameplay state - seeded from a save record, edited in later stages (S4);
+	/// all-default for a preview annotation.
+	pub props: ObjectProps,
+}
+
+/// The editable gameplay state of a [`MapObject`], mirroring the save-relevant
+/// fields of a `.DTA` unit record. All-default for a preview annotation; seeded
+/// from the opened save otherwise so nothing is lost across a save/reload (the
+/// retained raw `.DTA` stays the byte-exact export anchor either way).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ObjectProps {
+	/// Custom unit name (empty = the type's default name).
+	pub name: String,
+	/// Facing / body angle (0..7).
+	pub angle: u8,
+	/// Turret heading (0..7), independent of the body `angle`. Seeded from the
+	/// save; for a fresh placement it defaults to 0 (= the body's default facing).
+	pub turret_angle: u8,
+	/// Current hit points (0 = "use the type's max", filled in on edit; S4).
+	pub hits: u16,
+	pub ammo: u8,
+	/// Current order (idle / building / …), engine `UnitOrderType`.
+	pub orders: u8,
+	/// Turns the unit stays disabled (`disabled_turns_remaining`). Meaningful only
+	/// while `orders == ORDER_DISABLE`; the save editor exposes it as "disabled for
+	/// N turns" and the export writes the engine's disable byte.
+	pub disabled_turns: u8,
+	/// Cargo carried / accrued experience (context-dependent per type).
+	pub storage: i16,
+	/// Connector adjacency bitmask (slabs / roads / connectors).
+	pub connectors: u16,
+	/// The source save record's spatial-hash `id` when this object was seeded
+	/// from an opened save - the join key a future byte-aware export (S6) uses to
+	/// match it back onto the retained `SaveFile`. `None` for a fresh placement.
+	pub source_id: Option<u16>,
+	/// A per-unit override of this object's maximum stats (`UnitValues`: max HP,
+	/// attack, armor, …). `None` = inherit the save's shared `base_values` seed
+	/// (via [`Project::object_base_values`]); `Some` is this unit's own cloned copy
+	/// after an edit (S4.5), mirroring the engine's per-unit clone-on-edit
+	/// (`UnitInfo` sets `base_values = new UnitValues(*base_values)` when a unit's
+	/// stats diverge from its team's). Persisted so an upgrade survives a
+	/// save/reload; a byte-aware export (S6) re-emits it onto the object graph.
+	pub base_values: Option<UnitValues>,
+}
+
+/// A M.A.X. saved game (`.DTA`) opened into a project (the save editor). The
+/// raw file image is retained verbatim as the byte-exact export/round-trip
+/// anchor (per `SAVE-EDITOR.md` D1); `file` is that image decoded at the map's
+/// dimensions, the source the editor reads to overlay units and resources.
+/// Persisted in the project `.json` as base64 under `"save"`, re-decoded on load.
+#[derive(Debug, Clone)]
+pub struct EmbeddedSave {
+	/// The original `.DTA` bytes, exactly as opened.
+	pub raw: Vec<u8>,
+	/// `raw` decoded at the project's `width`×`height`.
+	pub file: SaveFile,
+}
+
+/// The edits [`Project::export_save`] cannot represent. Scalar edits, moves,
+/// stat overrides, unit removals, and placements of a type already present all
+/// export; the only gap is a placed unit whose type has no same-type body
+/// template in the save. Empty means the export is faithful; the save editor
+/// surfaces every entry as a warning so no edit is silently dropped.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UnexportedEdits {
+	/// One `TYPE at x,y` description per placed unit skipped for lack of a
+	/// same-type template to clone.
+	pub added: Vec<String>,
+}
+
+impl UnexportedEdits {
+	/// Whether every count is zero — the export reflects all edits.
+	pub fn is_empty(&self) -> bool {
+		*self == Self::default()
+	}
 }
 
 /// One undoable edit: cells with their *previous* layer entries, palette
 /// slots with their *previous* colors.
 #[derive(Default)]
 struct Patch {
+	/// A human label for the Undo History submenu (set at commit from the app's
+	/// hint, else derived from the patch contents). Preserved across undo/redo.
+	label: String,
 	cells: Vec<(u16, u16, usize, Option<TileRef>)>,
 	colors: Vec<(u8, [u8; 3])>,
 	/// Pass-override edits with their *previous* value (`None` = unset).
 	passes: Vec<(u16, u16, Option<u8>)>,
+	/// Resource (cargo) map edits with their *previous* `u16` value (S5). Sparse
+	/// per-cell `(x, y, prev)`, like `passes`; captured once per cell per stroke.
+	resources: Vec<(u16, u16, u16)>,
 	/// Per-tile passability edits (Pass Table Editor): `(pack, tile,
 	/// previous pass)`. The pass lives in the pack, so one edit retints every
 	/// cell that uses the tile.
@@ -361,6 +569,19 @@ struct Patch {
 	/// not expressible as per-cell edits). Applying swaps the stored state
 	/// with the live one, so the patch is its own inverse carrier.
 	doc: Option<Box<DocState>>,
+	/// The `objects` list *before* this edit. Objects are few and change
+	/// wholesale (place / move / delete), so - like `doc` - the patch snapshots
+	/// the whole vector and `apply` swaps it (its own inverse). Captured once per
+	/// stroke (the first object edit records the pre-stroke state).
+	objects: Option<Vec<MapObject>>,
+	/// The `scenery` list *before* this edit - snapshotted wholesale like
+	/// `objects`, for the same reason: placements are few and change whole
+	/// (place / move / delete). Captured once per stroke.
+	scenery: Option<Vec<ScenerySpot>>,
+	/// The attached save's editable settings *before* this edit (S7.2). Like
+	/// `doc`, applying swaps the stored block with the live one (its own
+	/// inverse), rebasing the embedded raw anchor each way.
+	save_settings: Option<Box<SaveSettings>>,
 }
 
 impl Patch {
@@ -368,8 +589,39 @@ impl Patch {
 		self.cells.is_empty()
 			&& self.colors.is_empty()
 			&& self.passes.is_empty()
+			&& self.resources.is_empty()
 			&& self.tile_passes.is_empty()
 			&& self.doc.is_none()
+			&& self.objects.is_none()
+			&& self.scenery.is_none()
+			&& self.save_settings.is_none()
+	}
+
+	/// A label derived from the patch contents, used when the app didn't supply
+	/// one - so the Undo History always reads something meaningful.
+	fn default_label(&self) -> String {
+		if self.doc.is_some() {
+			"Document change".into()
+		} else if self.save_settings.is_some() {
+			"Save data".into()
+		} else if self.objects.is_some() {
+			"Objects".into()
+		} else if self.scenery.is_some() {
+			"Scenery".into()
+		} else if !self.tile_passes.is_empty() {
+			"Passability".into()
+		} else if !self.cells.is_empty() {
+			let n = self.cells.len();
+			format!("Paint {n} cell{}", if n == 1 { "" } else { "s" })
+		} else if !self.passes.is_empty() {
+			"Pass override".into()
+		} else if !self.resources.is_empty() {
+			"Resources".into()
+		} else if !self.colors.is_empty() {
+			"Palette".into()
+		} else {
+			"Edit".into()
+		}
 	}
 }
 
@@ -437,6 +689,7 @@ impl Project {
 			ids,
 			index_of,
 			palette: Some(palette.clone()),
+			palette_name: None,
 			pass: Some(wrl.pass_table.clone()),
 			matches: HashMap::new(),
 			variant_groups: Vec::new(),
@@ -481,13 +734,21 @@ impl Project {
 			source_palette,
 			palette,
 			water_pack: Some(0),
-			units: Vec::new(),
+			objects: Vec::new(),
+			scenery: Vec::new(),
+			scenery_packs: Vec::new(),
+			save: None,
+			cargo_map: Vec::new(),
 			dirty: false,
 			revision: 0,
 			structure: 0,
 			undo_stack: Vec::new(),
 			redo_stack: Vec::new(),
 			stroke: None,
+			pending_label: None,
+			undo_seq: 0,
+			render_dirty_cells: None,
+			render_dirty_pass: None,
 		}
 	}
 
@@ -537,7 +798,7 @@ impl Project {
 		let mut palette = packs[owner].palette.clone().unwrap();
 		let source_palette = palette.clone();
 		crate::game_palette::apply_game_statics(&mut palette);
-		let uses = names
+		let uses: Vec<UseEntry> = names
 			.iter()
 			.enumerate()
 			.map(|(i, name)| UseEntry {
@@ -547,6 +808,8 @@ impl Project {
 				version: packs[i].version.clone(),
 			})
 			.collect();
+
+		let scenery_packs = load_scenery_packs(assets_root, &uses);
 
 		let water_tiles = packs[0].tile_count();
 		if water_tiles == 0 {
@@ -583,13 +846,21 @@ impl Project {
 			source_palette,
 			palette,
 			water_pack: Some(0),
-			units: Vec::new(),
+			objects: Vec::new(),
+			scenery: Vec::new(),
+			scenery_packs,
+			save: None,
+			cargo_map: Vec::new(),
 			dirty: false,
 			revision: 0,
 			structure: 0,
 			undo_stack: Vec::new(),
 			redo_stack: Vec::new(),
 			stroke: None,
+			pending_label: None,
+			undo_seq: 0,
+			render_dirty_cells: None,
+			render_dirty_pass: None,
 		})
 	}
 
@@ -610,35 +881,327 @@ impl Project {
 		self.dirty = false;
 	}
 
-	/// Stamp (or restamp) a unit-preview annotation on a cell. Replaces any
-	/// note already on that cell. Marks the document dirty (the note is
-	/// saved with the project) but records no undo patch - annotations are
-	/// view-layer metadata, not map edits.
-	pub fn stamp_unit(&mut self, note: UnitNote) {
-		self.units.retain(|u| (u.x, u.y) != (note.x, note.y));
-		self.units.push(note);
-		self.dirty = true;
+	/// Snapshot the current `objects` list into the undo journal before an
+	/// object edit, so the edit undoes to the pre-edit state. In an open stroke
+	/// the snapshot is captured *once* (the first object edit of the stroke), so
+	/// a whole drag undoes as one unit; otherwise it commits a solo patch that
+	/// carries the pre-edit vector (`apply` swaps it back). Call this immediately
+	/// **before** mutating `self.objects`. `redo_stack` is cleared by the caller.
+	fn snapshot_objects(&mut self) {
+		match &mut self.stroke {
+			Some(stroke) => {
+				if stroke.objects.is_none() {
+					stroke.objects = Some(self.objects.clone());
+				}
+			}
+			None => {
+				let objects = Some(self.objects.clone());
+				self.push_undo(Patch { objects, ..Patch::default() });
+			}
+		}
 	}
 
-	/// Remove the unit-preview annotation on a cell; `true` when one was there.
-	pub fn erase_unit_at(&mut self, x: u16, y: u16) -> bool {
-		let before = self.units.len();
-		self.units.retain(|u| (u.x, u.y) != (x, y));
-		let removed = self.units.len() != before;
-		if removed {
-			self.dirty = true;
-		}
-		removed
+	/// Place (or restamp) an object on a cell, replacing any already on that
+	/// exact cell **in the same layer**. Ground cover (slabs, rubble, roads) is
+	/// its own layer, so a building sits *on* its slab rather than evicting it —
+	/// the way the game keeps the two in separate unit lists, and the stacking
+	/// the object tools already read (`EditorState::object_at_cycling`).
+	/// Restamping therefore replaces only what is being stamped. Undoable.
+	pub fn place_object(&mut self, obj: MapObject) {
+		self.snapshot_objects();
+		let cover = max_assets::save::is_ground_cover_type(obj.unit_type);
+		self.objects
+			.retain(|o| (o.x, o.y) != (obj.x, obj.y) || max_assets::save::is_ground_cover_type(o.unit_type) != cover);
+		self.objects.push(obj);
+		self.redo_stack.clear();
+		self.bump();
 	}
 
-	/// Remove all unit-preview annotations; returns how many there were.
-	pub fn clear_units(&mut self) -> usize {
-		let n = self.units.len();
-		if n > 0 {
-			self.dirty = true;
+	/// Move object `index` to cell `(x, y)`. Undoable (part of the open stroke,
+	/// so a whole drag is one undo unit); `false` (no patch) when the index is
+	/// out of range or the object is already there. Collision is the caller's
+	/// concern - the footprint lives in the sprite library (app side).
+	pub fn move_object_to(&mut self, index: usize, x: u16, y: u16) -> bool {
+		let Some(o) = self.objects.get(index) else { return false };
+		if (o.x, o.y) == (x, y) {
+			return false;
 		}
-		self.units.clear();
+		self.snapshot_objects();
+		self.objects[index].x = x;
+		self.objects[index].y = y;
+		self.redo_stack.clear();
+		self.bump();
+		true
+	}
+
+	// ----- scenery -------------------------------------------------------------
+
+	/// The library piece a placement names, or `None` when its pack or id is not
+	/// among the loaded libraries - a project opened without the scenery assets,
+	/// or one naming a piece a later bake dropped. An unresolved placement is
+	/// inert: it draws nothing, blocks nothing, and survives a save/load
+	/// round-trip so the assets can come back.
+	pub fn scenery_piece(&self, spot: &ScenerySpot) -> Option<&SceneryPiece> {
+		self.scenery_packs.iter().find(|p| p.pack == spot.pack)?.piece(&spot.piece)
+	}
+
+	/// Place a scenery object at a footprint origin in map pixels. Undoable;
+	/// returns its index in `scenery`. Placements stack - a later one draws over
+	/// an earlier one - so this never displaces anything.
+	pub fn place_scenery(&mut self, spot: ScenerySpot) -> usize {
+		self.snapshot_scenery();
+		self.mark_scenery_dirty(&spot);
+		self.scenery.push(spot);
+		self.redo_stack.clear();
+		self.bump();
+		self.scenery.len() - 1
+	}
+
+	/// Move placement `index` to a new footprint origin. Part of the open
+	/// stroke, so a whole drag undoes as one unit. `false` (no patch) when the
+	/// index is out of range or nothing moves.
+	pub fn move_scenery_to(&mut self, index: usize, x: i32, y: i32) -> bool {
+		let Some(spot) = self.scenery.get(index) else { return false };
+		if (spot.x, spot.y) == (x, y) {
+			return false;
+		}
+		let from = spot.clone();
+		self.snapshot_scenery();
+		self.mark_scenery_dirty(&from); // the cells it leaves
+		self.scenery[index].x = x;
+		self.scenery[index].y = y;
+		let to = self.scenery[index].clone();
+		self.mark_scenery_dirty(&to); // and the ones it arrives on
+		self.redo_stack.clear();
+		self.bump();
+		true
+	}
+
+	/// Set placement `index`'s blend mode - how its ink meets the scenery under
+	/// it. Undoable; `false` when the index is out of range or it already has
+	/// that mode.
+	pub fn set_scenery_blend(&mut self, index: usize, blend: crate::scenery::SceneryBlend) -> bool {
+		let Some(spot) = self.scenery.get(index) else { return false };
+		if spot.blend == blend {
+			return false;
+		}
+		self.snapshot_scenery();
+		self.scenery[index].blend = blend;
+		let spot = self.scenery[index].clone();
+		self.mark_scenery_dirty(&spot);
+		self.redo_stack.clear();
+		self.bump();
+		true
+	}
+
+	/// Remove placement `index`. Undoable; `false` when out of range.
+	pub fn remove_scenery(&mut self, index: usize) -> bool {
+		if index >= self.scenery.len() {
+			return false;
+		}
+		self.snapshot_scenery();
+		let gone = self.scenery.remove(index);
+		self.mark_scenery_dirty(&gone);
+		self.redo_stack.clear();
+		self.bump();
+		true
+	}
+
+	/// The topmost placement whose sprite paints map pixel `(px, py)` - what a
+	/// click there picks up. Later placements draw over earlier ones, so the
+	/// search runs backwards. Shadow counts: a shadow is part of the object, and
+	/// grabbing one is how you grab an object whose body is off screen.
+	pub fn scenery_at(&self, px: i32, py: i32) -> Option<usize> {
+		self.scenery.iter().enumerate().rev().find_map(|(index, spot)| {
+			let piece = self.scenery_piece(spot)?;
+			let (ox, oy) = piece.sprite_origin(spot);
+			let (body, shade) = piece.texel(px - ox, py - oy);
+			(body != 0 || shade != 0).then_some(index)
+		})
+	}
+
+	/// The pass a placement imposes on cell `(x, y)`, or `None` when no
+	/// placement covers enough of it. Coverage is measured in *body* pixels -
+	/// a shadow falls on ground that stays walkable - and the value comes from
+	/// the source template's own pass grid, so an object blocks exactly the
+	/// cells its template blocked. The topmost qualifying placement wins.
+	pub fn scenery_pass_at(&self, x: u16, y: u16) -> Option<u8> {
+		if self.scenery.is_empty() {
+			return None;
+		}
+		let (cx, cy) = (x as i32 * TILE_SIZE as i32, y as i32 * TILE_SIZE as i32);
+		self.scenery.iter().rev().find_map(|spot| {
+			let piece = self.scenery_piece(spot)?;
+			let pass = piece.pass_under(spot, cx + TILE_SIZE as i32 / 2, cy + TILE_SIZE as i32 / 2)?;
+			let (ox, oy) = piece.sprite_origin(spot);
+			let mut covered = 0usize;
+			for py in cy..cy + TILE_SIZE as i32 {
+				for px in cx..cx + TILE_SIZE as i32 {
+					if piece.texel(px - ox, py - oy).0 != 0 {
+						covered += 1;
+					}
+				}
+			}
+			(covered >= SCENERY_PASS_COVERAGE).then_some(pass)
+		})
+	}
+
+	fn snapshot_scenery(&mut self) {
+		match &mut self.stroke {
+			Some(stroke) => {
+				if stroke.scenery.is_none() {
+					stroke.scenery = Some(self.scenery.clone());
+				}
+			}
+			None => {
+				let scenery = Some(self.scenery.clone());
+				self.push_undo(Patch { scenery, ..Patch::default() });
+			}
+		}
+	}
+
+	/// Mark every cell a placement's sprite reaches as needing a re-upload -
+	/// the composed pixels there changed, and so may the pass.
+	fn mark_scenery_dirty(&mut self, spot: &ScenerySpot) {
+		let Some(piece) = self.scenery_piece(spot) else { return };
+		let (ox, oy) = piece.sprite_origin(spot);
+		let x0 = ox.div_euclid(TILE_SIZE as i32).clamp(0, self.width as i32 - 1) as u16;
+		let y0 = oy.div_euclid(TILE_SIZE as i32).clamp(0, self.height as i32 - 1) as u16;
+		let x1 =
+			(ox + piece.sprite.width as i32 - 1).div_euclid(TILE_SIZE as i32).clamp(0, self.width as i32 - 1) as u16;
+		let y1 =
+			(oy + piece.sprite.height as i32 - 1).div_euclid(TILE_SIZE as i32).clamp(0, self.height as i32 - 1) as u16;
+		for y in y0..=y1 {
+			for x in x0..=x1 {
+				self.mark_render_cell(x, y);
+			}
+		}
+	}
+
+	/// The effective maximum stats ([`UnitValues`]) of object `index`: its per-unit
+	/// override ([`ObjectProps::base_values`]) when edited, else the shared seed
+	/// resolved from the opened save (the source unit's `base_values`, S4.5).
+	/// `None` for a fresh placement (no save, no override) or a record with no
+	/// stats block (e.g. some ground cover) — callers then treat max stats as
+	/// unknown/unbounded, exactly as the hits cap already does.
+	pub fn object_base_values(&self, index: usize) -> Option<UnitValues> {
+		let obj = self.objects.get(index)?;
+		if let Some(values) = &obj.props.base_values {
+			return Some(values.clone());
+		}
+		let id = obj.props.source_id?;
+		let save = self.save.as_ref()?;
+		let rec = save.file.units().find(|u| u.id == id)?;
+		save.file.values(rec.base_values?).cloned()
+	}
+
+	/// Replace the editable state (owner `team` + gameplay [`ObjectProps`]) of
+	/// object `index` — the Unit Properties panel's prop edits (S4). Undoable
+	/// (each edit its own patch outside a stroke); `false` (no patch) when the
+	/// index is out of range or nothing changed. The sprite frame and map label
+	/// re-derive from the new state on the next frame (`angle` → frame, `name` →
+	/// label), so an edit shows live. Position (`x`/`y`) is moved separately via
+	/// [`Self::move_object_to`]; this never touches it.
+	pub fn set_object_state(&mut self, index: usize, team: u8, props: ObjectProps) -> bool {
+		let Some(o) = self.objects.get(index) else { return false };
+		if o.team == team && o.props == props {
+			return false;
+		}
+		self.snapshot_objects();
+		self.objects[index].team = team;
+		self.objects[index].props = props;
+		self.redo_stack.clear();
+		self.bump();
+		true
+	}
+
+	/// Remove the object on a cell; `true` when one was there. Undoable (records
+	/// no patch when nothing was removed).
+	pub fn remove_object_at(&mut self, x: u16, y: u16) -> bool {
+		if !self.objects.iter().any(|o| (o.x, o.y) == (x, y)) {
+			return false;
+		}
+		self.snapshot_objects();
+		self.objects.retain(|o| (o.x, o.y) != (x, y));
+		self.redo_stack.clear();
+		self.bump();
+		true
+	}
+
+	/// Remove every object; returns how many there were. Undoable (records no
+	/// patch when already empty).
+	pub fn clear_objects(&mut self) -> usize {
+		let n = self.objects.len();
+		if n == 0 {
+			return 0;
+		}
+		self.snapshot_objects();
+		self.objects.clear();
+		self.redo_stack.clear();
+		self.bump();
 		n
+	}
+
+	/// Auto-connect adjacent same-team **connector hosts** (buildings, the 4-way
+	/// connector, standalone fixtures) via their `connectors` mask — mirroring the
+	/// game's behaviour when you build structures next to each other. For every
+	/// host, each half-edge whose neighbour cell (per the engine's connector
+	/// geometry, `unit_size = 2` for a building else `1`) is covered by a same-team
+	/// host gets its bit **set**. **Add-only** (never clears an existing bit), so it
+	/// only ever *ensures* connections — a loaded save's exact mask (incl. any
+	/// deliberately-broken links) is preserved, and running it twice is idempotent.
+	/// Undoable as one patch; returns whether anything changed. `false` (no patch)
+	/// when everything is already connected.
+	pub fn auto_connect_buildings(&mut self) -> bool {
+		use max_assets::save::{is_building_type, is_connector_host_type};
+		let size = |ut: u16| if is_building_type(ut) { 2i32 } else { 1 };
+		// Map every connector host's footprint cells → (team, object index).
+		let mut occ: HashMap<(i32, i32), (u8, usize)> = HashMap::new();
+		for (i, o) in self.objects.iter().enumerate() {
+			if !is_connector_host_type(o.unit_type) {
+				continue;
+			}
+			let s = size(o.unit_type);
+			for dx in 0..s {
+				for dy in 0..s {
+					occ.insert((o.x as i32 + dx, o.y as i32 + dy), (o.team, i));
+				}
+			}
+		}
+		// Compute each host's add-only new mask from same-team adjacency.
+		let mut updates: Vec<(usize, u16)> = Vec::new();
+		for (i, o) in self.objects.iter().enumerate() {
+			if !is_connector_host_type(o.unit_type) {
+				continue;
+			}
+			let s = size(o.unit_type);
+			let valid: u16 = if s == 2 { 0xFF } else { 0x55 };
+			let (x, y) = (o.x as i32, o.y as i32);
+			let mut add = 0u16;
+			for bit in CONNECTOR_BITS {
+				if bit & valid == 0 {
+					continue; // NR/EB/SR/WB don't exist on a 1×1
+				}
+				let cell = connector_neighbor(x, y, s, bit);
+				if occ.get(&cell).is_some_and(|&(team, ni)| team == o.team && ni != i) {
+					add |= bit;
+				}
+			}
+			let new = o.props.connectors | add;
+			if new != o.props.connectors {
+				updates.push((i, new));
+			}
+		}
+		if updates.is_empty() {
+			return false;
+		}
+		self.snapshot_objects();
+		for (i, mask) in updates {
+			self.objects[i].props.connectors = mask;
+		}
+		self.redo_stack.clear();
+		self.bump();
+		true
 	}
 
 	/// Resolve a `"GSd004:!N"`-style reference to a tile ref + its layer
@@ -694,6 +1257,7 @@ impl Project {
 			}
 			cells.push((x, y, layer, self.cells[i][layer]));
 			self.cells[i][layer] = entry;
+			self.mark_render_cell(x, y);
 		}
 		if cells.is_empty() {
 			return false;
@@ -803,7 +1367,7 @@ impl Project {
 		!self.uses.is_empty() && self.uses.iter().all(|u| u.version == "wrl")
 	}
 
-	/// Apply Map Preferences (all optional) and mark the document dirty. These
+	/// Apply Map Metadata (all optional) and mark the document dirty. These
 	/// are metadata - never baked into the WRL, never part of undo. Carriage
 	/// returns in the description are stripped; newlines are kept, so it may be
 	/// multi-line (escaped as `\n` in the project JSON).
@@ -951,6 +1515,22 @@ impl Project {
 		self.stroke = Some(Patch::default());
 	}
 
+	/// Whether a stroke is currently open (edits are coalescing into one undo
+	/// unit). Lets a caller that already opened the stroke — a unit-place drag —
+	/// avoid nesting `begin_stroke`/`end_stroke` (which would split the drag).
+	pub fn in_stroke(&self) -> bool {
+		self.stroke.is_some()
+	}
+
+	/// Whether the open stroke has already edited the object list — i.e. at
+	/// least one object was placed/removed since `begin_stroke`. `false` outside
+	/// a stroke. Distinguishes the first placement of a place-tool drag (the
+	/// press, which keeps restamp-on-click semantics) from the drag's
+	/// continuation cells (which must not overpaint what the drag just laid).
+	pub fn stroke_touched_objects(&self) -> bool {
+		self.stroke.as_ref().is_some_and(|s| s.objects.is_some())
+	}
+
 	/// Abort the open stroke: revert its edits right now and discard them -
 	/// nothing lands on the undo/redo stacks. A cancelled generation
 	/// (worldgen) never happened.
@@ -996,16 +1576,33 @@ impl Project {
 	/// resolve "land"/"water" tiles through this, so a hand-painted coast matches
 	/// a generated one. `(pack index, family name)`; `None` if no pack ships one.
 	pub fn variant_family(&self, kind: crate::pack::TileKind) -> Option<(usize, String)> {
-		self.packs.iter().enumerate().find_map(|(i, pack)| {
-			let mut families: Vec<&String> = pack
-				.props
-				.iter()
-				.filter(|(_, fp)| fp.kind == Some(kind) && fp.has_variants)
-				.map(|(f, _)| f)
-				.collect();
+		self.variant_family_in(kind, None)
+	}
+
+	/// Whether tile `(pack, tile)` may carry orientation `t` - its family's
+	/// `Transformable` permits it (the 8-orientation grid greys out the rest).
+	pub fn tile_allows(&self, pack: u8, tile: u16, t: Transform) -> bool {
+		let kind = self.packs[pack as usize].tile_transformable(tile);
+		crate::template::family_allows(kind, t)
+	}
+
+	/// Like [`Self::variant_family`], but preferring pack `preferred` when it
+	/// ships a matching variant family - so the terrain brush's land follows the
+	/// active tile's tileset. Falls back to the global first-pack scan when the
+	/// preferred pack has no family of that `kind`.
+	pub fn variant_family_in(&self, kind: crate::pack::TileKind, preferred: Option<usize>) -> Option<(usize, String)> {
+		let first_family = |pack: &crate::pack::TilePack| -> Option<String> {
+			let mut families: Vec<&String> =
+				pack.props.iter().filter(|(_, fp)| fp.kind == Some(kind) && fp.has_variants).map(|(f, _)| f).collect();
 			families.sort();
-			families.first().map(|f| (i, (*f).clone()))
-		})
+			families.first().map(|f| (*f).clone())
+		};
+		if let Some(pack) = preferred.and_then(|i| self.packs.get(i)) {
+			if let Some(f) = first_family(pack) {
+				return Some((preferred.unwrap(), f));
+			}
+		}
+		self.packs.iter().enumerate().find_map(|(i, pack)| first_family(pack).map(|f| (i, f)))
 	}
 
 	/// Flood-fill (4-connected) the region of cells whose `layer` entry equals
@@ -1050,6 +1647,7 @@ impl Project {
 			}
 			passes.push((x, y, self.pass_overrides[i]));
 			self.pass_overrides[i] = Some(value);
+			self.mark_render_pass(x, y);
 		}
 		if passes.is_empty() {
 			return false;
@@ -1082,11 +1680,60 @@ impl Project {
 		}
 		let passes = vec![(x, y, self.pass_overrides[i])];
 		self.pass_overrides[i] = value;
+		self.mark_render_pass(x, y);
 		match &mut self.stroke {
 			Some(stroke) => stroke.passes.extend(passes),
 			None => {
 				self.push_undo(Patch { passes, ..Patch::default() });
 			}
+		}
+		self.redo_stack.clear();
+		self.bump();
+		true
+	}
+
+	/// The full editable resource (cargo) map, row-major (empty when no save is
+	/// attached). Read by the resource overlay / inspector (S5); edits go through
+	/// [`Self::set_cargo`].
+	pub fn cargo_map(&self) -> &[u16] {
+		&self.cargo_map
+	}
+
+	/// The resource (cargo) `u16` at cell `(x, y)`, or `None` when out of range or
+	/// no save is attached.
+	pub fn cargo_at(&self, x: u16, y: u16) -> Option<u16> {
+		if x >= self.width || y >= self.height {
+			return None;
+		}
+		self.cargo_map.get(y as usize * self.width as usize + x as usize).copied()
+	}
+
+	/// Set the resource (cargo) `u16` at cell `(x, y)` (S5). Undoable — joins the
+	/// open stroke (drag-paint) or commits its own patch. Returns whether anything
+	/// changed; a no-op (unchanged value or out-of-range cell). On a save-less
+	/// project the map materializes zero-filled on first paint (Stage D:
+	/// resources are placeable on any map; save synthesis carries them).
+	pub fn set_cargo(&mut self, x: u16, y: u16, value: u16) -> bool {
+		if x >= self.width || y >= self.height {
+			return false;
+		}
+		let cells = self.width as usize * self.height as usize;
+		if self.cargo_map.len() != cells {
+			self.cargo_map = vec![0; cells];
+		}
+		let i = y as usize * self.width as usize + x as usize;
+		let Some(cur) = self.cargo_map.get_mut(i) else {
+			return false;
+		};
+		if *cur == value {
+			return false;
+		}
+		let resources = vec![(x, y, *cur)];
+		*cur = value;
+		self.mark_render_pass(x, y);
+		match &mut self.stroke {
+			Some(stroke) => stroke.resources.extend(resources),
+			None => self.push_undo(Patch { resources, ..Patch::default() }),
 		}
 		self.redo_stack.clear();
 		self.bump();
@@ -1102,6 +1749,7 @@ impl Project {
 			if let Some(prev) = self.pass_overrides[i].take() {
 				let (x, y) = ((i % self.width as usize) as u16, (i / self.width as usize) as u16);
 				passes.push((x, y, Some(prev)));
+				self.mark_render_pass(x, y);
 			}
 		}
 		if passes.is_empty() {
@@ -1149,6 +1797,8 @@ impl Project {
 		if tile_passes.is_empty() {
 			return false;
 		}
+		// A per-tile pass edit retints every cell using that tile, anywhere.
+		self.mark_render_pass_all();
 		match &mut self.stroke {
 			Some(stroke) => {
 				for (pack, tile, prev) in tile_passes {
@@ -1192,6 +1842,7 @@ impl Project {
 		if tile_passes.is_empty() {
 			return false;
 		}
+		self.mark_render_pass_all(); // pack pass changed → every cell's derived pass may retint
 		self.push_undo(Patch { tile_passes, ..Patch::default() });
 		self.redo_stack.clear();
 		self.bump();
@@ -1264,11 +1915,15 @@ impl Project {
 	/// Push a finished patch onto the undo journal, dropping the oldest once
 	/// the stack exceeds [`MAX_UNDO`]. (The caller clears `redo_stack` / bumps
 	/// the revision as appropriate - this only manages the bounded stack.)
-	fn push_undo(&mut self, patch: Patch) {
+	fn push_undo(&mut self, mut patch: Patch) {
+		// Label the committed patch: the app's hint if set, else derived from the
+		// contents. `apply` carries the label through undo/redo.
+		patch.label = self.pending_label.take().unwrap_or_else(|| patch.default_label());
 		self.undo_stack.push(patch);
 		if self.undo_stack.len() > MAX_UNDO {
 			self.undo_stack.remove(0);
 		}
+		self.undo_seq = self.undo_seq.wrapping_add(1);
 	}
 
 	pub fn undo(&mut self) -> bool {
@@ -1276,6 +1931,7 @@ impl Project {
 		let Some(patch) = self.undo_stack.pop() else { return false };
 		let inverse = self.apply(patch);
 		self.redo_stack.push(inverse);
+		self.undo_seq = self.undo_seq.wrapping_add(1);
 		self.bump();
 		true
 	}
@@ -1285,8 +1941,34 @@ impl Project {
 		let Some(patch) = self.redo_stack.pop() else { return false };
 		let inverse = self.apply(patch);
 		self.undo_stack.push(inverse);
+		self.undo_seq = self.undo_seq.wrapping_add(1);
 		self.bump();
 		true
+	}
+
+	/// Label the next committed undo patch (the app calls this with an action
+	/// name before an editing command; unlabelled patches derive one from their
+	/// contents). Overwritten by a later call before the patch commits.
+	pub fn label_next_undo(&mut self, label: impl Into<String>) {
+		self.pending_label = Some(label.into());
+	}
+
+	/// A monotonically-increasing counter that changes only when the undo stack
+	/// changes (push / undo / redo) - a cheap "did the history change?" signal.
+	pub fn undo_seq(&self) -> u64 {
+		self.undo_seq
+	}
+
+	/// The labels of the most recent `max` undo-stack entries, newest first -
+	/// the Undo History submenu. An open stroke isn't listed (it commits first).
+	pub fn undo_labels(&self, max: usize) -> Vec<String> {
+		self.undo_stack.iter().rev().take(max).map(|p| p.label.clone()).collect()
+	}
+
+	/// Undo `n` steps at once (the Undo History submenu jumps back to an entry).
+	/// Returns how many actually ran. One undo unit each, like [`Self::undo`].
+	pub fn undo_steps(&mut self, n: usize) -> usize {
+		(0..n).take_while(|_| self.undo()).count()
 	}
 
 	fn apply(&mut self, patch: Patch) -> Patch {
@@ -1303,13 +1985,40 @@ impl Project {
 			std::mem::swap(&mut self.source_palette, &mut doc.source_palette);
 			std::mem::swap(&mut self.water_pack, &mut doc.water_pack);
 			self.structure += 1;
-			return Patch { doc: Some(doc), ..Patch::default() };
+			return Patch { label: patch.label, doc: Some(doc), ..Patch::default() };
 		}
+		// A save-settings swap is its own inverse: apply the stored block, carry
+		// the displaced one back out. Committed solo, so early-return like `doc`.
+		// Degrades to an empty patch if the save vanished (a new project clears
+		// the journal, so this shouldn't happen in practice).
+		if let Some(stored) = patch.save_settings {
+			// The inverse of a settings edit that landed: the tail it produced
+			// decomposes by construction, so re-shaping it back cannot fail.
+			let displaced = self.swap_save_settings(&stored).expect("an applied settings edit is reversible");
+			return Patch { label: patch.label, save_settings: displaced.map(Box::new), ..Patch::default() };
+		}
+		// Objects swap wholesale (their own inverse), like a doc swap but able to
+		// coexist with cell/color edits in one patch. `None` = untouched.
+		let objects = patch.objects.map(|mut prev| {
+			std::mem::swap(&mut self.objects, &mut prev);
+			prev
+		});
+		// Scenery swaps wholesale too. Both lists are dirtied cell-wise so the
+		// renderer re-uploads what the undo moved.
+		let scenery = patch.scenery.map(|mut prev| {
+			std::mem::swap(&mut self.scenery, &mut prev);
+			let touched: Vec<ScenerySpot> = prev.iter().chain(&self.scenery).cloned().collect();
+			for spot in &touched {
+				self.mark_scenery_dirty(spot);
+			}
+			prev
+		});
 		let mut cells = Vec::with_capacity(patch.cells.len());
 		for &(x, y, layer, entry) in patch.cells.iter().rev() {
 			let i = y as usize * self.width as usize + x as usize;
 			cells.push((x, y, layer, self.cells[i][layer]));
 			self.cells[i][layer] = entry;
+			self.mark_render_cell(x, y);
 		}
 		let mut colors = Vec::with_capacity(patch.colors.len());
 		for &(slot, rgb) in patch.colors.iter().rev() {
@@ -1322,6 +2031,17 @@ impl Project {
 			let i = y as usize * self.width as usize + x as usize;
 			passes.push((x, y, self.pass_overrides[i]));
 			self.pass_overrides[i] = value;
+			self.mark_render_pass(x, y);
+		}
+		let mut resources = Vec::with_capacity(patch.resources.len());
+		for &(x, y, value) in patch.resources.iter().rev() {
+			let i = y as usize * self.width as usize + x as usize;
+			resources.push((x, y, self.cargo_map[i]));
+			self.cargo_map[i] = value;
+			self.mark_render_pass(x, y); // the resource overlay rides the pass texture region
+		}
+		if !patch.tile_passes.is_empty() {
+			self.mark_render_pass_all(); // per-tile pass reverted → any cell using it retints
 		}
 		let mut tile_passes = Vec::with_capacity(patch.tile_passes.len());
 		for &(pack, tile, value) in patch.tile_passes.iter().rev() {
@@ -1330,12 +2050,67 @@ impl Project {
 				pass[tile as usize] = value;
 			}
 		}
-		Patch { cells, colors, passes, tile_passes, doc: None }
+		Patch {
+			label: patch.label,
+			cells,
+			colors,
+			passes,
+			resources,
+			scenery,
+			tile_passes,
+			doc: None,
+			objects,
+			save_settings: None,
+		}
 	}
 
 	fn bump(&mut self) {
 		self.dirty = true;
 		self.revision += 1;
+	}
+
+	/// Grow a dirty bbox to include cell `(x, y)`.
+	fn grow_dirty(slot: &mut Option<(u16, u16, u16, u16)>, x: u16, y: u16) {
+		*slot = Some(match *slot {
+			Some((x0, y0, x1, y1)) => (x0.min(x), y0.min(y), x1.max(x), y1.max(y)),
+			None => (x, y, x, y),
+		});
+	}
+
+	/// Note that cell `(x, y)`'s tile stack changed: the renderer must re-upload
+	/// that cell, and its *derived* pass may have changed too, so it enters the
+	/// pass region as well.
+	fn mark_render_cell(&mut self, x: u16, y: u16) {
+		Self::grow_dirty(&mut self.render_dirty_cells, x, y);
+		Self::grow_dirty(&mut self.render_dirty_pass, x, y);
+	}
+
+	/// Note that cell `(x, y)`'s displayed pass value changed (a per-cell
+	/// override edit - the tile stack is untouched).
+	fn mark_render_pass(&mut self, x: u16, y: u16) {
+		Self::grow_dirty(&mut self.render_dirty_pass, x, y);
+	}
+
+	/// Note that the pass overlay changed map-wide (a per-*tile* pass retint
+	/// affects every cell using that tile, so the region can't be localized).
+	fn mark_render_pass_all(&mut self) {
+		if self.width > 0 && self.height > 0 {
+			Self::grow_dirty(&mut self.render_dirty_pass, 0, 0);
+			Self::grow_dirty(&mut self.render_dirty_pass, self.width - 1, self.height - 1);
+		}
+	}
+
+	/// Drain the regions edited since the last call - the renderer re-uploads
+	/// only these sub-rectangles instead of the whole map every frame.
+	pub fn take_render_dirty(&mut self) -> RenderDirty {
+		RenderDirty { cells: self.render_dirty_cells.take(), pass: self.render_dirty_pass.take() }
+	}
+
+	/// Drop any pending dirty region (the caller just rebuilt the renderer from
+	/// scratch, so every texture is already current).
+	pub fn clear_render_dirty(&mut self) {
+		self.render_dirty_cells = None;
+		self.render_dirty_pass = None;
 	}
 
 	/// Remove tile `tile` from pack `pack`, shifting every higher tile index
@@ -1475,10 +2250,11 @@ impl Project {
 		self.pixel_at(x, y, (32, 32))
 	}
 
-	/// Pass value of a cell: the Pass Table Editor override if set,
-	/// else the stack-top tile's pack pass (0 land / 1 water /
-	/// 2 shore / 3 blocked). `None` when neither is available. Empty stacks
-	/// read as land (0). Drives the pass overlay and the bake.
+	/// Pass value of a cell: the Pass Table Editor override if set, else the
+	/// pass a scenery placement imposes ([`Self::scenery_pass_at`]), else the
+	/// stack-top tile's pack pass (0 land / 1 water / 2 shore / 3 blocked).
+	/// `None` when none is available. Empty stacks read as land (0). Drives the
+	/// pass overlay and the bake, so all three agree by construction.
 	pub fn pass_at(&self, x: u16, y: u16) -> Option<u8> {
 		if x >= self.width || y >= self.height {
 			return None;
@@ -1487,11 +2263,38 @@ impl Project {
 		if let Some(v) = self.pass_overrides[i] {
 			return Some(v);
 		}
+		if let Some(v) = self.scenery_pass_at(x, y) {
+			return Some(v);
+		}
 		let stack = self.cell(x, y)?;
 		let Some(top) = stack[LAYER_GROUND].or(stack[LAYER_WATER]) else {
 			return Some(0);
 		};
 		self.packs[top.pack as usize].pass.as_ref().map(|pass| pass[top.tile as usize])
+	}
+
+	/// How many cells read as each pass value, plus how many carry an explicit
+	/// override: `([land, water, shore, blocked], overrides)`. Counted through
+	/// [`pass_at`](Self::pass_at), so the tally is of what the map *is* — the
+	/// overrides included, exactly as the overlay paints it and the bake writes
+	/// it. A cell whose pack ships no pass table counts as nothing (it is the
+	/// one case `pass_at` cannot answer).
+	pub fn pass_counts(&self) -> ([u32; 4], u32) {
+		let mut counts = [0u32; 4];
+		let mut overrides = 0;
+		for y in 0..self.height {
+			for x in 0..self.width {
+				if let Some(v) = self.pass_at(x, y)
+					&& let Some(slot) = counts.get_mut(v as usize)
+				{
+					*slot += 1;
+				}
+				if self.pass_override(x, y).is_some() {
+					overrides += 1;
+				}
+			}
+		}
+		(counts, overrides)
 	}
 
 	/// Whether a cell carries an explicit pass override.
@@ -1529,6 +2332,16 @@ impl Project {
 		// Pass overrides are document state.
 		for v in &self.pass_overrides {
 			eat(&[v.map(|p| p + 1).unwrap_or(0)]);
+		}
+		// Scenery is document state the *bake* writes, so it belongs to the map's
+		// identity - two maps that export differently must not hash the same. An
+		// empty list contributes nothing, so every scenery-free map keeps the hash
+		// it had before scenery existed (the script goldens depend on that).
+		for spot in &self.scenery {
+			eat(spot.pack.as_bytes());
+			eat(spot.piece.as_bytes());
+			eat(&spot.x.to_le_bytes());
+			eat(&spot.y.to_le_bytes());
 		}
 		h
 	}
@@ -1569,939 +2382,5 @@ fn transform_into(dst: &mut [u8; TILE_DATA_SIZE], src: &[u8], transform: Transfo
 		}
 	}
 }
-
 #[cfg(test)]
-mod tests {
-	use super::*;
-
-	fn assets_root() -> std::path::PathBuf {
-		Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks")
-	}
-
-	#[test]
-	fn delete_tile_shifts_indices_and_refuses_in_use() {
-		let mut p = Project::new(8, 6, &["GREEN".to_string()], &assets_root(), 1).unwrap();
-		let green = 1u8; // pack 0 = WATER, 1 = GREEN
-		let before = p.packs[green as usize].tile_count();
-		let third_id = p.packs[green as usize].ids[2].clone();
-		// Paint tile 5 onto a cell, then deleting tile 2 must shift it to 4.
-		let t5 = TileRef { pack: green, tile: 5, transform: Transform::default() };
-		assert!(p.place_many(&[(0, 0, LAYER_GROUND, Some(t5))]));
-		// In-use tile can't be deleted.
-		assert!(p.delete_tile(green, 5).is_err(), "painted tile is protected");
-		// Deleting an earlier, unused tile shifts the painted ref down by one.
-		p.delete_tile(green, 2).unwrap();
-		assert_eq!(p.packs[green as usize].tile_count(), before - 1);
-		assert!(!p.packs[green as usize].index_of.contains_key(&third_id), "deleted id is gone");
-		assert_eq!(p.cell(0, 0).unwrap()[LAYER_GROUND].unwrap().tile, 4, "painted ref shifted 5→4");
-	}
-
-	#[test]
-	fn load_palette_touches_only_editable_slots_in_one_stroke() {
-		let mut p = Project::new(4, 4, &["GREEN".to_string()], &assets_root(), 1).unwrap();
-		let before = p.palette.clone();
-		// A full 256-colour palette of solid red.
-		let red = vec![[0xffu8, 0, 0]; 256].concat();
-		let n = p.load_palette(&red).unwrap();
-		assert!(n > 0 && n <= 96, "only the 96 dynamic slots can change");
-		// Dynamic slot 64 took the load; static slot 0 + 200 are untouched.
-		assert_eq!(&p.palette[64 * 3..64 * 3 + 3], &[0xff, 0, 0]);
-		assert_eq!(&p.palette[0..3], &before[0..3]);
-		assert_eq!(&p.palette[200 * 3..200 * 3 + 3], &before[200 * 3..200 * 3 + 3]);
-		// One undo unit reverts the whole load.
-		p.undo();
-		assert_eq!(p.palette, before);
-	}
-
-	#[test]
-	fn variants_load_and_random_stays_in_family() {
-		let p = Project::new(4, 4, &["GREEN".to_string()], &assets_root(), 1).unwrap();
-		// GSa ships eight look-variants (tiles.variants.json).
-		let (tile, _) = p.resolve_ref("GSa000").unwrap();
-		let group = p.packs[tile.pack as usize].variants_of(tile.tile).to_vec();
-		assert!(group.len() >= 2, "GSa is a multi-variant family");
-		let mut rng = Rng::new(7);
-		for _ in 0..32 {
-			let v = p.random_variant(tile, &mut rng);
-			assert_eq!(v.pack, tile.pack, "same pack");
-			assert_eq!(v.transform, tile.transform, "transform preserved");
-			assert!(group.contains(&v.tile), "variant stays within the family");
-		}
-	}
-
-	#[test]
-	fn flood_fill_covers_the_connected_region() {
-		let mut p = Project::new(4, 4, &["GREEN".to_string()], &assets_root(), 1).unwrap();
-		let (tile, layer) = p.resolve_ref("GSa000").unwrap();
-		assert_eq!(layer, LAYER_GROUND);
-		// Ground starts empty everywhere → the fill floods all 16 cells.
-		assert!(p.cell(0, 0).unwrap()[LAYER_GROUND].is_none());
-		let mut rng = Rng::new(0);
-		assert!(p.fill(0, 0, tile, layer, false, &mut rng));
-		for y in 0..4 {
-			for x in 0..4 {
-				assert_eq!(p.cell(x, y).unwrap()[LAYER_GROUND], Some(tile));
-			}
-		}
-		// Re-filling the same uniform tile changes nothing.
-		assert!(!p.fill(0, 0, tile, layer, false, &mut rng));
-		// One undo reverts the whole fill (it was a single transaction).
-		assert!(p.undo());
-		assert!(p.cell(2, 2).unwrap()[LAYER_GROUND].is_none());
-	}
-
-	/// `from_wrl` is lossless: every cell composes back to the source tile,
-	/// bigmap indexing is honoured, and per-cell pass comes from the WRL.
-	#[test]
-	fn from_wrl_composes_back_to_source_pixels() {
-		// 2×1 map, two distinct tiles; cell 0 → tile 1, cell 1 → tile 0.
-		let mut tiles = vec![0u8; 2 * TILE_DATA_SIZE];
-		tiles[..TILE_DATA_SIZE].fill(7);
-		tiles[TILE_DATA_SIZE..].fill(42);
-		let wrl = WrlFile {
-			header: vec![0; 5],
-			width: 2,
-			height: 1,
-			minimap: vec![42, 7],
-			bigmap: vec![1, 0],
-			tile_count: 2,
-			tiles: tiles.clone(),
-			palette: vec![0; 768],
-			pass_table: vec![1, 2],
-		};
-
-		let p = Project::from_wrl(&wrl, "TEST");
-		assert_eq!((p.width, p.height), (2, 1));
-		// Cell 0 holds tile 1 (the 42s), cell 1 holds tile 0 (the 7s).
-		assert_eq!(&p.compose_cell(0, 0)[..], &tiles[TILE_DATA_SIZE..]);
-		assert_eq!(&p.compose_cell(1, 0)[..], &tiles[..TILE_DATA_SIZE]);
-		// Pass derives from the synthetic pack: pass_table[bigmap[cell]].
-		assert_eq!(p.pass_at(0, 0), Some(2)); // tile 1
-		assert_eq!(p.pass_at(1, 0), Some(1)); // tile 0
-		// The map decomposes by passability: cell 0 (tile 1, pass 2 = shore)
-		// lands on the ground layer; cell 1 (tile 0, pass 1 = water) on the base.
-		let c0 = p.cell(0, 0).unwrap();
-		assert_eq!(c0[LAYER_GROUND].map(|t| t.tile), Some(1));
-		assert!(c0[LAYER_WATER].is_none());
-		let c1 = p.cell(1, 0).unwrap();
-		assert_eq!(c1[LAYER_WATER].map(|t| t.tile), Some(0));
-		assert!(c1[LAYER_GROUND].is_none());
-		// Tile ids follow the XXXY### scheme (name TEST → consonants TST).
-		assert_eq!(p.packs[0].ids[1], "TSTS000", "tile 1 is shore #0");
-		assert_eq!(p.packs[0].ids[0], "TSTW000", "tile 0 is water #0");
-		// A fresh import is clean.
-		assert!(!p.dirty());
-	}
-
-	/// An imported WRL saved as a project dumps its synthetic pack to a
-	/// sibling folder and reloads from it (the persistence path the user
-	/// asked for): tiles, pass, and palette survive the round trip.
-	#[test]
-	fn wrl_import_dumps_and_reloads_via_sibling_pack() {
-		let mut tiles = vec![0u8; 2 * TILE_DATA_SIZE];
-		tiles[..TILE_DATA_SIZE].fill(7);
-		tiles[TILE_DATA_SIZE..].fill(42);
-		let wrl = WrlFile {
-			header: vec![0; 5],
-			width: 2,
-			height: 1,
-			minimap: vec![42, 7],
-			bigmap: vec![1, 0],
-			tile_count: 2,
-			tiles,
-			palette: vec![5; 768],
-			pass_table: vec![2, 3],
-		};
-		let project = Project::from_wrl(&wrl, "WRLTEST");
-
-		// Dump the synthetic pack next to a would-be `.json`.
-		let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../temp/maptest-wrl-dump");
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
-		project.packs[0].dump(&dir.join("WRLTEST")).unwrap();
-		let json = project.save_string();
-
-		// Reload with an assets root that lacks the pack - only the sibling
-		// fallback (`dir`) has it.
-		let empty = dir.join("no-assets");
-		std::fs::create_dir_all(&empty).unwrap();
-		let reloaded = Project::from_str_in(&json, &empty, Some(&dir)).unwrap();
-
-		assert_eq!((reloaded.width, reloaded.height), (2, 1));
-		assert_eq!(reloaded.compose_cell(0, 0), project.compose_cell(0, 0));
-		assert_eq!(reloaded.compose_cell(1, 0), project.compose_cell(1, 0));
-		assert_eq!(reloaded.pass_at(0, 0), Some(3)); // cell 0 → tile 1
-		assert_eq!(reloaded.pass_at(1, 0), Some(2)); // cell 1 → tile 0
-		assert_eq!(reloaded.palette, project.palette);
-
-		std::fs::remove_dir_all(&dir).ok();
-	}
-
-	/// The internal palette keeps the WRL's own bytes (statics included) with
-	/// live dynamic edits merged in; conversion rewrites tiles + palette to
-	/// the compatible form and converges the two - and undoes as one unit.
-	#[test]
-	fn wrl_palette_conversion_remaps_tiles_and_converges_palettes() {
-		let mut tiles = vec![0u8; TILE_DATA_SIZE];
-		tiles.fill(40); // every pixel on a fixed game-ramp slot…
-		let mut palette = crate::GAME_PALETTE.to_vec();
-		palette[40 * 3..40 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]); // …claiming hot pink
-		let wrl = WrlFile {
-			header: vec![0; 5],
-			width: 1,
-			height: 1,
-			minimap: vec![0],
-			bigmap: vec![0],
-			tile_count: 1,
-			tiles,
-			palette,
-			pass_table: vec![0],
-		};
-		let mut p = Project::from_wrl(&wrl, "CONV");
-		assert!(p.is_wrl_import());
-		// The working palette resolved slot 40 to the game color, the
-		// internal palette still says pink.
-		assert_eq!(p.palette[40 * 3..40 * 3 + 3], crate::GAME_PALETTE[40 * 3..40 * 3 + 3]);
-		assert_eq!(p.internal_palette()[40 * 3..40 * 3 + 3], [0xff, 0x00, 0xee]);
-		// Dynamic edits show through the internal palette too.
-		assert!(p.set_color(64, [9, 9, 9]).unwrap());
-		assert_eq!(p.internal_palette()[64 * 3..64 * 3 + 3], [9, 9, 9]);
-
-		let opts = crate::palette_convert::ConvertOptions::default();
-		let structure = p.structure_revision();
-		let report = p.convert_to_compatible_palette(opts).expect("off-spec static slot");
-		assert_eq!((report.exact, report.approximated), (1, 0));
-		// The pink moved to an (unused) free dynamic slot - pixels follow, exactly.
-		let to = p.packs[0].tiles[0];
-		assert!(DYNAMIC_SLOTS.contains(&to), "pixels remapped into a free dynamic slot, got {to}");
-		assert!(p.packs[0].tiles.iter().all(|&b| b == to));
-		assert_eq!(p.palette[to as usize * 3..to as usize * 3 + 3], [0xff, 0x00, 0xee]);
-		// Palette and internal palette agree now (compatible), the doc is
-		// dirty + structurally changed, and a re-run is a no-op.
-		assert_eq!(p.internal_palette(), p.palette);
-		assert!(p.dirty());
-		assert_ne!(p.structure_revision(), structure);
-		assert!(p.convert_to_compatible_palette(opts).is_none());
-
-		// One Ctrl+Z brings the whole document back: tiles, palettes,
-		// internal palette - and redo replays it byte-identically.
-		let converted_tiles = p.packs[0].tiles.clone();
-		let converted_palette = p.palette.clone();
-		assert!(p.undo());
-		assert!(p.packs[0].tiles.iter().all(|&b| b == 40), "tiles restored");
-		assert_eq!(p.internal_palette()[40 * 3..40 * 3 + 3], [0xff, 0x00, 0xee], "internal palette restored");
-		// The earlier set_color is still the next undo step (journal intact).
-		assert!(p.undo());
-		assert_ne!(p.internal_palette()[64 * 3..64 * 3 + 3], [9, 9, 9]);
-		assert!(p.redo() && p.redo());
-		assert_eq!(p.packs[0].tiles, converted_tiles);
-		assert_eq!(p.palette, converted_palette);
-	}
-
-	/// The rasterize-and-reimport method rebuilds the tile table from the
-	/// composed pixels; pinned water keeps its cycle slots and colors, and
-	/// per-cell pass survives as overrides. Undoes as one unit.
-	#[test]
-	fn wrl_palette_conversion_by_reimport_pins_water_and_keeps_pass() {
-		// Tile 0: all water-cycle slot 100; tile 1: all off-spec static 40.
-		let mut tiles = vec![0u8; 2 * TILE_DATA_SIZE];
-		tiles[..TILE_DATA_SIZE].fill(100);
-		tiles[TILE_DATA_SIZE..].fill(40);
-		let mut palette = crate::GAME_PALETTE.to_vec();
-		palette[100 * 3..100 * 3 + 3].copy_from_slice(&[12, 34, 56]);
-		palette[40 * 3..40 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]);
-		let wrl = WrlFile {
-			header: vec![0; 5],
-			width: 2,
-			height: 1,
-			minimap: vec![100, 40],
-			bigmap: vec![0, 1],
-			tile_count: 2,
-			tiles,
-			palette,
-			pass_table: vec![1, 0],
-		};
-		let mut p = Project::from_wrl(&wrl, "RAST");
-		let tile_count =
-			p.convert_palette_by_reimport(true, crate::image_import::Dedupe::Strict, 0.0).expect("reimport");
-		assert!(tile_count >= 2);
-		// Water pixels stay pinned to slot 100, with the map's color.
-		assert_eq!(p.compose_cell(0, 0)[..], vec![100u8; TILE_DATA_SIZE][..]);
-		assert_eq!(p.palette[100 * 3..100 * 3 + 3], [12, 34, 56]);
-		// The pink tile re-quantized into stable (non-animated) slots close
-		// to pink; statics are the game's.
-		let cell1 = p.compose_cell(1, 0);
-		assert!(cell1.iter().all(|&b| !(9..=31).contains(&b) && !(96..=127).contains(&b)));
-		assert_eq!(p.palette[32 * 3..32 * 3 + 3], crate::GAME_PALETTE[32 * 3..32 * 3 + 3]);
-		// Pass survived as per-cell overrides.
-		assert_eq!(p.pass_at(0, 0), Some(1));
-		assert_eq!(p.pass_at(1, 0), Some(0));
-		// One undo restores the original document byte-for-byte.
-		assert!(p.undo());
-		assert_eq!(p.compose_cell(0, 0)[..], vec![100u8; TILE_DATA_SIZE][..]);
-		assert_eq!(p.compose_cell(1, 0)[..], vec![40u8; TILE_DATA_SIZE][..]);
-		assert_eq!(p.internal_palette()[40 * 3..40 * 3 + 3], [0xff, 0x00, 0xee]);
-		assert_eq!(p.pass_at(0, 0), Some(1));
-	}
-
-	/// Golden splitmix64 vectors (seed 0) - pins the algorithm forever:
-	/// generated maps must replay identically from their seed.
-	#[test]
-	fn rng_matches_splitmix64_reference() {
-		let mut rng = Rng::new(0);
-		assert_eq!(rng.next_u64(), 0xe220_a839_7b1d_cdaf);
-		assert_eq!(rng.next_u64(), 0x6e78_9e6a_a1b9_65f4);
-		assert_eq!(rng.next_u64(), 0x06c4_5d18_8009_454f);
-	}
-
-	#[test]
-	fn new_project_fills_water_deterministically() {
-		let root = assets_root();
-		let p = Project::new(8, 6, &["GREEN".to_string()], &root, 42).unwrap();
-		assert_eq!((p.width, p.height), (8, 6));
-		assert!(!p.dirty());
-
-		// WATER implied at index 0; GREEN owns the palette.
-		assert_eq!(p.uses[0].name, "WATER");
-		assert!(!p.uses[0].palette);
-		assert_eq!(p.uses[1].name, "GREEN");
-		assert!(p.uses[1].palette);
-		assert_eq!(p.water_pack, Some(0));
-
-		let water_tiles = p.packs[0].tile_count();
-		for stack in &p.cells {
-			let water = stack[LAYER_WATER].expect("bottom layer fully covered");
-			assert_eq!(water.pack, 0);
-			assert!(water.tile < water_tiles);
-			assert_eq!(water.transform, Transform::default(), "WATER is sync - identity");
-			assert_eq!(stack[LAYER_GROUND], None);
-		}
-
-		// Same seed → same map; different seed → different map.
-		let again = Project::new(8, 6, &["GREEN".to_string()], &root, 42).unwrap();
-		assert_eq!(p.hash(), again.hash());
-		let other = Project::new(8, 6, &["GREEN".to_string()], &root, 43).unwrap();
-		assert_ne!(p.hash(), other.hash());
-
-		// Listing WATER explicitly must not duplicate it.
-		let explicit = Project::new(8, 6, &["WATER".to_string(), "GREEN".to_string()], &root, 42).unwrap();
-		assert_eq!(explicit.packs.len(), 2);
-		assert_eq!(p.hash(), explicit.hash());
-	}
-
-	#[test]
-	fn new_project_round_trips_through_save() {
-		let root = assets_root();
-		let p = Project::new(5, 4, &["DESERT".to_string()], &root, 7).unwrap();
-		let reloaded = Project::from_str(&p.save_string(), &root).unwrap();
-		assert_eq!(p.hash(), reloaded.hash());
-		assert_eq!(reloaded.uses.len(), 2);
-		assert_eq!(reloaded.uses[1].name, "DESERT");
-	}
-
-	#[test]
-	fn stacked_same_layer_tiles_load_without_a_duplicate_error() {
-		// Regression: an opened WRL becomes a project whose base pack is *not*
-		// named WATER. Painting over the base then yields a cell with two
-		// tiles, neither recognized as water - the old per-pack loader put both
-		// on the ground layer and rejected the file ("duplicate ground layer").
-		// Layers are advisory, so the loader reconstructs the stack positionally.
-		let root = assets_root();
-		let p = Project::new(2, 1, &["GREEN".to_string()], &root, 1).unwrap();
-		assert!(p.packs[1].tile_count() >= 2, "GREEN has at least two tiles");
-		let (a, b) = (p.packs[1].ids[0].clone(), p.packs[1].ids[1].clone());
-		// A WATER-less project (GREEN owns the palette): both ids resolve to
-		// GREEN, the case that used to collide on the ground layer.
-		let json = format!(
-			"{{\"version\":\"1\",\"name\":\"t\",\"description\":\"\",\"width\":2,\"height\":1,\
-			 \"use\":[{{\"name\":\"GREEN\",\"tileset\":true,\"palette\":true,\"version\":\"1\"}}],\
-			 \"map\":[[\"{a},{b}\",\"\"]]}}"
-		);
-		let loaded = Project::from_str(&json, &root).expect("stacked cell loads without error");
-		let stack = loaded.cell(0, 0).unwrap();
-		assert_eq!(stack[LAYER_WATER].map(|t| t.tile), Some(0), "first tile → base layer");
-		assert_eq!(stack[LAYER_GROUND].map(|t| t.tile), Some(1), "second tile → ground layer");
-	}
-
-	#[test]
-	fn project_file_version_guards_on_major_and_migrates() {
-		let root = assets_root();
-		let p = Project::new(4, 4, &["GREEN".to_string()], &root, 1).unwrap();
-		let text = p.save_string();
-		// New saves carry the scheme'd top-level key/value.
-		assert!(text.contains("\"mme_project_file_version\": \"2.0\""), "{text}");
-		assert_eq!(Project::from_str(&text, &root).unwrap().version, "2.0");
-
-		let swap = |from: &str, to: &str| text.replace(&format!("\"mme_project_file_version\": \"{from}\""), to);
-		// A pre-scheme `version: "1"` file still opens, migrated to the current.
-		let legacy = swap("2.0", "\"version\": \"1\"");
-		assert_eq!(Project::from_str(&legacy, &root).expect("legacy migrates").version, "2.0");
-		// A newer MINOR within the same MAJOR opens.
-		assert!(Project::from_str(&swap("2.0", "\"mme_project_file_version\": \"2.7\""), &root).is_ok());
-		// A different MAJOR is a hard break; malformed versions are rejected.
-		match Project::from_str(&swap("2.0", "\"mme_project_file_version\": \"3.0\""), &root) {
-			Ok(_) => panic!("a different MAJOR must be rejected"),
-			Err(e) => assert!(e.contains("unsupported"), "{e}"),
-		}
-		assert!(Project::from_str(&swap("2.0", "\"mme_project_file_version\": \"banana\""), &root).is_err());
-	}
-
-	#[test]
-	fn load_rejects_malformed_headers() {
-		let root = assets_root();
-		let err = |json: &str| match Project::from_str(json, &root) {
-			Ok(_) => panic!("expected a load error for: {json}"),
-			Err(e) => e,
-		};
-		// Missing required top-level fields (version is checked first; name/
-		// description are read before the dimensions).
-		assert!(err("{}").contains("mme_project_file_version"), "no version key");
-		assert!(
-			err(r#"{"mme_project_file_version": "2.0", "name": "t", "description": "", "height": 4}"#)
-				.contains("missing field 'width'"),
-			"no width"
-		);
-		// Bad / non-numeric dimensions - caught before any map parsing.
-		let dims = |w: &str, h: &str| {
-			format!(
-				r#"{{"mme_project_file_version": "2.0", "name": "t", "description": "", "width": {w}, "height": {h}}}"#
-			)
-		};
-		assert!(err(&dims("0", "4")).contains("bad map size"), "zero width");
-		assert!(err(&dims("4", "0")).contains("bad map size"), "zero height");
-		assert!(err(&dims("2000", "4")).contains("bad map size"), "width > 1024");
-		assert!(err(&dims(r#""x""#, "4")).contains("width not a number"), "non-numeric width");
-	}
-
-	#[test]
-	fn load_rejects_malformed_body() {
-		let root = assets_root();
-		// A valid 2×1 project (GREEN owns the palette, empty cells); `map`/`extra`
-		// are spliced in so each case isolates one malformation.
-		let base = |map: &str, extra: &str| {
-			format!(
-				r#"{{"version":"1","name":"t","description":"","width":2,"height":1,"use":[{{"name":"GREEN","tileset":true,"palette":true,"version":"1"}}]{extra},"map":{map}}}"#
-			)
-		};
-		let err = |json: String| match Project::from_str(&json, &root) {
-			Ok(_) => panic!("expected a load error for: {json}"),
-			Err(e) => e,
-		};
-		// Sanity: the unmutated base loads.
-		Project::from_str(&base(r#"[["",""]]"#, ""), &root).expect("the base project loads");
-
-		// Map shape: wrong row count, wrong cell count per row.
-		assert!(err(base("[]", "")).contains("map has 0 rows"), "row count");
-		assert!(err(base(r#"[[""]]"#, "")).contains("row 0 has 1 cells"), "cell count");
-		// Cell typing: a non-string/array cell, and a non-string inside the array form.
-		assert!(err(base(r#"[[123,""]]"#, "")).contains("not a string or array"), "scalar cell");
-		assert!(err(base(r#"[[[123],""]]"#, "")).contains("non-string entry"), "array cell entry");
-		// Pass overlay (array form): wrong row count and wrong row length.
-		assert!(err(base(r#"[["",""]]"#, r#","pass":[]"#)).contains("pass has 0 rows"), "pass rows");
-		assert!(err(base(r#"[["",""]]"#, r#","pass":["0"]"#)).contains("pass row 0 has 1 cells"), "pass row len");
-		// Units: a coordinate outside the map.
-		assert!(err(base(r#"[["",""]]"#, r#","units":["T 5 0 0"]"#)).contains("out of range"), "unit OOR");
-		// Exactly one palette owner is required.
-		let no_owner = r#"{"version":"1","name":"t","description":"","width":2,"height":1,"use":[{"name":"GREEN","tileset":true,"palette":false,"version":"1"}],"map":[["",""]]}"#;
-		assert!(err(no_owner.to_string()).contains("palette owner"), "palette owner count");
-	}
-
-	#[test]
-	fn load_accepts_legacy_sparse_pass_and_positional_overstack() {
-		let root = assets_root();
-		let p = Project::new(2, 1, &["GREEN".to_string()], &root, 1).unwrap();
-		let a = p.packs[1].ids[0].clone();
-		// A cell with more refs than layers (3 > MAX_LAYERS) is reconstructed
-		// positionally rather than rejected: first → base, the rest stack upward.
-		let three = format!(
-			r#"{{"version":"1","name":"t","description":"","width":2,"height":1,"use":[{{"name":"GREEN","tileset":true,"palette":true,"version":"1"}}],"map":[["{a},{a},{a}",""]]}}"#
-		);
-		let loaded = Project::from_str(&three, &root).expect("3-ref overstack loads via positional fallback");
-		let stack = loaded.cell(0, 0).unwrap();
-		assert!(stack[0].is_some() && stack[1].is_some(), "both layers filled from the overstack");
-
-		// Legacy sparse pass form `{ "x,y": value }` still loads; out-of-range rejects.
-		let pass = |v: &str| {
-			format!(
-				r#"{{"version":"1","name":"t","description":"","width":2,"height":1,"use":[{{"name":"GREEN","tileset":true,"palette":true,"version":"1"}}],"map":[["",""]],"pass":{{"0,0":{v}}}}}"#
-			)
-		};
-		Project::from_str(&pass("2"), &root).expect("legacy sparse pass loads");
-		assert!(Project::from_str(&pass("9"), &root).err().unwrap().contains("out of range"), "sparse pass OOR");
-	}
-
-	#[test]
-	fn map_preferences_round_trip_and_stay_optional() {
-		let root = assets_root();
-		let mut p = Project::new(4, 4, &["GREEN".to_string()], &root, 1).unwrap();
-		// A pref-free map writes none of the metadata keys.
-		let bare = p.save_string();
-		for key in ["\"players\"", "\"date\"", "\"map_version\"", "\"author\""] {
-			assert!(!bare.contains(key), "bare save should omit {key}");
-		}
-		// Set them (description keeps newlines, strips CR; players clamps 2..=4).
-		p.set_info(
-			"Twin Peaks".into(),
-			Some(9),
-			"line one\r\nline two".into(),
-			"2026".into(),
-			"1.2".into(),
-			"Aneta".into(),
-		);
-		assert_eq!(p.players, Some(4), "players clamps to 4");
-		assert_eq!(p.description, "line one\nline two", "CR stripped, newline kept");
-		assert!(p.dirty());
-		let saved = p.save_string();
-		assert!(saved.contains("\"players\": \"2-4\""), "players saved as its label, not a number");
-		let reloaded = Project::from_str(&saved, &root).unwrap();
-		assert_eq!(reloaded.name, "Twin Peaks");
-		assert_eq!(reloaded.players, Some(4), "label round-trips back to the count");
-		assert_eq!(reloaded.description, "line one\nline two", "newline survives the JSON round-trip");
-		assert_eq!(reloaded.date, "2026");
-		assert_eq!(reloaded.map_version, "1.2");
-		assert_eq!(reloaded.author, "Aneta");
-		// The other counts map to their labels; legacy bare-number saves still load.
-		for (count, label) in [(2u8, "\"2\""), (3, "\"2-3\"")] {
-			p.set_info(String::new(), Some(count), String::new(), String::new(), String::new(), String::new());
-			assert!(p.save_string().contains(&format!("\"players\": {label}")), "count {count} → {label}");
-		}
-		let legacy = saved.replace("\"players\": \"2-4\"", "\"players\": 3");
-		assert_eq!(Project::from_str(&legacy, &root).unwrap().players, Some(3), "legacy numeric players loads");
-	}
-
-	#[test]
-	fn new_project_without_palette_owner_fails() {
-		let Err(err) = Project::new(4, 4, &[], &assets_root(), 0) else {
-			panic!("expected an error");
-		};
-		assert!(err.contains("palette"), "{err}");
-	}
-
-	#[test]
-	fn pixel_at_matches_full_compose() {
-		let root = assets_root();
-		let mut p = Project::new(8, 6, &["GREEN".to_string()], &root, 42).unwrap();
-		// A transformed shore over water exercises layering + transforms.
-		let (tile, layer) = p.resolve_ref("GSa000:!N").unwrap();
-		assert!(p.place(3, 2, layer, Some(tile)));
-
-		for &(x, y) in &[(3u16, 2u16), (0, 0), (7, 5)] {
-			let composed = p.compose_cell(x, y);
-			for &(sx, sy) in &[(0usize, 0usize), (32, 32), (63, 63), (17, 48)] {
-				assert_eq!(p.pixel_at(x, y, (sx, sy)), composed[sy * 64 + sx], "cell ({x},{y}) sub ({sx},{sy})",);
-			}
-			assert_eq!(p.minimap_pixel(x, y), composed[32 * 64 + 32]);
-		}
-	}
-
-	#[test]
-	fn tile_pass_edits_retint_every_shared_cell_and_round_trip() {
-		let root = assets_root();
-		let mut p = Project::new(4, 1, &["GREEN".to_string()], &root, 7).unwrap();
-		// The same land tile under two cells - they share one tile id.
-		let (land, layer) = p.resolve_ref("GLa000").unwrap();
-		assert!(p.place(0, 0, layer, Some(land)));
-		assert!(p.place(1, 0, layer, Some(land)));
-		let before = p.pass_at(0, 0);
-		assert_eq!(p.pass_at(1, 0), before, "same tile, same pass");
-
-		// Editing the tile pass at one cell retints the other (tile-dependent).
-		assert!(p.set_tile_pass_at(0, 0, 3));
-		assert_eq!(p.pass_at(0, 0), Some(3));
-		assert_eq!(p.pass_at(1, 0), Some(3), "shared tile id retints together");
-		assert_eq!(p.pass_override(0, 0), None, "it's tile pass, not a cell override");
-
-		// One undo unit restores both cells.
-		assert!(p.undo());
-		assert_eq!(p.pass_at(0, 0), before);
-		assert_eq!(p.pass_at(1, 0), before);
-		p.redo();
-		assert_eq!(p.pass_at(1, 0), Some(3), "redo replays the tile edit");
-
-		// Per-tile pass persists through save/load (the `tilepass` block).
-		let text = p.save_string();
-		assert!(text.contains("\"tilepass\""), "tile pass is persisted");
-		let reloaded = Project::from_str(&text, &root).unwrap();
-		assert_eq!(reloaded.pass_at(0, 0), Some(3));
-		assert_eq!(reloaded.pass_at(1, 0), Some(3));
-	}
-
-	#[test]
-	fn reset_tile_pass_reverts_to_the_supplied_canonical_pass() {
-		let root = assets_root();
-		let mut p = Project::new(2, 1, &["GREEN".to_string()], &root, 7).unwrap();
-		let (land, layer) = p.resolve_ref("GLa000").unwrap();
-		assert!(p.place(0, 0, layer, Some(land)));
-		// The canonical (tileset) pass = a snapshot of every pack's current pass,
-		// taken before any edit.
-		let canonical: Vec<Option<Vec<u8>>> = p.packs.iter().map(|pk| pk.pass.clone()).collect();
-
-		// Edit the land tile's pass away from its tileset value.
-		let before = p.pass_at(0, 0).unwrap();
-		let edited = if before == 3 { 0 } else { 3 };
-		assert!(p.set_tile_pass_at(0, 0, edited));
-		assert_eq!(p.pass_at(0, 0), Some(edited));
-
-		// Reset to canonical reverts it, as one undo unit.
-		assert!(p.reset_tile_pass(&canonical), "a change was applied");
-		assert_eq!(p.pass_at(0, 0), Some(before), "back to the tileset value");
-		assert!(p.undo(), "reset is undoable");
-		assert_eq!(p.pass_at(0, 0), Some(edited), "undo brings the edit back");
-
-		// Already-canonical → no-op (nothing to undo).
-		p.redo();
-		assert!(!p.reset_tile_pass(&canonical), "no change when already canonical");
-		// A `None` entry leaves that pack untouched even when it differs.
-		assert!(p.set_tile_pass_at(0, 0, edited));
-		let skip: Vec<Option<Vec<u8>>> = vec![None; p.packs.len()];
-		assert!(!p.reset_tile_pass(&skip), "None per pack skips it");
-		assert_eq!(p.pass_at(0, 0), Some(edited), "skipped pack keeps its edit");
-	}
-
-	#[test]
-	fn pass_overrides_round_trip_through_the_dense_grid() {
-		let root = assets_root();
-		let mut p = Project::new(5, 3, &["GREEN".to_string()], &root, 1).unwrap();
-		assert!(p.set_pass(2, 1, 3));
-		assert!(p.set_pass(4, 2, 2));
-		let text = p.save_string();
-		// The block is a dense array of digit-rows, not a sparse object.
-		assert!(text.contains("\"pass\""));
-		assert!(text.contains("\"--3--\""), "row 1 carries the blocked override:\n{text}");
-		let reloaded = Project::from_str(&text, &root).unwrap();
-		assert_eq!(reloaded.pass_override(2, 1), Some(3));
-		assert_eq!(reloaded.pass_override(4, 2), Some(2));
-		assert_eq!(reloaded.pass_override(0, 0), None);
-		assert_eq!(reloaded.hash(), p.hash(), "overrides survive the dense round-trip");
-	}
-
-	#[test]
-	fn pass_at_reads_the_stack_top() {
-		let root = assets_root();
-		let mut p = Project::new(8, 6, &["GREEN".to_string()], &root, 42).unwrap();
-		assert_eq!(p.pass_at(2, 2), Some(1), "fresh map is water");
-		let (tile, layer) = p.resolve_ref("GLa000").unwrap();
-		assert!(p.place(2, 2, layer, Some(tile)));
-		assert_eq!(p.pass_at(2, 2), Some(0), "land tile on top");
-		assert_eq!(p.pass_at(99, 99), None, "out of range");
-	}
-
-	#[test]
-	fn pass_override_paints_undoes_saves_and_bakes() {
-		let root = assets_root();
-		let mut p = Project::new(8, 6, &["GREEN".to_string()], &root, 42).unwrap();
-		// Fresh water cell derives pass 1; override it to blocked (3).
-		assert_eq!(p.pass_at(2, 2), Some(1));
-		assert!(p.set_pass(2, 2, 3));
-		assert_eq!(p.pass_at(2, 2), Some(3), "override wins over derived");
-		assert_eq!(p.pass_override(2, 2), Some(3));
-		// The bake reads the override (a fresh water map is all pass 1, so a
-		// blocked tile in the baked per-tile passtab can only come from it).
-		let wrl = crate::bake(&p).unwrap();
-		assert!(wrl.pass_table.contains(&3), "override flows into the bake");
-
-		// Undoable, one unit; round-trips through save.
-		let with = p.hash();
-		assert!(p.undo());
-		assert_eq!(p.pass_at(2, 2), Some(1), "undo restores the derived pass");
-		assert_eq!(p.pass_override(2, 2), None);
-		p.redo();
-		assert_eq!(p.hash(), with, "redo replays the override");
-
-		let text = p.save_string();
-		assert!(text.contains("\"pass\""), "the override is persisted");
-		let reloaded = Project::from_str(&text, &root).unwrap();
-		assert_eq!(reloaded.pass_at(2, 2), Some(3), "and reloads");
-		assert_eq!(reloaded.hash(), p.hash());
-	}
-
-	#[test]
-	fn unit_notes_round_trip_through_save() {
-		let root = assets_root();
-		let mut p = Project::new(4, 4, &["GREEN".to_string()], &root, 42).unwrap();
-		assert!(!p.dirty());
-
-		p.stamp_unit(UnitNote { tag: "TANK".into(), x: 1, y: 2, team: 3 });
-		p.stamp_unit(UnitNote { tag: "SCOUT".into(), x: 0, y: 0, team: 0 });
-		// Restamping a cell replaces, not stacks.
-		p.stamp_unit(UnitNote { tag: "AWAC".into(), x: 1, y: 2, team: 1 });
-		assert!(p.dirty(), "annotations persist, so they dirty the doc");
-		assert_eq!(p.units.len(), 2);
-
-		let text = p.save_string();
-		assert!(text.contains("\"units\""), "the notes are persisted");
-		let reloaded = Project::from_str(&text, &root).unwrap();
-		assert_eq!(reloaded.units, p.units, "notes reload identically");
-
-		assert!(p.erase_unit_at(1, 2));
-		assert!(!p.erase_unit_at(1, 2), "already gone");
-		assert_eq!(p.clear_units(), 1);
-		// A unit-free project saves without the block at all.
-		assert!(!p.save_string().contains("\"units\""));
-	}
-
-	#[test]
-	fn resize_places_old_map_and_fills_water() {
-		let root = assets_root();
-		let mut p = Project::new(4, 4, &["GREEN".to_string()], &root, 42).unwrap();
-		let (land, layer) = p.resolve_ref("GLa000").unwrap();
-		p.place(0, 0, layer, Some(land)); // a marker in the top-left
-		p.set_pass(0, 0, 3);
-
-		// Enlarge to 8×8 with the old map centered (offset 2,2).
-		p.resize(8, 8, 2, 2).unwrap();
-		assert_eq!((p.width, p.height), (8, 8));
-		// The marker moved to (2,2); its pass override rode along.
-		let top = p.cell(2, 2).unwrap()[layer].unwrap();
-		assert_eq!(p.packs[top.pack as usize].ids[top.tile as usize], "GLa000");
-		assert_eq!(p.pass_override(2, 2), Some(3));
-		// New territory is water.
-		assert_eq!(p.pass_at(0, 0), Some(1), "new corner is water");
-
-		// Shrink/crop back: offset -2,-2 recovers the original window.
-		p.resize(4, 4, -2, -2).unwrap();
-		let top = p.cell(0, 0).unwrap()[layer].unwrap();
-		assert_eq!(p.packs[top.pack as usize].ids[top.tile as usize], "GLa000");
-		assert_eq!(p.pass_override(0, 0), Some(3));
-
-		assert!(p.resize(0, 8, 0, 0).is_err(), "rejects zero dimension");
-	}
-
-	#[test]
-	fn pass_paint_drag_is_one_undo_unit() {
-		let root = assets_root();
-		let mut p = Project::new(8, 6, &["GREEN".to_string()], &root, 42).unwrap();
-		let before = p.hash();
-		p.begin_stroke();
-		p.set_pass(0, 0, 2);
-		p.set_pass(1, 0, 2);
-		p.set_pass(2, 0, 2);
-		p.end_stroke();
-		assert!(p.undo(), "the whole drag undoes at once");
-		assert_eq!(p.hash(), before);
-	}
-
-	#[test]
-	fn bake_accepts_rectangular_maps() {
-		// Any rectangle is a valid WRL (confirmed 2026-06) - width/height
-		// are independent throughout.
-		let p = Project::new(8, 6, &["GREEN".to_string()], &assets_root(), 42).unwrap();
-		let wrl = crate::bake(&p).unwrap();
-		assert_eq!((wrl.width, wrl.height), (8, 6));
-	}
-
-	#[test]
-	fn palette_edits_are_undoable_and_round_trip_through_save() {
-		let root = assets_root();
-		let mut p = Project::new(8, 8, &["GREEN".to_string()], &root, 42).unwrap();
-		let before = p.hash();
-
-		// Static slots refuse edits; dynamic accept and change the hash.
-		assert!(p.set_color(32, [1, 2, 3]).is_err());
-		assert!(p.set_color(200, [1, 2, 3]).is_err());
-		assert!(p.set_color(100, [10, 20, 30]).unwrap());
-		assert!(p.dirty());
-		assert_ne!(p.hash(), before, "palette is document state");
-		assert!(!p.set_color(100, [10, 20, 30]).unwrap(), "no-op edit");
-
-		// Saved as a sparse override block; reload reproduces the palette.
-		// (`"palette": {` is the override block - `"palette": true` in the
-		// `use` entries is the unrelated owner flag.)
-		let text = p.save_string();
-		assert!(text.contains("\"palette\": {"), "{text}");
-		assert!(text.contains("\"100\": \"#0a141e\""), "{text}");
-		let reloaded = Project::from_str(&text, &root).unwrap();
-		assert_eq!(reloaded.palette[300..303], [10, 20, 30]);
-		assert_eq!(reloaded.hash(), p.hash());
-
-		// Undo restores the pack color - and the override block disappears.
-		assert!(p.undo());
-		assert_eq!(p.hash(), before);
-		assert!(!p.save_string().contains("\"palette\": {"));
-		assert!(p.redo());
-		assert_eq!(p.palette[300..303], [10, 20, 30]);
-
-		// Overrides outside the dynamic range are rejected at load.
-		let bad = text.replace("\"100\"", "\"32\"");
-		assert!(Project::from_str(&bad, &root).is_err());
-	}
-
-	#[test]
-	fn static_slots_resolve_to_the_in_game_palette() {
-		let root = assets_root();
-		let p = Project::new(8, 8, &["GREEN".to_string()], &root, 42).unwrap();
-		// Every static slot carries the game value (pack bytes there are
-		// converter leftovers the engine would ignore anyway).
-		for slot in 0..256usize {
-			if (64..=159).contains(&slot) {
-				continue;
-			}
-			assert_eq!(p.palette[slot * 3..slot * 3 + 3], crate::GAME_PALETTE[slot * 3..slot * 3 + 3], "slot {slot}",);
-		}
-		// Dynamic slots stay pack-owned (not the FF00FF placeholders).
-		assert_ne!(p.palette[64 * 3..64 * 3 + 3], [0xff, 0x00, 0xff]);
-		// Statics never count as overrides in the save.
-		assert!(!p.save_string().contains("\"palette\": {"));
-	}
-
-	#[test]
-	fn hsl_block_shift_retints_one_water_cycle() {
-		let root = assets_root();
-		let mut p = Project::new(8, 8, &["GREEN".to_string()], &root, 42).unwrap();
-		let before = p.hash();
-		let snapshot = p.palette.clone();
-
-		assert!(p.hsl_shift_block(110, 40.0, 0.0, 0.1).unwrap());
-		// Only the 110–116 block changed.
-		for slot in 0..256usize {
-			let same = p.palette[slot * 3..slot * 3 + 3] == snapshot[slot * 3..slot * 3 + 3];
-			if (110..=116).contains(&slot) {
-				assert!(
-					!same || {
-						// A grey could map to itself; tolerate but don't expect.
-						true
-					}
-				);
-			} else {
-				assert!(same, "slot {slot} must be untouched");
-			}
-		}
-		assert_ne!(p.hash(), before);
-
-		// The whole block re-tint is ONE undo step.
-		assert!(p.undo());
-		assert_eq!(p.hash(), before);
-		assert_eq!(p.palette, snapshot);
-
-		// Non-water slots refuse the block tool.
-		assert!(p.hsl_shift_block(70, 10.0, 0.0, 0.0).is_err());
-		assert!(p.hsl_shift_block(9, 10.0, 0.0, 0.0).is_err(), "game animated is fixed");
-	}
-
-	#[test]
-	fn transform_ops_match_pixel_operations() {
-		// A recognizable asymmetric 64×64 test tile.
-		let mut src = [0u8; TILE_DATA_SIZE];
-		for y in 0..64usize {
-			for x in 0..64usize {
-				src[y * 64 + x] = ((x * 7 + y * 13) % 251) as u8;
-			}
-		}
-		let rot_cw = |p: &[u8; TILE_DATA_SIZE]| {
-			let mut out = [0u8; TILE_DATA_SIZE];
-			for y in 0..64usize {
-				for x in 0..64usize {
-					out[y * 64 + x] = p[(63 - x) * 64 + y];
-				}
-			}
-			out
-		};
-		let flip_h = |p: &[u8; TILE_DATA_SIZE]| {
-			let mut out = [0u8; TILE_DATA_SIZE];
-			for y in 0..64usize {
-				for x in 0..64usize {
-					out[y * 64 + x] = p[y * 64 + (63 - x)];
-				}
-			}
-			out
-		};
-		let flip_v = |p: &[u8; TILE_DATA_SIZE]| {
-			let mut out = [0u8; TILE_DATA_SIZE];
-			for y in 0..64usize {
-				for x in 0..64usize {
-					out[y * 64 + x] = p[(63 - y) * 64 + x];
-				}
-			}
-			out
-		};
-
-		for rot in 0..4u8 {
-			for mirror in [false, true] {
-				let t = Transform { rot, mirror };
-				let base = transform_tile(&src, t);
-				assert_eq!(transform_tile(&src, t.rotated_cw()), rot_cw(&base), "{t:?} cw");
-				assert_eq!(transform_tile(&src, t.rotated_cw().rotated_ccw()), base, "{t:?} cw∘ccw = id",);
-				assert_eq!(transform_tile(&src, t.flipped_h()), flip_h(&base), "{t:?} flip h");
-				assert_eq!(transform_tile(&src, t.flipped_v()), flip_v(&base), "{t:?} flip v");
-			}
-		}
-	}
-
-	/// `compose` is exactly transform-then-transform on pixels, for all 64
-	/// pairs.
-	#[test]
-	fn compose_matches_pixel_chaining() {
-		let mut src = [0u8; TILE_DATA_SIZE];
-		for y in 0..64usize {
-			for x in 0..64usize {
-				src[y * 64 + x] = ((x * 7 + y * 13) % 251) as u8;
-			}
-		}
-		for ra in 0..4u8 {
-			for ma in [false, true] {
-				for rb in 0..4u8 {
-					for mb in [false, true] {
-						let outer = Transform { rot: ra, mirror: ma };
-						let inner = Transform { rot: rb, mirror: mb };
-						let chained = transform_tile(&transform_tile(&src, inner), outer);
-						assert_eq!(transform_tile(&src, outer.compose(inner)), chained, "{outer:?} ∘ {inner:?}",);
-					}
-				}
-			}
-		}
-	}
-
-	/// `inverse` undoes a transform from both sides, and `screen_to_base` is a
-	/// permutation of the 4 directions consistent with `compose`.
-	#[test]
-	fn transform_inverse_and_screen_to_base() {
-		for rot in 0..4u8 {
-			for mirror in [false, true] {
-				let t = Transform { rot, mirror };
-				let inv = t.inverse();
-				assert_eq!(t.compose(inv), Transform::default(), "{t:?} ∘ inv");
-				assert_eq!(inv.compose(t), Transform::default(), "inv ∘ {t:?}");
-				// screen_to_base is a bijection over {N,E,S,W}.
-				let mapped: Vec<usize> = (0..4).map(|d| t.screen_to_base(d)).collect();
-				let mut seen = [false; 4];
-				for &m in &mapped {
-					assert!(!seen[m], "{t:?} screen_to_base not a permutation");
-					seen[m] = true;
-				}
-				// Inverse direction map round-trips: base_to_screen ∘ screen_to_base = id.
-				for d in 0..4 {
-					assert_eq!(inv.screen_to_base(t.screen_to_base(d)), d, "{t:?} dir round-trip");
-				}
-			}
-		}
-	}
-
-	#[test]
-	fn stroke_groups_edits_into_one_undo_unit() {
-		let root = assets_root();
-		let mut p = Project::new(8, 6, &["GREEN".to_string()], &root, 42).unwrap();
-		let before = p.hash();
-		let (tile, layer) = p.resolve_ref("GLa000").unwrap();
-
-		p.begin_stroke();
-		assert!(p.place(2, 2, layer, Some(tile)));
-		assert!(p.place(3, 2, layer, Some(tile)));
-		assert!(p.place(4, 2, layer, Some(tile)));
-		p.end_stroke();
-		let painted = p.hash();
-		assert_ne!(before, painted);
-
-		assert!(p.undo(), "stroke undoes as one unit");
-		assert_eq!(p.hash(), before);
-		assert!(!p.undo(), "nothing left to undo");
-
-		assert!(p.redo());
-		assert_eq!(p.hash(), painted);
-
-		// An empty stroke leaves no undo entry behind.
-		p.begin_stroke();
-		p.end_stroke();
-		assert!(p.undo());
-		assert_eq!(p.hash(), before);
-	}
-}
+mod tests;

@@ -57,8 +57,8 @@ impl GridPass {
 		});
 		let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("grid.layout"),
-			bind_group_layouts: &[&bgl],
-			push_constant_ranges: &[],
+			bind_group_layouts: &[Some(&bgl)],
+			immediate_size: 0,
 		});
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some("grid.pipeline"),
@@ -82,7 +82,7 @@ impl GridPass {
 			primitive: wgpu::PrimitiveState::default(),
 			depth_stencil: None,
 			multisample: wgpu::MultisampleState::default(),
-			multiview: None,
+			multiview_mask: None,
 			cache: None,
 		});
 		Self { pipeline, bind_group, uniforms_buffer }

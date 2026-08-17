@@ -11,7 +11,7 @@ struct VsIn {
 	@location(0) pos: vec2<f32>,     // clip space
 	@location(1) uv: vec2<f32>,      // sprite-local pixels (0..w, 0..h)
 	@location(2) origin: vec2<u32>,  // sprite's pixel origin in the atlas
-	@location(3) flags: u32,         // bits 0..3 team, bit 3 shadow
+	@location(3) flags: u32,         // bits 0..2 team, bit 3 shadow, bit 4 ghost
 };
 
 struct VsOut {
@@ -64,5 +64,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 	}
 	let team = in.flags & 7u;
 	let color = textureLoad(palette, vec2<i32>(i32(remap(idx, team)), 0), 0).rgb;
-	return vec4<f32>(color, 1.0);
+	// Ghost preview (the placement tool's hovered unit): the real sprite, drawn
+	// half-transparent so you see what a click/drag will place, like a tile stamp.
+	let alpha = select(1.0, 0.55, (in.flags & 16u) != 0u);
+	return vec4<f32>(color, alpha);
 }

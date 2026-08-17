@@ -1,0 +1,10 @@
+{
+	"version": "1",
+	"id": "hill-7",
+	"name": "Hill 7",
+	"family": "hill",
+	"transform": false,
+	"pass": [
+		"3"
+	]
+}

@@ -1,0 +1,11 @@
+{
+	"version": "1",
+	"id": "dune-7",
+	"name": "Dune 7",
+	"family": "dune",
+	"transform": false,
+	"pass": [
+		"00",
+		"00"
+	]
+}

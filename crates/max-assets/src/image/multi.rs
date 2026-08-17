@@ -517,4 +517,153 @@ mod tests {
 		let _ = decode_multi_image_indexed(&d);
 		let _ = decode_multi_image_shadow_indexed(&d);
 	}
+
+	/// One-frame multi-image blob: header (image_count = 1, first offset = 6),
+	/// a `width`x`height` frame with zero hot-spots, and each row's RLE bytes
+	/// laid out back-to-back behind a consistent row-offset table.
+	fn one_frame_blob(width: i16, height: i16, rows: &[&[u8]]) -> Vec<u8> {
+		let mut d = Vec::new();
+		d.extend_from_slice(&1i16.to_le_bytes());
+		d.extend_from_slice(&6i32.to_le_bytes());
+		d.extend_from_slice(&width.to_le_bytes());
+		d.extend_from_slice(&height.to_le_bytes());
+		d.extend_from_slice(&0i16.to_le_bytes()); // hot_spot_x
+		d.extend_from_slice(&0i16.to_le_bytes()); // hot_spot_y
+		let mut row_start = 6 + 8 + 4 * rows.len();
+		for row in rows {
+			d.extend_from_slice(&(row_start as i32).to_le_bytes());
+			row_start += row.len();
+		}
+		for row in rows {
+			d.extend_from_slice(row);
+		}
+		d
+	}
+
+	/// The FRAMEPIC BGRA quad for palette index `idx`.
+	fn pal(idx: u8) -> &'static [u8] {
+		&FRAMEPIC_PALETTE_BGRA[idx as usize * 4..idx as usize * 4 + 4]
+	}
+
+	/// A buffer long enough to be a multi-image but whose count/offset pair
+	/// doesn't match is "not a multi-image": the lenient decoders answer
+	/// `Ok(None)`, the strict indexed ones a header-mismatch error.
+	#[test]
+	fn header_mismatch_is_none_for_lenient_and_err_for_strict_decoders() {
+		let zero_count = vec![0u8; 20]; // image_count = 0
+		let mut bad_offset = valid_single_frame_blob(); // 23 bytes, clears the length floor
+		bad_offset[2..6].copy_from_slice(&7i32.to_le_bytes()); // first offset must be 6 for count 1
+		for d in [&zero_count, &bad_offset] {
+			assert!(parse_multi_image(d).unwrap().is_none(), "lenient single-frame decode says None");
+			assert!(parse_multi_image_all_frames(d).unwrap().is_none(), "lenient all-frames decode says None");
+			let err = decode_multi_image_indexed(d).unwrap_err();
+			assert!(err.contains("header mismatch"), "strict indexed decode names the mismatch: {err}");
+			let err = decode_multi_image_shadow_indexed(d).unwrap_err();
+			assert!(err.contains("header mismatch"), "strict shadow decode names the mismatch: {err}");
+		}
+	}
+
+	/// A frame whose header claims zero width is rejected by every decoder -
+	/// the lenient ones as `Ok(None)`, the strict ones as "no frames decoded".
+	#[test]
+	fn zero_width_frame_yields_no_frames() {
+		let mut d = one_frame_blob(0, 1, &[&[0xff]]);
+		while d.len() < 20 {
+			d.push(0); // pad past the 20-byte floor so the frame header itself is what fails
+		}
+		assert!(parse_multi_image(&d).unwrap().is_none(), "BGRA decode rejects a zero-width frame");
+		assert!(parse_multi_image_all_frames(&d).unwrap().is_none(), "all-frames decode rejects it too");
+		assert!(decode_multi_image_indexed(&d).unwrap_err().contains("no frames"), "indexed decode has no frames");
+		assert!(decode_multi_image_shadow_indexed(&d).unwrap_err().contains("no frames"), "shadow decode likewise");
+	}
+
+	/// Frame offsets pointing past (or into nonsense inside) the buffer leave
+	/// zero decodable frames instead of panicking or over-reading.
+	#[test]
+	fn frame_offsets_past_the_end_yield_no_frames() {
+		let mut d = Vec::new();
+		d.extend_from_slice(&4i16.to_le_bytes()); // four frames
+		d.extend_from_slice(&18i32.to_le_bytes()); // first offset = 2 + 4*4, right at the buffer's edge
+		d.resize(20, 0); // frames 2-4 get offset 0, aliasing the outer header
+		assert!(parse_multi_image(&d).unwrap().is_none(), "no room for a frame header at offset 18");
+		assert!(parse_multi_image_all_frames(&d).unwrap().is_none(), "no frame in the set decodes");
+		assert!(decode_multi_image_indexed(&d).unwrap_err().contains("no frames"), "indexed decode has no frames");
+		assert!(decode_multi_image_shadow_indexed(&d).unwrap_err().contains("no frames"), "shadow decode likewise");
+	}
+
+	/// A shadow-encoded frame (rows of `(transparent, shadow)` pairs with no
+	/// pixel payload) decodes through the shadow path: `parse_multi_image`
+	/// tags it `MaxMultiShadow` and the indexed decoder emits marker pixels.
+	/// The row exercises a zero-length shadow run, a real run, the 0xff
+	/// terminator and an implicit transparent tail.
+	#[test]
+	fn shadow_frame_decodes_with_marker_pixels() {
+		// width 3: skip 1 (shadow run 0), then 1 shadow pixel, end; tail stays transparent.
+		let d = one_frame_blob(3, 1, &[&[1, 0, 0, 1, 0xff]]);
+
+		let img = parse_multi_image(&d).unwrap().expect("a valid shadow frame must decode");
+		assert_eq!(img.max_type, MaxType::MaxMultiShadow, "shadow RLE wins over the body decoder");
+		assert_eq!((img.width, img.height), (3, 1));
+		let mut want = Vec::new();
+		want.extend_from_slice(pal(0));
+		want.extend_from_slice(pal(20)); // SHADOW_COLOR_INDEX
+		want.extend_from_slice(pal(0));
+		assert_eq!(img.data, want, "one shadow pixel between two transparent ones");
+
+		let frames = decode_multi_image_shadow_indexed(&d).expect("indexed shadow decode succeeds");
+		assert_eq!(frames.len(), 1, "single-frame blob");
+		assert_eq!(frames[0].pixels, vec![0, SHADOW_MARKER, 0], "marker where the shadow run landed");
+		assert_eq!((frames[0].width, frames[0].height), (3, 1));
+	}
+
+	/// A row-offset table that disagrees with where the RLE cursor actually
+	/// lands rejects the frame in all four decoders (the offsets are the
+	/// format's integrity check).
+	#[test]
+	fn row_offset_mismatch_rejects_the_frame() {
+		// Two empty rows (bare 0xff terminators), then the second row's offset is bent.
+		let mut d = one_frame_blob(1, 2, &[&[0xff], &[0xff]]);
+		d[18..22].copy_from_slice(&99i32.to_le_bytes()); // row 1's table entry
+		assert!(parse_multi_image(&d).unwrap().is_none(), "BGRA decode rejects the bent offset");
+		assert!(decode_multi_image_indexed(&d).unwrap_err().contains("no frames"), "indexed decode rejects it");
+		assert!(decode_multi_image_shadow_indexed(&d).unwrap_err().contains("no frames"), "shadow decode rejects it");
+	}
+
+	/// A transparent run longer than the row is malformed - every decoder
+	/// refuses the frame rather than writing past the row.
+	#[test]
+	fn transparent_run_longer_than_the_row_is_rejected() {
+		let d = one_frame_blob(2, 1, &[&[5, 0, 0xff]]); // skip 5 in a 2-wide row
+		assert!(parse_multi_image(&d).unwrap().is_none(), "BGRA decode rejects the oversized skip");
+		assert!(decode_multi_image_indexed(&d).unwrap_err().contains("no frames"), "indexed decode rejects it");
+		assert!(decode_multi_image_shadow_indexed(&d).unwrap_err().contains("no frames"), "shadow decode rejects it");
+	}
+
+	/// A pixel/shadow run longer than the row's remaining width is likewise
+	/// refused by all decoders.
+	#[test]
+	fn pixel_run_longer_than_the_row_is_rejected() {
+		let d = one_frame_blob(2, 1, &[&[0, 3, 0xff]]); // 3 payload pixels in a 2-wide row
+		assert!(parse_multi_image(&d).unwrap().is_none(), "BGRA decode rejects the oversized run");
+		assert!(decode_multi_image_indexed(&d).unwrap_err().contains("no frames"), "indexed decode rejects it");
+		assert!(decode_multi_image_shadow_indexed(&d).unwrap_err().contains("no frames"), "shadow decode rejects it");
+	}
+
+	/// A zero-length pixel run is a legal no-op pair, not a terminator: the
+	/// body decoders skip it and keep reading the same row.
+	#[test]
+	fn zero_length_pixel_run_is_skipped_not_terminal() {
+		// width 2: (skip 1, 0 pixels) then (skip 0, 1 pixel = 0x2a), end.
+		let d = one_frame_blob(2, 1, &[&[1, 0, 0, 1, 0x2a, 0xff]]);
+
+		let img = parse_multi_image(&d).unwrap().expect("a valid body frame must decode");
+		assert_eq!(img.max_type, MaxType::MaxMultiImage, "payload bytes disqualify the shadow decoder");
+		let mut want = Vec::new();
+		want.extend_from_slice(pal(0));
+		want.extend_from_slice(pal(0x2a));
+		assert_eq!(img.data, want, "the literal pixel lands after the skipped column");
+
+		let frames = decode_multi_image_indexed(&d).expect("indexed decode succeeds");
+		assert_eq!(frames[0].pixels, vec![0, 0x2a], "raw palette indices preserved");
+	}
 }

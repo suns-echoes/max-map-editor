@@ -167,4 +167,72 @@ mod tests {
 		assert!(read_res_index(&path).is_err());
 		let _ = std::fs::remove_file(&path);
 	}
+
+	/// A scratch directory path unique to this run.
+	fn scratch_dir(tag: &str) -> std::path::PathBuf {
+		std::env::temp_dir().join(format!("mme-res-test-{}-{tag}", std::process::id()))
+	}
+
+	/// Archive with real payloads: 12-byte header, the data blobs back to
+	/// back, then the index table at the end (as MAX.RES lays it out).
+	fn build_with_data(entries: &[(&str, &[u8])]) -> Vec<u8> {
+		let mut data = Vec::new();
+		let mut index = Vec::new();
+		let mut offset = 12i32;
+		for (tag, blob) in entries {
+			let mut tag8 = [0u8; 8];
+			tag8[..tag.len()].copy_from_slice(tag.as_bytes());
+			index.extend_from_slice(&tag8);
+			index.extend_from_slice(&offset.to_le_bytes());
+			index.extend_from_slice(&(blob.len() as i32).to_le_bytes());
+			data.extend_from_slice(blob);
+			offset += blob.len() as i32;
+		}
+		let mut out = Vec::new();
+		out.extend_from_slice(b"RES0");
+		out.extend_from_slice(&offset.to_le_bytes()); // index sits right after the data
+		out.extend_from_slice(&(index.len() as i32).to_le_bytes());
+		out.extend_from_slice(&data);
+		out.extend_from_slice(&index);
+		out
+	}
+
+	/// `read_res_entry` returns the exact blob for a present tag and
+	/// `Ok(None)` - not an error - for an absent one.
+	#[test]
+	fn read_res_entry_finds_a_tag_or_reports_none() {
+		let path = scratch("entry");
+		std::fs::write(&path, build_with_data(&[("FOO", b"HELLO"), ("BAR", b"XY")])).unwrap();
+		assert_eq!(read_res_entry(&path, "FOO").unwrap().as_deref(), Some(&b"HELLO"[..]), "first entry's bytes");
+		assert_eq!(read_res_entry(&path, "BAR").unwrap().as_deref(), Some(&b"XY"[..]), "second entry's bytes");
+		assert!(read_res_entry(&path, "MISSING").unwrap().is_none(), "an unknown tag is None, not an error");
+		let _ = std::fs::remove_file(&path);
+	}
+
+	/// `extract_res_file` creates the output directory and writes one file
+	/// per tag, byte-identical to the archived blob.
+	#[test]
+	fn extract_res_file_writes_one_file_per_tag() {
+		let path = scratch("extract");
+		let out_root = scratch_dir("extract-out");
+		let out_dir = out_root.join("nested"); // exercises create_dir_all
+		std::fs::write(&path, build_with_data(&[("FOO", b"HELLO"), ("BAR", b"XY")])).unwrap();
+		extract_res_file(&path, &out_dir).unwrap();
+		assert_eq!(std::fs::read(out_dir.join("FOO")).unwrap(), b"HELLO", "FOO extracted verbatim");
+		assert_eq!(std::fs::read(out_dir.join("BAR")).unwrap(), b"XY", "BAR extracted verbatim");
+		let _ = std::fs::remove_file(&path);
+		let _ = std::fs::remove_dir_all(&out_root);
+	}
+
+	/// An entry whose claimed size runs past EOF fails extraction with an
+	/// error instead of silently writing a short file.
+	#[test]
+	fn extract_res_file_errors_when_an_entry_runs_past_eof() {
+		let path = scratch("eof");
+		let out_dir = scratch_dir("eof-out");
+		std::fs::write(&path, build(12, 9999)).unwrap(); // 9999-byte entry in a 28-byte file
+		assert!(extract_res_file(&path, &out_dir).is_err(), "the truncated read must surface as an error");
+		let _ = std::fs::remove_file(&path);
+		let _ = std::fs::remove_dir_all(&out_dir);
+	}
 }

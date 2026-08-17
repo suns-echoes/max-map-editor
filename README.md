@@ -88,11 +88,11 @@ cargo run -- MAP.WRL      # open a document (.WRL or project .json)
 
 ## Developing & testing
 
-Every edit flows through a single `Command` mutator, which makes the editor
-fully scriptable and headless-testable - see [ARCHITECTURE.md](./ARCHITECTURE.md)
-for the tour, and [UI.md](./UI.md) for how the interface is built (the
-widget kit, the interaction model, and the rules that keep it consistent).
-The scripts under `scripts/` double as the regression suite:
+Every edit flows through a single `Command` mutator (`EditorState::execute`),
+which makes the editor fully scriptable and headless-testable: a session is a
+list of commands, and a list of commands is a test. The interface is built
+entirely from the first-party `wgpu-ui` retained-widget toolkit vendored at
+`crates/wgpu-ui`. The scripts under `scripts/` double as the regression suite:
 
 ```sh
 cargo test --workspace                                 # everything

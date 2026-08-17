@@ -1,4 +1,18 @@
 {
+	"DLa": {
+		"N": [
+			"__LAND__"
+		],
+		"W": [
+			"__LAND__"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
 	"DSa": {
 		"N": [
 			"__WATER__"
@@ -26,13 +40,16 @@
 		],
 		"E": [
 			"DSa:!",
+			"DSa:!N",
 			"DSd:W",
 			"DSd:!",
+			"DSd:!N",
 			"DSe",
 			"DSf",
 			"DSf:!W",
 			"DSg",
-			"DSg:!"
+			"DSg:!",
+			"DSg:!N"
 		]
 	},
 	"DSb": {
@@ -45,18 +62,14 @@
 		"S": [
 			"DSb:S",
 			"DSb:!S",
-			"DSh:W",
-			"DSh:E",
-			"DSh:!E",
-			"DSh:!W",
-			"DSi:W",
-			"DSi:E",
-			"DSi:!E",
-			"DSi:!W",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm",
-			"DSm:!"
+			"DSm:E",
+			"DSm:!",
+			"DSm:!N",
+			"DSm:!E"
 		],
 		"E": [
 			"__WATER__"
@@ -70,6 +83,7 @@
 			"__WATER__"
 		],
 		"S": [
+			"DSa:!S",
 			"DSc:E",
 			"DSc:!S",
 			"DSe:E",
@@ -87,21 +101,28 @@
 			"DSm:!W"
 		],
 		"E": [
+			"DSa:W",
 			"DSc:W",
 			"DSc:!",
+			"DSc:!N",
 			"DSe:!",
+			"DSe:!N",
 			"DSh",
 			"DSh:!",
+			"DSh:!N",
 			"DSi",
 			"DSi:!",
+			"DSi:!N",
 			"DSj",
 			"DSj:!W",
 			"DSk",
 			"DSk:!W",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		]
 	},
 	"DSd": {
@@ -112,6 +133,7 @@
 			"__WATER__"
 		],
 		"S": [
+			"DSa:E",
 			"DSd:E",
 			"DSd:!S",
 			"DSe:!W",
@@ -121,13 +143,16 @@
 			"DSg:!W"
 		],
 		"E": [
+			"DSa:!N",
 			"DSd:W",
 			"DSd:!",
+			"DSd:!N",
 			"DSe",
 			"DSf",
 			"DSf:!W",
 			"DSg",
-			"DSg:!"
+			"DSg:!",
+			"DSg:!N"
 		]
 	},
 	"DSe": {
@@ -135,43 +160,66 @@
 			"__WATER__"
 		],
 		"W": [
+			"DSa",
+			"DSd",
+			"DSd:!W",
 			"DSe:!",
+			"DSe:!N",
 			"DSf:W",
 			"DSf:!",
+			"DSf:!N",
 			"DSg",
-			"DSg:!"
+			"DSg:!",
+			"DSg:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"DSa:W",
+			"DSc:W",
+			"DSc:!N",
 			"DSe:!",
+			"DSe:!N",
 			"DSh",
 			"DSh:!",
+			"DSh:!N",
 			"DSi",
 			"DSi:!",
+			"DSi:!N",
 			"DSj",
 			"DSj:!W",
 			"DSk",
 			"DSk:!W",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm",
 			"DSm:!E"
 		]
 	},
 	"DSf": {
 		"N": [
+			"DSa:!W",
+			"DSd",
+			"DSd:!W",
+			"DSe:E",
 			"DSf:E",
 			"DSf:!S",
 			"DSg:E",
 			"DSg:!W"
 		],
 		"W": [
+			"DSa",
+			"DSd",
+			"DSd:!W",
+			"DSe:!N",
 			"DSf:W",
 			"DSf:!",
+			"DSf:!N",
 			"DSg",
-			"DSg:!"
+			"DSg:!",
+			"DSg:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -185,15 +233,29 @@
 			"__WATER__"
 		],
 		"W": [
+			"DSa",
+			"DSd",
+			"DSd:!W",
+			"DSe:!N",
+			"DSf:W",
+			"DSf:!N",
 			"DSg",
-			"DSg:!"
+			"DSg:!",
+			"DSg:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"DSa:!N",
+			"DSd:W",
+			"DSd:!N",
+			"DSe",
+			"DSf",
+			"DSf:!W",
 			"DSg",
-			"DSg:!"
+			"DSg:!",
+			"DSg:!N"
 		]
 	},
 	"DSh": {
@@ -201,33 +263,50 @@
 			"__WATER__"
 		],
 		"W": [
+			"DSa:!W",
+			"DSc",
+			"DSc:!W",
+			"DSe",
 			"DSh",
 			"DSh:!",
+			"DSh:!N",
 			"DSi",
 			"DSi:!",
+			"DSi:!N",
 			"DSj:W",
 			"DSj:!",
+			"DSj:!N",
 			"DSk:W",
 			"DSk:!",
+			"DSk:!N",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm:E",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"DSa:W",
+			"DSc:W",
+			"DSc:!N",
+			"DSe:!N",
 			"DSh",
 			"DSh:!",
+			"DSh:!N",
 			"DSi",
 			"DSi:!",
+			"DSi:!N",
 			"DSj",
 			"DSj:!W",
 			"DSk",
 			"DSk:!W",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm",
 			"DSm:!E"
 		]
@@ -237,35 +316,62 @@
 			"__WATER__"
 		],
 		"W": [
+			"DSa:!W",
+			"DSc",
+			"DSc:!W",
+			"DSe",
+			"DSh",
+			"DSh:!N",
 			"DSi",
 			"DSi:!",
+			"DSi:!N",
 			"DSj:W",
 			"DSj:!",
+			"DSj:!N",
 			"DSk:W",
 			"DSk:!",
+			"DSk:!N",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm:E",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"DSa:W",
+			"DSc:W",
+			"DSc:!N",
+			"DSe:!N",
+			"DSh",
+			"DSh:!N",
 			"DSi",
 			"DSi:!",
+			"DSi:!N",
 			"DSj",
 			"DSj:!W",
 			"DSk",
 			"DSk:!W",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm",
 			"DSm:!E"
 		]
 	},
 	"DSj": {
 		"N": [
+			"DSa",
+			"DSc",
+			"DSc:!W",
+			"DSe:!W",
+			"DSh:E",
+			"DSh:!W",
+			"DSi:E",
+			"DSi:!W",
 			"DSj:E",
 			"DSj:!S",
 			"DSk:E",
@@ -273,17 +379,30 @@
 			"DSl:E",
 			"DSl:!W",
 			"DSm:E",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		],
 		"W": [
+			"DSa:!W",
+			"DSc",
+			"DSc:!W",
+			"DSe",
+			"DSh",
+			"DSh:!N",
+			"DSi",
+			"DSi:!N",
 			"DSj:W",
 			"DSj:!",
+			"DSj:!N",
 			"DSk:W",
 			"DSk:!",
+			"DSk:!N",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm:E",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -294,20 +413,44 @@
 	},
 	"DSk": {
 		"N": [
+			"DSa",
+			"DSc",
+			"DSc:!W",
+			"DSe:!W",
+			"DSh:E",
+			"DSh:!W",
+			"DSi:E",
+			"DSi:!W",
+			"DSj:E",
+			"DSj:!S",
 			"DSk:E",
 			"DSk:!S",
 			"DSl:E",
 			"DSl:!W",
 			"DSm:E",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		],
 		"W": [
+			"DSa:!W",
+			"DSc",
+			"DSc:!W",
+			"DSe",
+			"DSh",
+			"DSh:!N",
+			"DSi",
+			"DSi:!N",
+			"DSj:W",
+			"DSj:!N",
 			"DSk:W",
 			"DSk:!",
+			"DSk:!N",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm:E",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -318,29 +461,62 @@
 	},
 	"DSl": {
 		"N": [
+			"DSb",
+			"DSb:!N",
 			"DSl:S",
 			"DSl:!S",
 			"DSm:E",
 			"DSm:!S"
 		],
 		"W": [
+			"DSa:!W",
+			"DSc",
+			"DSc:!W",
+			"DSe",
+			"DSh",
+			"DSh:!N",
+			"DSi",
+			"DSi:!N",
+			"DSj:W",
+			"DSj:!N",
+			"DSk:W",
+			"DSk:!N",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"DSa:W",
+			"DSc:W",
+			"DSc:!N",
+			"DSe:!N",
+			"DSh",
+			"DSh:!N",
+			"DSi",
+			"DSi:!N",
+			"DSj",
+			"DSj:!W",
+			"DSk",
+			"DSk:!W",
 			"DSl",
 			"DSl:!",
+			"DSl:!N",
 			"DSm",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N"
 		]
 	},
 	"DSm": {
 		"N": [
+			"DSb",
+			"DSb:!N",
+			"DSl:!S",
 			"DSm",
 			"DSm:W",
 			"DSm:S",
@@ -349,18 +525,54 @@
 			"DSm:!W"
 		],
 		"W": [
+			"DSa:!W",
+			"DSc",
+			"DSc:!W",
+			"DSe",
+			"DSh",
+			"DSh:!N",
+			"DSi",
+			"DSi:!N",
+			"DSj:W",
+			"DSj:!N",
+			"DSk:W",
+			"DSk:!N",
+			"DSl",
+			"DSl:W",
+			"DSl:!N",
 			"DSm:E",
-			"DSm:!"
+			"DSm:!",
+			"DSm:!N",
+			"DSm:!E"
 		],
 		"S": [
+			"DSa:S",
+			"DSc:S",
+			"DSe:!E",
+			"DSh:W",
+			"DSh:!E",
+			"DSi:W",
+			"DSi:!E",
+			"DSj:W",
+			"DSj:!N",
+			"DSk:W",
+			"DSk:!N",
+			"DSm",
 			"DSm:W",
 			"DSm:!E",
 			"DSm:!S"
 		],
 		"E": [
+			"DSb:W",
+			"DSb:!E",
+			"DSc:!N",
+			"DSl",
+			"DSl:!N",
 			"DSm:S",
 			"DSm:E",
 			"DSm:!",
+			"DSm:!N",
+			"DSm:!E",
 			"DSm:!W"
 		]
 	}

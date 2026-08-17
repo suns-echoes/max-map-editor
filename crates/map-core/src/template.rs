@@ -67,7 +67,7 @@ impl StampOp {
 /// drawn for the orientations the family permits - rotating past that corrupts
 /// baked light/shadow.) Sync tiles (water) ride along at a fixed orientation
 /// and are handled before this is ever consulted.
-fn family_allows(kind: Transformable, t: Transform) -> bool {
+pub fn family_allows(kind: Transformable, t: Transform) -> bool {
 	match kind {
 		Transformable::Free | Transformable::Sync => true,
 		Transformable::Invert => !t.mirror && t.rot.is_multiple_of(2),
@@ -235,6 +235,23 @@ impl Template {
 			}
 		}
 		Ok(Self { name: self.name.clone(), width: nw as u16, height: nh as u16, uses: self.uses.clone(), cells })
+	}
+
+	/// This template (an **identity-orientation base**) brought to the absolute
+	/// orientation `target`: mirror first (a horizontal flip), then `target.rot`
+	/// clockwise quarter turns - the sequence `oriented` and the transform-tool
+	/// share, so the 8-orientation stamp grid can show every orientation from one
+	/// base. `Err` (naming the offending tile) if any tile's family can't take
+	/// `target`, exactly like [`Self::transformed`].
+	pub fn oriented(&self, project: &Project, target: Transform) -> Result<Self, String> {
+		let mut t = self.clone();
+		if target.mirror {
+			t = t.transformed(project, StampOp::FlipH)?;
+		}
+		for _ in 0..target.rot {
+			t = t.transformed(project, StampOp::Cw)?;
+		}
+		Ok(t)
 	}
 
 	// ----- persistence ---------------------------------------------------------
@@ -467,7 +484,7 @@ mod tests {
 		let p = project();
 		// A fresh cell is water only (sync, no suffix) - a real, resolvable spec.
 		let water = p.cell_spec(0, 0).unwrap();
-		assert!(!water.contains(':'), "water is sync → no transform suffix");
+		assert!(!water.contains(':'), "water is sync -> no transform suffix");
 		// 2-wide, 1-tall row: ground over water, then a pre-rotated ground tile.
 		let t = Template {
 			name: "row".into(),
@@ -518,6 +535,154 @@ mod tests {
 			cells: vec!["GLa000".into(), "GLc000".into()],
 		};
 		assert!(mixed.transformed(&p, StampOp::Cw).is_err(), "a single No tile vetoes the stamp rotation");
+	}
+
+	/// `oriented` reaches every absolute orientation from an identity base (the
+	/// footprint swaps on the odd quarter turns), and `Project::tile_allows`
+	/// gates by the tile's family: a Free tile takes any orientation, a No tile
+	/// only identity.
+	#[test]
+	fn oriented_reaches_absolute_orientations_and_tile_allows_gates() {
+		let p = project();
+		let base = Template {
+			name: "b".into(),
+			width: 2,
+			height: 1,
+			uses: vec![("GREEN".into(), String::new())],
+			cells: vec!["GLa000".into(), "GLa001".into()],
+		};
+		for mirror in [false, true] {
+			for rot in 0..4u8 {
+				let t = Transform { rot, mirror };
+				let o = base.oriented(&p, t).unwrap_or_else(|e| panic!("{t:?}: {e}"));
+				let (ew, eh) = if rot % 2 == 1 { (1, 2) } else { (2, 1) };
+				assert_eq!((o.width, o.height), (ew, eh), "footprint for {t:?}");
+			}
+		}
+		assert_eq!(base.oriented(&p, Transform::default()).unwrap().cells, base.cells, "identity is the base");
+
+		// `oriented` composes with `transformed`: applying an op to an oriented
+		// template equals orienting to the op-composed transform - so the grid's
+		// absolute orientations and the console's relative ops never diverge.
+		let same = |a: &Template, b: &Template| (a.width, a.height, &a.cells) == (b.width, b.height, &b.cells);
+		for mirror in [false, true] {
+			for rot in 0..4u8 {
+				let t = Transform { rot, mirror };
+				let cw = base.oriented(&p, t).unwrap().transformed(&p, StampOp::Cw).unwrap();
+				assert!(same(&cw, &base.oriented(&p, t.rotated_cw()).unwrap()), "cw compose {t:?}");
+				let fh = base.oriented(&p, t).unwrap().transformed(&p, StampOp::FlipH).unwrap();
+				assert!(same(&fh, &base.oriented(&p, t.flipped_h()).unwrap()), "flip-h compose {t:?}");
+			}
+		}
+
+		let gla = p.resolve_ref("GLa000").unwrap().0; // Free
+		let glc = p.resolve_ref("GLc000").unwrap().0; // No
+		assert!(p.tile_allows(gla.pack, gla.tile, Transform { rot: 1, mirror: true }));
+		assert!(p.tile_allows(glc.pack, glc.tile, Transform::default()));
+		assert!(!p.tile_allows(glc.pack, glc.tile, Transform { rot: 1, mirror: false }));
+	}
+
+	#[test]
+	fn stamp_op_parse_speaks_the_command_line_names() {
+		assert_eq!(StampOp::parse("cw"), Some(StampOp::Cw));
+		assert_eq!(StampOp::parse("ccw"), Some(StampOp::Ccw));
+		assert_eq!(StampOp::parse("flip-h"), Some(StampOp::FlipH));
+		assert_eq!(StampOp::parse("flip-v"), Some(StampOp::FlipV));
+		assert_eq!(StampOp::parse("rot90"), None, "unknown op names are refused");
+	}
+
+	/// Invert-only families (DESERT's DLb) take a 180° result but refuse quarter
+	/// turns and mirrors, with the "only rotates 180°" reason.
+	#[test]
+	fn invert_tiles_allow_180_and_refuse_the_rest() {
+		let p = Project::new(4, 4, &["DESERT".to_string()], &assets_root(), 7).unwrap();
+		let desert = &p.packs[1];
+		let tile = desert.group_tiles("DLb")[0];
+		let id = desert.ids[tile as usize].clone();
+		// From a quarter-turned start (`:W` = one cw turn), one more cw turn
+		// reaches 180° - a legal invert orientation.
+		let quarter = Template {
+			name: "q".into(),
+			width: 1,
+			height: 1,
+			uses: vec![("DESERT".into(), String::new())],
+			cells: vec![format!("{id}:W")],
+		};
+		let turned = quarter.transformed(&p, StampOp::Cw).expect("90°+90° = 180° is allowed for invert");
+		assert_eq!(turned.cells[0], format!("{id}:S"), "the composed transform is the 180° suffix");
+		// From the base orientation, a single quarter turn (or a mirror) is refused.
+		let base = Template { cells: vec![id.clone()], ..quarter.clone() };
+		for op in [StampOp::Cw, StampOp::FlipH] {
+			let err = base.transformed(&p, op).err().unwrap();
+			assert!(err.contains("only rotates 180"), "{op:?} names the invert restriction: {err}");
+			assert!(err.contains(&id), "the offending tile is named: {err}");
+		}
+	}
+
+	/// A selection mask larger than the map captures the off-map cells as holes
+	/// instead of panicking (the mask is editor state and may outlive a resize).
+	#[test]
+	fn capture_treats_offmap_selected_cells_as_holes() {
+		let (p, _) = painted();
+		let mut wide = Selection::new(p.width + 4, p.height);
+		// One on-map painted cell + one past the right edge.
+		wide.apply_cell(2, 2, SelectMode::Add);
+		wide.apply_cell(p.width + 2, 2, SelectMode::Add);
+		let t = Template::capture(&p, &wide, "wide").unwrap();
+		assert_eq!((t.width, t.height), (p.width + 1, 1));
+		assert_eq!(t.cells[0], p.cell_spec(2, 2).unwrap(), "the on-map cell captured");
+		assert!(t.cells.last().unwrap().is_empty(), "the off-map cell became a hole");
+	}
+
+	#[test]
+	fn capture_of_tile_free_cells_is_an_error() {
+		let (mut p, s) = painted();
+		assert!(clear_selection(&mut p, &s), "empty the selected cells first");
+		let err = Template::capture(&p, &s, "void").err().unwrap();
+		assert!(err.contains("empty"), "an all-hole capture is refused: {err}");
+	}
+
+	#[test]
+	fn from_str_validates_the_grid_shape() {
+		// No `use` block is fine (an empty roster); no name defaults to "".
+		let bare = Template::from_str(r#"{"width":1,"height":1,"map":[["GLa000"]]}"#).unwrap();
+		assert!(bare.uses.is_empty() && bare.name.is_empty());
+		assert_eq!(bare.cells, vec!["GLa000".to_string()]);
+		// Row count must match the height, row length the width.
+		let e = Template::from_str(r#"{"width":1,"height":2,"map":[["a"]]}"#).err().unwrap();
+		assert!(e.contains("1 rows, height says 2"), "{e}");
+		let e = Template::from_str(r#"{"width":2,"height":1,"map":[["a"]]}"#).err().unwrap();
+		assert!(e.contains("1 cells, width says 2"), "{e}");
+		// A cell may stack at most MAX_LAYERS parts.
+		let e = Template::from_str(r#"{"width":1,"height":1,"map":[["a,b,c"]]}"#).err().unwrap();
+		assert!(e.contains("more layers"), "{e}");
+	}
+
+	/// `load` keeps the file's own name and only falls back to the file stem
+	/// when the JSON carries none.
+	#[test]
+	fn load_falls_back_to_the_file_stem_only_when_unnamed() {
+		let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../temp/mc-cov-template-load");
+		let _ = std::fs::remove_dir_all(&dir);
+		let unnamed = dir.join("oasis.json");
+		let named = dir.join("stemless.json");
+		let (p, s) = painted();
+		let mut t = Template::capture(&p, &s, "ridge").unwrap();
+		t.name = String::new();
+		t.save(&unnamed).unwrap();
+		assert_eq!(Template::load(&unnamed).unwrap().name, "oasis", "unnamed file -> stem");
+		t.name = "Real Name".into();
+		t.save(&named).unwrap();
+		assert_eq!(Template::load(&named).unwrap().name, "Real Name", "the JSON name wins over the stem");
+		std::fs::remove_dir_all(&dir).ok();
+	}
+
+	#[test]
+	fn cell_layers_out_of_footprint_is_empty() {
+		let (p, s) = painted();
+		let t = Template::capture(&p, &s, "ridge").unwrap();
+		assert_eq!(t.cell_layers(&p, t.width, 0), [None; MAX_LAYERS], "past the footprint -> empty stack");
+		assert!(t.cell_layers(&p, 0, 0).iter().any(Option::is_some), "an in-footprint cell resolves");
 	}
 
 	#[test]

@@ -1,0 +1,13 @@
+{
+	"version": "1",
+	"id": "mountain-f-7",
+	"name": "Mountain F-7",
+	"family": "mountain",
+	"transform": false,
+	"pass": [
+		"333",
+		"333",
+		"333",
+		"333"
+	]
+}

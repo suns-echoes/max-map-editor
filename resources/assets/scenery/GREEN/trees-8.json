@@ -1,0 +1,12 @@
+{
+	"version": "1",
+	"id": "trees-8",
+	"name": "Trees 8",
+	"family": "trees",
+	"transform": false,
+	"pass": [
+		"330",
+		"030",
+		"..0"
+	]
+}

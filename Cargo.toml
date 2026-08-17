@@ -6,10 +6,11 @@ members = [
 	"crates/json",
 	"crates/map-core",
 	"crates/max-assets",
+	"crates/wgpu-ui",
 ]
 
 [workspace.package]
-version      = "0.7.0"
+version      = "0.8.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Aneta Suns"]
@@ -22,27 +23,38 @@ ini        = { path = "crates/ini" }
 json       = { path = "crates/json" }
 map-core   = { path = "crates/map-core" }
 max-assets = { path = "crates/max-assets" }
+# First-party UI toolkit. Developed in its own repo (no public remote), and
+# MIRRORED into crates/wgpu-ui so a fresh clone - CI, a release build - can
+# build this workspace standalone. The mirror is generated: edit the sibling
+# checkout, then `node tools/vendor-wgpu-ui.mjs`. Because the vendored manifest
+# inherits wgpu/winit/bytemuck from the table below, those pins cannot drift.
+wgpu-ui    = { path = "crates/wgpu-ui", features = ["winit"] }
 
 # External crates - exact-pinned, versions matched to re-max's lockfile
 # Text-only clipboard: default features dropped to avoid the `image` crate
 # (clipboard-image support); the Wayland backend is kept.
 arboard   = { version = "=3.6.1", default-features = false, features = ["wayland-data-control"] }
-bytemuck  = { version = "=1.24.0", features = ["derive"] }
-log       = "=0.4.28"
+bytemuck  = { version = "=1.25.1", features = ["derive"] }
+log       = "=0.4.29" # floor raised by wgpu 30 (which requires ^0.4.29)
 png       = "=0.18.0"
 pollster  = "=0.4.0"
 rfd       = "=0.17.2"
 thiserror = "=2.0.17"
-wgpu      = "=26.0.1"
-winit     = "=0.30.12"
+wgpu      = "=30.0.0"
+winit     = "=0.30.13"
 
-# Lint policy for the first-party crates (app, map-core). Opt in per crate
-# with `[lints] workspace = true`. CI runs `cargo clippy … -- -D warnings`, so
-# everything is denied *except* the lints allowed here - they conflict with the
-# house style (the code favours explicit nested guards, the directional `RING`
-# index loops in shore.rs, and the wide immediate-mode quad helpers). Keep this
-# list short and justified, not a catch-all. The copied-in crates (ini,
-# max-assets) don't opt in and aren't gated - they track their upstreams.
+# Lint policy for the first-party crates (app, map-core, max-assets). Opt in per
+# crate with `[lints] workspace = true`. CI runs `cargo clippy … -- -D warnings`,
+# so everything is denied *except* the lints allowed here - they conflict with
+# the house style (the code favours explicit nested guards, the directional
+# `RING` index loops in shore.rs, and the wide immediate-mode quad helpers). Keep
+# this list short and justified, not a catch-all.
+#
+# `ini` is the one crate still outside the gate: it is genuinely copied from the
+# sister project and tracks that upstream. `max-assets` is NOT - whatever its
+# res/image/units decoders started as, `save/` is ~8k lines written here across
+# the save-editor stages, so it is first-party and gated like the rest. (Do not
+# "re-sync it from re-max": that would clobber all of it.)
 [workspace.lints.clippy]
 collapsible_if      = "allow" # explicit nested guards read clearer here
 needless_range_loop = "allow" # indexed loops mirror the direction `RING`
@@ -55,11 +67,37 @@ single_match        = "allow" # `match { Ok(Some) => .., _ => {} }` suits the ro
 [profile.dev.package.map-core]
 opt-level = 2
 
-# Release = the shipped portable binary. Thin LTO + one codegen unit for
-# size/speed, symbols stripped. Overflow checks stay ON deliberately: this is
-# a data-integrity tool (bake/undo correctness beats a few % of paint speed).
+# Release = the shipped portable binary, tuned for speed and size over build
+# time (a release build is a rare, deliberate act - minutes are affordable).
+#
+#   lto = "fat"       whole-program LTO across every crate, not just the
+#                     per-crate-graph "thin" pass - lets the bake, the shore
+#                     walk and the quad builders inline across map-core /
+#                     max-assets / wgpu-ui boundaries.
+#   codegen-units = 1 one unit per crate, so nothing is hidden from the
+#                     inliner by a codegen-unit split.
+#   panic = "abort"   no landing pads and no unwind tables. Nothing in the
+#                     workspace calls `catch_unwind` or recovers from a panic,
+#                     so unwinding only ever costs code size here.
+#   strip = "symbols" no symbol table in the shipped binary.
+#   incremental=false no incremental fragmentation of the codegen units.
+#
+# Overflow checks stay ON deliberately: this is a data-integrity tool (bake /
+# undo correctness beats a few % of paint speed). Same for the default
+# `opt-level = 3`, spelled out here so a future edit is a conscious one.
 [profile.release]
-lto = "thin"
+opt-level = 3
+lto = "fat"
 codegen-units = 1
+panic = "abort"
 strip = "symbols"
+incremental = false
+debug = false
 overflow-checks = true
+
+# Dependencies get the same treatment. `opt-level = 3` is already the release
+# default; this table exists so that turning the *workspace* down (say to `s`)
+# never silently drags wgpu, png and arboard down with it.
+[profile.release.package."*"]
+opt-level = 3
+codegen-units = 1

@@ -1,0 +1,11 @@
+{
+	"version": "1",
+	"id": "crater-9",
+	"name": "Crater 9",
+	"family": "crater",
+	"transform": false,
+	"pass": [
+		"33",
+		"33"
+	]
+}

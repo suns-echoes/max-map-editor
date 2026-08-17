@@ -1,7 +1,7 @@
 //! UI skin assets: decode the brushed-steel sheet (`resources/images/steel.png`)
 //! that every chrome element samples (see [`theme`](crate::theme) for the
 //! tints + bevels layered over it). Pure CPU decode - the GPU upload lives in
-//! [`TextPass`](crate::text::TextPass), beside the font atlases.
+//! [`MenuChrome`](crate::uikit_menu::MenuChrome), beside the one `Fonts`.
 //!
 //! Loading is best-effort: a missing/garbled PNG falls back to a flat neutral
 //! tile so headless renders, CI, and the screenshot path never panic over a
@@ -51,4 +51,53 @@ fn decode(path: &Path) -> Option<Image> {
 		_ => return None,
 	};
 	Some(Image { rgba, size: (info.width, info.height) })
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// Write a minimal PNG of the given colour type / bit depth (the decode
+	/// fixtures - `data` is the raw image data for that encoding).
+	fn write_test_png(path: &Path, color: png::ColorType, depth: png::BitDepth, size: (u32, u32), data: &[u8]) {
+		let file = std::fs::File::create(path).expect("create test png");
+		let mut enc = png::Encoder::new(std::io::BufWriter::new(file), size.0, size.1);
+		enc.set_color(color);
+		enc.set_depth(depth);
+		enc.write_header().expect("png header").write_image_data(data).expect("png data");
+	}
+
+	/// A missing steel sheet falls back to the flat 2×2 neutral tile, so
+	/// headless renders / CI / screenshots never panic over a cosmetic asset.
+	#[test]
+	fn load_steel_falls_back_to_flat_gray() {
+		let img = load_steel(Path::new("/nonexistent/resources"));
+		assert_eq!(img.size, (2, 2), "the fallback is the 2x2 tile");
+		assert_eq!(img.rgba, [128u8, 130, 134, 255].repeat(4), "mid-gray, opaque");
+	}
+
+	/// `decode` passes 8-bit RGBA through byte-exact, and rejects (`None`) the
+	/// encodings the steel pass can't take: 16-bit depth and grayscale.
+	#[test]
+	fn decode_accepts_rgba8_and_rejects_unsupported() {
+		let dir = std::env::temp_dir().join(format!("max-map-editor-skin-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).expect("temp dir");
+
+		let rgba8 = dir.join("rgba8.png");
+		let pixels = [1u8, 2, 3, 4, 5, 6, 7, 8];
+		write_test_png(&rgba8, png::ColorType::Rgba, png::BitDepth::Eight, (2, 1), &pixels);
+		let img = decode(&rgba8).expect("8-bit RGBA decodes");
+		assert_eq!(img.size, (2, 1));
+		assert_eq!(img.rgba, pixels, "RGBA passes through byte-exact");
+
+		let deep = dir.join("rgb16.png");
+		write_test_png(&deep, png::ColorType::Rgb, png::BitDepth::Sixteen, (1, 1), &[0u8; 6]);
+		assert!(decode(&deep).is_none(), "16-bit depth is rejected");
+
+		let gray = dir.join("gray8.png");
+		write_test_png(&gray, png::ColorType::Grayscale, png::BitDepth::Eight, (2, 2), &[9u8; 4]);
+		assert!(decode(&gray).is_none(), "grayscale colour type is rejected");
+
+		let _ = std::fs::remove_dir_all(&dir);
+	}
 }

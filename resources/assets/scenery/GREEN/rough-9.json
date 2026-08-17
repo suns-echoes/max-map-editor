@@ -1,0 +1,10 @@
+{
+	"version": "1",
+	"id": "rough-9",
+	"name": "Rough 9",
+	"family": "rough",
+	"transform": false,
+	"pass": [
+		"00"
+	]
+}

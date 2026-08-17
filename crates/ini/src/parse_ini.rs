@@ -487,4 +487,81 @@ mod tests {
 		let err_msg = result.unwrap_err();
 		assert_eq!(err_msg, "Circular module inclusion\n    error at test-files/mod_circular_a.ini:1");
 	}
+
+	#[test]
+	fn test_mod_inclusion_missing_module_returns_error() {
+		// `[[mod X]]` where neither `X.ini` nor `X/mod.ini` exists must fail
+		// and name both candidate paths that were tried.
+		let dir = std::env::temp_dir().join(format!("mme-ini-missing-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		std::fs::write(dir.join("root.ini"), "[[mod nothere]]\n").unwrap();
+
+		let result = parse_ini_file(&dir.join("root.ini"));
+		let _ = std::fs::remove_dir_all(&dir);
+
+		let err = result.unwrap_err();
+		assert!(err.contains("Included module not found"), "{err}");
+		assert!(err.contains("nothere.ini") && err.contains("mod.ini"), "both candidate paths are reported: {err}");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn test_mod_inclusion_unreadable_module_returns_error() {
+		use std::os::unix::fs::PermissionsExt;
+		// The module file exists but cannot be opened (mode 000): the include
+		// must surface the OS error instead of silently skipping the module.
+		let dir = std::env::temp_dir().join(format!("mme-ini-noread-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		std::fs::write(dir.join("root.ini"), "[[mod locked]]\n").unwrap();
+		let locked = dir.join("locked.ini");
+		std::fs::write(&locked, "[s]\nk = 1\n").unwrap();
+		std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+		if File::open(&locked).is_ok() {
+			// Running as root (CAP_DAC_OVERRIDE): mode 000 still opens, the
+			// branch is untestable here - skip loudly like the WRL suites do.
+			eprintln!("skipped: elevated privileges ignore file modes");
+			let _ = std::fs::remove_dir_all(&dir);
+			return;
+		}
+
+		let result = parse_ini_file(&dir.join("root.ini"));
+		let _ = std::fs::remove_dir_all(&dir);
+
+		let err = result.unwrap_err();
+		assert!(err.contains("Failed to open included module file"), "{err}");
+	}
+
+	#[test]
+	fn test_mod_inclusion_in_string_input_returns_error() {
+		// String input has no base directory to resolve includes against, so
+		// `[[mod …]]` is a hard error rather than a silent no-op.
+		let result = parse_ini_str("[[mod anything]]");
+
+		assert!(result.is_err());
+		assert_eq!(
+			result.unwrap_err(),
+			"Module inclusion not allowed in string input\n    error at <string>:1".to_string()
+		);
+	}
+
+	#[test]
+	fn test_parse_boolean_word_forms() {
+		// `false`/`no` map to boolean false, `true`/`yes` to boolean true.
+		let ini = parse_ini_str("[s]\na = false\nb = no\nc = true\nd = yes\n").unwrap();
+		let s = ini.get_section("s").unwrap();
+		assert_eq!(s.get_entry::<bool>("a"), Some(false));
+		assert_eq!(s.get_entry::<bool>("b"), Some(false), "'no' parses as boolean false");
+		assert_eq!(s.get_entry::<bool>("c"), Some(true));
+		assert_eq!(s.get_entry::<bool>("d"), Some(true), "'yes' parses as boolean true");
+	}
+
+	#[test]
+	fn test_parse_ignores_line_without_equals() {
+		// A non-empty line that is neither a section header, a comment nor a
+		// `key=value` pair is skipped rather than treated as an error.
+		let ini = parse_ini_str("[s]\nstray line without equals\nk = 1\n").unwrap();
+		let s = ini.get_section("s").unwrap();
+		assert_eq!(s.get_entry::<i64>("k"), Some(1), "parsing continues after the stray line");
+		assert!(!s.has_entry("stray line without equals"));
+	}
 }

@@ -155,3 +155,77 @@ impl PaletteReimport {
 		self.inner.take().ok_or("conversion not finished")?.finish()
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// A 1×2 synthetic WRL import (one water-cycle tile, one static-slot tile) -
+	/// small enough to drive the session row by row.
+	fn wrl_project() -> Project {
+		let mut tiles = vec![0u8; 2 * TILE_DATA_SIZE];
+		tiles[..TILE_DATA_SIZE].fill(100); // water-cycle slot
+		tiles[TILE_DATA_SIZE..].fill(40); // a static slot
+		Project::from_wrl(
+			&WrlFile {
+				header: vec![0; 5],
+				width: 1,
+				height: 2,
+				minimap: vec![100, 40],
+				bigmap: vec![0, 1],
+				tile_count: 2,
+				tiles,
+				palette: crate::GAME_PALETTE.to_vec(),
+				pass_table: vec![1, 0],
+			},
+			"STEP",
+		)
+	}
+
+	/// Budget-limited stepping reports the render phase first (its own stage
+	/// label, progress under the raster share), then hands over to the import
+	/// pipeline and runs to a clean finish.
+	#[test]
+	fn budgeted_steps_walk_render_then_the_import_pipeline() {
+		let p = wrl_project();
+		let mut s = PaletteReimport::new(&p, true, crate::image_import::Dedupe::Strict, 0.0);
+		assert_eq!(s.stage(), "Rendering map", "the render phase reports its own stage");
+		assert_eq!(s.progress(), 0.0);
+		assert!(s.error().is_none() && !s.is_done());
+		// Budget 1 renders exactly one cell row, then parks (1 of 2 rows done).
+		s.step(&p, 1);
+		assert!(!s.is_done());
+		let mid = s.progress();
+		assert!(mid > 0.0 && mid <= RASTER_WEIGHT, "render progress stays within its share, got {mid}");
+		assert_eq!(s.stage(), "Rendering map");
+		// Keep stepping: the raster completes and the pipeline takes over.
+		let mut guard = 0;
+		while !s.is_done() {
+			s.step(&p, 4096);
+			assert!(s.error().is_none(), "a clean conversion never errors");
+			guard += 1;
+			assert!(guard < 10_000, "must terminate");
+		}
+		assert!(s.progress() >= RASTER_WEIGHT, "pipeline progress rides above the render share");
+		let wrl = s.finish().expect("clean finish");
+		assert_eq!((wrl.width, wrl.height), (1, 2));
+		assert_eq!(&wrl.tiles[..TILE_DATA_SIZE], &[100u8; TILE_DATA_SIZE][..], "pinned water kept its slot");
+	}
+
+	/// A dimension change under a live session is caught as an error: the
+	/// session is done, reports it, ignores further steps, and `finish`
+	/// surfaces it instead of a WRL.
+	#[test]
+	fn document_change_under_the_session_errors_out() {
+		let mut p = wrl_project();
+		let mut s = PaletteReimport::new(&p, false, crate::image_import::Dedupe::Strict, 0.0);
+		p.resize(2, 2, 0, 0).unwrap();
+		s.step(&p, usize::MAX);
+		assert!(s.is_done(), "the mismatch ends the session");
+		assert!(s.error().unwrap().contains("changed under"), "{:?}", s.error());
+		s.step(&p, usize::MAX); // a done session ignores further steps
+		assert!(s.error().is_some());
+		let err = s.finish().unwrap_err();
+		assert!(err.contains("changed under"), "{err}");
+	}
+}

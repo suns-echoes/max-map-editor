@@ -15,8 +15,9 @@
 //! - **Preference** (the score): the per-family continuation lists
 //!   (`"GSa:!S"`, …). Where a listed continuation matches, the shoreline
 //!   pixels flow across the seam - so worklist sweeps pick the tiles with
-//!   the most matched continuations. The lists are one-directional by
-//!   design; both directions of a seam are counted. Ties seed from the
+//!   the most matched continuations. Each direction of a seam counts
+//!   independently; the Match Editor keeps the shipped lists reciprocal,
+//!   so a listed pair normally scores both ways. Ties seed from the
 //!   continuation-richest family (generic straights chain plain-to-plain;
 //!   sparse end-pieces appear only where corners demand them - no
 //!   mirror-alternation "saw").
@@ -167,8 +168,9 @@ fn continues(families: &[Family], a: u16, ta: Transform, dir: usize, b: u16, tb:
 }
 
 /// Seam quality 0–2: each side's continuation list counts independently
-/// (the shipped lists are one-directional; either direction means the
-/// shoreline pixels flow across this seam).
+/// (the Match Editor keeps the shipped lists reciprocal, so a listed pair
+/// normally scores 2; either direction alone still means the shoreline
+/// pixels flow across this seam).
 #[cfg(test)]
 fn seam_score(families: &[Family], a: u16, ta: Transform, dir: usize, b: u16, tb: Transform) -> usize {
 	continues(families, a, ta, dir, b, tb) as usize + continues(families, b, tb, opp(dir), a, ta) as usize
@@ -195,11 +197,39 @@ fn comp_admits(comp: &[[Vec<(u16, u8)>; 4]], a: u16, ta: Transform, dir: usize, 
 	comp[a as usize * 8 + ta.bits() as usize][dir].contains(&(b, tb.bits() as u8))
 }
 
-/// Runtime seam quality 0–2 between two placed tiles (both directions count;
-/// the shipped continuation lists are one-directional). The `comp`-backed
-/// counterpart of the test-only [`seam_score`].
+/// Runtime seam quality 0–2 between two placed tiles (each direction counts
+/// independently; reciprocal shipped lists normally score 2). The
+/// `comp`-backed counterpart of the test-only [`seam_score`].
 fn comp_cseam(comp: &[[Vec<(u16, u8)>; 4]], a: u16, ta: Transform, dir: usize, b: u16, tb: Transform) -> usize {
 	comp_admits(comp, a, ta, dir, b, tb) as usize + comp_admits(comp, b, tb, opp(dir), a, ta) as usize
+}
+
+/// Seam quality 0–2 between two adjacent **shore** tiles. Each edge presents
+/// sea (a *water* edge), land (a `__LAND__` edge), and/or shoreline (a
+/// continuation edge); the seam is fine when the two facing edges agree on
+/// what's there without needing a continuation:
+/// * **water ↔ water** - open sea between two coasts: fine. This is what lets two
+///   distinct shorelines (each fixed as its own pass) run side by side without
+///   the water gap between them reading as a broken coast.
+/// * **land ↔ land** - the landmass simply continues across the seam: fine. Two
+///   corner tiles meeting back-to-back along a strip of land do this.
+/// * otherwise the shoreline must flow across as a listed continuation
+///   ([`comp_cseam`]; either direction suffices).
+///
+/// Placement keeps using `comp_cseam` (its output is pinned to the original
+/// maps); detection and the fix session use this.
+fn comp_sseam(
+	comp: &[[Vec<(u16, u8)>; 4]],
+	families: &[Family],
+	a: u16,
+	ta: Transform,
+	dir: usize,
+	b: u16,
+	tb: Transform,
+) -> usize {
+	let ea = &families[a as usize].dirs[base_dir(dir, ta)];
+	let eb = &families[b as usize].dirs[base_dir(opp(dir), tb)];
+	if (ea.water && eb.water) || (ea.land && eb.land) { 2 } else { comp_cseam(comp, a, ta, dir, b, tb) }
 }
 
 /// Seam validity between two trial states (0 = broken): Tile×Tile is the
@@ -208,7 +238,7 @@ fn comp_cseam(comp: &[[Vec<(u16, u8)>; 4]], a: u16, ta: Transform, dir: usize, b
 fn comp_tseam(comp: &[[Vec<(u16, u8)>; 4]], families: &[Family], a: Trial, dir: usize, b: Trial) -> usize {
 	let water_ok = |f: u16, t: Transform, d: usize| 2 * families[f as usize].dirs[base_dir(d, t)].water as usize;
 	match (a, b) {
-		(Trial::Tile(fa, ta), Trial::Tile(fb, tb)) => comp_cseam(comp, fa, ta, dir, fb, tb),
+		(Trial::Tile(fa, ta), Trial::Tile(fb, tb)) => comp_sseam(comp, families, fa, ta, dir, fb, tb),
 		(Trial::Tile(f, t), Trial::Water) => water_ok(f, t, dir),
 		(Trial::Water, Trial::Tile(f, t)) => water_ok(f, t, opp(dir)),
 		(Trial::Water, Trial::Water) => 2,
@@ -227,8 +257,12 @@ fn dir_ok(fam: &Family, t: Transform, dir: usize, nb: Nb) -> bool {
 	let rule = &fam.dirs[base_dir(dir, t)];
 	match nb {
 		Nb::Edge | Nb::Pending | Nb::Shore(..) => true,
+		// Symmetric, straight from the match rules: an edge facing the open sea
+		// must accept water; an edge facing solid land must accept land. (Was the
+		// looser `!water_only`, which let a shoreline-continuation edge sit against
+		// land - the GSa-where-GSg-belongs misplacement.)
 		Nb::OpenWater => rule.water,
-		Nb::Hard => !rule.water_only,
+		Nb::Hard => rule.land,
 	}
 }
 
@@ -251,6 +285,22 @@ fn lawful_band_transforms(families: &[Family], views: &[Nb; 4]) -> Vec<(u16, Tra
 		}
 	}
 	out
+}
+
+/// [`lawful_band_transforms`], restricted to shore families of pack `pref` when
+/// that yields any lawful candidate - so a coast grows the shore of the tileset
+/// its land belongs to, and one continuous shore loop never mixes packs (the
+/// caller passes the loop's dominant land pack). Falls back to the full set when
+/// the preferred pack can't legally face this cell (better a foreign-pack shore
+/// than a broken seam), and `pref == None` is the historical no-preference
+/// behaviour. The *selection* among candidates is unchanged - only the candidate
+/// set is narrowed - so single-pack maps are byte-identical (every band family
+/// is that one pack, so the filter is a no-op).
+fn lawful_band_transforms_pref(families: &[Family], views: &[Nb; 4], pref: Option<u8>) -> Vec<(u16, Transform)> {
+	let all = lawful_band_transforms(families, views);
+	let Some(p) = pref else { return all };
+	let kept: Vec<(u16, Transform)> = all.iter().copied().filter(|&(fi, _)| families[fi as usize].pack == p).collect();
+	if kept.is_empty() { all } else { kept }
 }
 
 /// Whole-map cell snapshot (the matcher never reads live cells mid-run).
@@ -314,6 +364,48 @@ fn snapshot_cells(project: &Project, name_idx: &HashMap<&str, u16>) -> Vec<Cell>
 		.collect()
 }
 
+/// The top tile's **pack** per cell (`255` = empty). Read only for land cells
+/// when choosing which tileset's shore to grow, so open sea / empty cells never
+/// vote. Static during a run (shore only rewrites water cells' ground layer),
+/// so it's snapshotted once alongside [`snapshot_cells`].
+fn snapshot_packs(project: &Project) -> Vec<u8> {
+	let (w, h) = (project.width as i32, project.height as i32);
+	(0..h)
+		.flat_map(|y| (0..w).map(move |x| (x, y)))
+		.map(|(x, y)| {
+			let stack = project.cell(x as u16, y as u16).unwrap();
+			stack[LAYER_GROUND].or(stack[LAYER_WATER]).map(|t| t.pack).unwrap_or(255)
+		})
+		.collect()
+}
+
+/// The pack with the most votes in `counts` (ties → lowest index, for
+/// determinism); `None` when nothing voted.
+fn argmax_pack(counts: &[u32; 256]) -> Option<u8> {
+	counts.iter().any(|&c| c > 0).then(|| (0..256).max_by_key(|&p| (counts[p], std::cmp::Reverse(p))).unwrap() as u8)
+}
+
+/// The tileset (pack index) the shore around `(x, y)` should match: the pack of
+/// the land tiles in its 8-neighbourhood, weighted by how many neighbours belong
+/// to each. Empty / pack-less land doesn't vote. `None` = no land vote → keep
+/// the full all-pack candidate set (the historical behaviour). Used per coastal
+/// cell by the sweep and fix passes (the loop-walk votes over a whole loop
+/// instead). See [`lawful_band_transforms_pref`].
+fn dominant_land_pack(families: &[Family], snap: &[Cell], packs: &[u8], w: i32, h: i32, x: i32, y: i32) -> Option<u8> {
+	let mut counts = [0u32; 256];
+	for &(dx, dy) in &RING8 {
+		let (nx, ny) = (x + dx, y + dy);
+		// `is_land` is false off-map, so the index below is always in bounds.
+		if is_land(families, snap, w, h, nx, ny) {
+			let p = packs[(ny * w + nx) as usize];
+			if p != 255 {
+				counts[p as usize] += 1;
+			}
+		}
+	}
+	argmax_pack(&counts)
+}
+
 /// The pass's working rectangle: cells inclusive, expanded by one;
 /// `None` = the whole map.
 fn region_rect(region: Option<(u16, u16, u16, u16)>, w: i32, h: i32) -> (i32, i32, i32, i32) {
@@ -336,6 +428,22 @@ fn region_rect(region: Option<(u16, u16, u16, u16)>, w: i32, h: i32) -> (i32, i3
 /// disappears cell by cell) and only trigger off impossible water cells,
 /// so pristine maps never change. Mutates `snap` to match; returns the
 /// fill edits.
+/// The true land tiles to fill an impossible water pocket / de-orphaned shore
+/// with: members of the donor's variant group whose id marks them a **land**
+/// tile (2nd char `L`, e.g. `GLa000` - an all-`__LAND__` family). A shore /
+/// multi-tile-pattern tile (`GSa...`, at least one non-`__LAND__` side) is never
+/// eligible, so a fill can't break a pattern. Falls back to every land tile in
+/// the pack when the donor's own group has none (a non-land donor).
+fn land_variants(pack: &crate::pack::TilePack, donor_tile: u16) -> Vec<u16> {
+	let is_land_id = |i: u16| pack.ids[i as usize].as_bytes().get(1) == Some(&b'L');
+	let group = pack.group_of(donor_tile);
+	let in_group: Vec<u16> = (0..pack.tile_count()).filter(|&i| pack.group_of(i) == group && is_land_id(i)).collect();
+	if !in_group.is_empty() {
+		return in_group;
+	}
+	(0..pack.tile_count()).filter(|&i| is_land_id(i)).collect()
+}
+
 fn landfill(
 	project: &Project,
 	families: &[Family],
@@ -372,12 +480,15 @@ fn landfill(
 					let (nx, ny) = (x + dx, y + dy);
 					let donor = project.cell(nx as u16, ny as u16)?[LAYER_GROUND]?;
 					let pack = &project.packs[donor.pack as usize];
-					let fam = pack.group_of(donor.tile);
-					let variants: Vec<u16> =
-						(0..pack.tile_count()).filter(|&i| pack.group_of(i) == fam).collect();
+					let variants = land_variants(pack, donor.tile);
+					if variants.is_empty() {
+						return None;
+					}
 					let mut rng = Rng::new(0x53484f5245 ^ ((x as u64) << 32 | y as u64));
 					let tile = variants[rng.below(variants.len() as u32) as usize];
-					Some(TileRef { pack: donor.pack, tile, transform: donor.transform })
+					// Land tiles are all-`__LAND__` (orientation-agnostic): place upright
+					// rather than copying the donor's transform.
+					Some(TileRef { pack: donor.pack, tile, transform: Transform::default() })
 				});
 				let Some(entry) = entry else { continue };
 				snap[(y * w + x) as usize] = Cell::Plain;
@@ -402,7 +513,6 @@ fn landfill(
 /// finds a good leaf early; `budget` caps the node count. Returns once the
 /// budget is spent or the tree is exhausted - `best_assign` then holds the
 /// best found.
-#[allow(clippy::too_many_arguments)]
 fn repair_window<T, F, K>(
 	lvl: usize,
 	partial: i32,
@@ -511,6 +621,9 @@ pub struct FixSession {
 	families: Vec<Family>,
 	comp: Vec<[Vec<(u16, u8)>; 4]>,
 	snap: Vec<Cell>,
+	/// The land tileset (pack index) per cell, so a re-tiled shore matches the
+	/// pack of its neighbouring land (see [`FixSession::lawful_at`]).
+	packs: Vec<u8>,
 	/// Which cells may be re-tiled (band shore, plus adjacent land in
 	/// `Mangle`, plus adjacent water in `Destructive`).
 	retile: Vec<bool>,
@@ -548,6 +661,7 @@ impl FixSession {
 			families.iter().enumerate().map(|(i, f)| (f.name.as_str(), i as u16)).collect();
 		let comp = build_comp(&families);
 		let snap = snapshot_cells(project, &name_idx);
+		let packs = snapshot_packs(project);
 		let (x0, y0, x1, y1) = region_rect(region, w, h);
 
 		let mut work: Vec<Option<Trial>> = vec![None; (w * h) as usize];
@@ -609,6 +723,7 @@ impl FixSession {
 			families,
 			comp,
 			snap,
+			packs,
 			retile,
 			cells,
 			work,
@@ -697,8 +812,12 @@ impl FixSession {
 				Nb::Hard
 			}
 		});
-		let mut out: Vec<Trial> =
-			lawful_band_transforms(&self.families, &views).into_iter().map(|(fi, t)| Trial::Tile(fi, t)).collect();
+		// Prefer the shore of the tileset the surrounding land belongs to.
+		let pref = dominant_land_pack(&self.families, &self.snap, &self.packs, self.w, self.h, x, y);
+		let mut out: Vec<Trial> = lawful_band_transforms_pref(&self.families, &views, pref)
+			.into_iter()
+			.map(|(fi, t)| Trial::Tile(fi, t))
+			.collect();
 		// Mangle keeps a cell's own (possibly non-band) tile as an option,
 		// so re-tiling land is opt-in per cell, not forced. Destructive adds
 		// open water - the universal solvent.
@@ -1017,8 +1136,12 @@ impl Project {
 
 		// Geometry is frozen from here on.
 		let snap = snap;
+		// Per-cell land tileset, so each coastal cell grows the shore of the pack
+		// its neighbouring land belongs to (multi-tileset maps).
+		let snap_packs = snapshot_packs(self);
 		let at = |x: i32, y: i32| cell_at(&snap, w, h, x, y);
 		let land = |x: i32, y: i32| is_land(&families, &snap, w, h, x, y);
+		let pref = |x: i32, y: i32| dominant_land_pack(&families, &snap, &snap_packs, w, h, x, y);
 
 		// ---- Find targets --------------------------------------------------
 		struct Target {
@@ -1172,7 +1295,7 @@ impl Project {
 					continue; // dropped earlier
 				}
 				let views: [Nb; 4] = std::array::from_fn(|d| view(x, y, d, &tat, &no_picks));
-				let mut candidates = lawful_band_transforms(&families, &views);
+				let mut candidates = lawful_band_transforms_pref(&families, &views, pref(x, y));
 				candidates.sort_by_key(|&(fi, t)| (std::cmp::Reverse(families[fi as usize].richness), fi, t.bits()));
 				targets[i].candidates = candidates;
 			}
@@ -1481,11 +1604,25 @@ impl Project {
 		let (x0, y0, x1, y1) = rect;
 		let fills = landfill(self, &families, &mut snap, rect);
 		let snap = snap;
+		// Land tileset per cell - tallied per loop below so one continuous shore
+		// loop grows a single pack's shore (never a mix), matching its land.
+		let snap_packs = snapshot_packs(self);
 		let at = |x: i32, y: i32| cell_at(&snap, w, h, x, y);
 		let land = |x: i32, y: i32| is_land(&families, &snap, w, h, x, y);
 		let in_rect = |x: i32, y: i32| x >= x0 && x <= x1 && y >= y0 && y <= y1;
 
-		// The same law as the sweeps; raw views serve classification.
+		// **Deliberately looser than the top-level `dir_ok`, and it must stay
+		// that way** - despite the shared name. That one was tightened to
+		// `Nb::Hard => rule.land` to stop the GSa-where-GSg-belongs
+		// misplacement; here `Nb::Hard` only has to not be *water-only*.
+		//
+		// The difference matters because this law is asked a different question:
+		// the sweeps use theirs to choose a tile to **place**, while this one
+		// classifies tiles **already on the map** as Fixed or Free. Held to the
+		// placement law, a continuation edge that a shipped map legitimately
+		// rests against land reads as invalid, and the walk re-places it -
+		// `auto_shore_alt_leaves_original_maps_alone` fails, which is exactly
+		// what happens if you "unify" these two (verified 2026-08-07).
 		let dir_ok = |fam: &Family, t: Transform, dir: usize, nb: Nb| {
 			let rule = &fam.dirs[base_dir(dir, t)];
 			match nb {
@@ -1533,6 +1670,9 @@ impl Project {
 		};
 		let mut visited = vec![0u8; (w * h) as usize];
 		let mut loops: Vec<Vec<Option<Slot>>> = Vec::new();
+		// The dominant land pack per loop (parallel to `loops`): every land cell
+		// the loop hugs votes, so the whole coast dresses in one tileset's shore.
+		let mut loop_pack: Vec<Option<u8>> = Vec::new();
 		for y in 0..h {
 			for x in 0..w {
 				if !land(x, y) {
@@ -1547,9 +1687,15 @@ impl Project {
 						continue;
 					}
 					let mut slots: Vec<Option<Slot>> = Vec::new();
+					let mut pack_votes = [0u32; 256];
 					let (mut cx, mut cy, mut cd) = (x, y, d0);
 					loop {
 						visited[(cy * w + cx) as usize] |= 1 << cd;
+						// `(cx, cy)` is the loop's land cell this edge hugs - it votes.
+						let lp = snap_packs[(cy * w + cx) as usize];
+						if lp != 255 {
+							pack_votes[lp as usize] += 1;
+						}
 						let (ox, oy) = (cx + RING[cd].0, cy + RING[cd].1);
 						slots.push((ox >= 0 && oy >= 0 && ox < w && oy < h).then_some(Slot {
 							x: ox,
@@ -1587,6 +1733,7 @@ impl Project {
 						slots.pop();
 					}
 					loops.push(slots);
+					loop_pack.push(argmax_pack(&pack_votes));
 				}
 			}
 		}
@@ -1700,8 +1847,24 @@ impl Project {
 		};
 
 		// ---- Walk each loop --------------------------------------------------
-		let mut decided: Vec<(i32, i32)> = Vec::new();
-		for (slots, kinds) in loops.iter().zip(&plans) {
+		// Place a random MATCHING tile per Free cell (matches every settled shore
+		// neighbour). When no lawful tile matches - the single-pass walk's
+		// dead-end - back up to MAX_BACK decisions and re-pick a different group
+		// there (the cells between are re-decided), then reseed past the cell if
+		// still stuck. Clean coast never dead-ends, so this is byte-identical to
+		// the old single-pass output on pristine maps (the per-cell pick is
+		// unchanged whenever a matching tile exists; backtracking only replaces
+		// the old "strand it" fall-through).
+		const MAX_BACK: usize = 3;
+		/// One placed Free cell on the stack: its walk index `k`, cell, and the
+		/// ordered matching pool (`cursor` 0 = the pick) a dead-end can advance.
+		struct Dec {
+			k: usize,
+			ci: usize,
+			pool: Vec<(u16, Transform)>,
+			cursor: usize,
+		}
+		for (li, (slots, kinds)) in loops.iter().zip(&plans).enumerate() {
 			let n = slots.len();
 			if !kinds.iter().any(|k| matches!(k, Kind::Free)) {
 				continue;
@@ -1713,129 +1876,178 @@ impl Project {
 				let mut rng = Rng::new(SALT ^ 0x4c4f_4f50 ^ ((mx as u64) << 32 | my as u64));
 				rng.below(n as u32) as usize
 			});
-			let before = (start + n - 1) % n;
-			let mut prev: Option<(i32, i32)> = match (&slots[before], &kinds[before]) {
-				(Some(s), Kind::Fixed) => Some((s.x, s.y)),
-				_ => None,
-			};
-			for k in 0..n {
+			let mut stack: Vec<Dec> = Vec::new();
+			// Termination guard for pathological tile data (re-decisions are
+			// finite per cell, but a long loop could chain many dead-ends).
+			let mut budget: i64 = n as i64 * 8 + 64;
+			let mut k = 0usize;
+			while k < n {
 				let i = (start + k) % n;
 				let Some(s) = &slots[i] else {
-					prev = None;
+					k += 1;
 					continue;
 				};
-				match kinds[i] {
-					Kind::Gap => prev = None,
-					Kind::Fixed => prev = Some((s.x, s.y)),
-					Kind::Free => {
-						let ci = (s.y * w + s.x) as usize;
-						if state[ci] == ST_DECIDED {
-							// Settled from another loop - a fixed link now.
-							prev = choice[ci].is_some().then_some((s.x, s.y));
-							continue;
+				if !matches!(kinds[i], Kind::Free) {
+					k += 1;
+					continue;
+				}
+				let ci = (s.y * w + s.x) as usize;
+				if state[ci] == ST_DECIDED {
+					k += 1; // settled from another loop - a fixed link
+					continue;
+				}
+				// The walk predecessor (the previous slot if it is shore now).
+				let pp = (start + k + n - 1) % n;
+				let prev: Option<(i32, i32)> = match &slots[pp] {
+					Some(ps) => match kinds[pp] {
+						Kind::Fixed => Some((ps.x, ps.y)),
+						Kind::Free => {
+							let pci = (ps.y * w + ps.x) as usize;
+							(state[pci] == ST_DECIDED).then(|| choice[pci].map(|_| (ps.x, ps.y))).flatten()
 						}
-						let views: [Nb; 4] = std::array::from_fn(|d| nb_run(s.x, s.y, d, &state, &choice));
-						let lawful = lawful_band_transforms(&families, &views);
-						// Tiers, strongest first. Two facts drive the pool:
-						// settled shore neighbors must be MATCHED (cseam), and
-						// the loop's own predecessor/successor slots WILL be
-						// shore - toward a still-pending one the tile must
-						// present a continuation edge (else a corner picks a
-						// water-sided tip and the next cell can't connect).
-						let shore_dirs: Vec<(usize, u16, Transform)> = (0..4)
-							.filter_map(|d| match views[d] {
-								Nb::Shore(f, t) => Some((d, f, t)),
-								_ => None,
-							})
-							.collect();
-						// Loop-link directions (prev/next slot), if orthogonal
-						// and not a gap - those neighbors are or become shore.
-						let link_dir = |j: usize| -> Option<usize> {
-							if matches!(kinds[j], Kind::Gap) {
-								return None;
+						Kind::Gap => None,
+					},
+					None => None,
+				};
+				let views: [Nb; 4] = std::array::from_fn(|d| nb_run(s.x, s.y, d, &state, &choice));
+				let lawful = lawful_band_transforms_pref(&families, &views, loop_pack[li]);
+				let shore_dirs: Vec<(usize, u16, Transform)> = (0..4)
+					.filter_map(|d| match views[d] {
+						Nb::Shore(f, t) => Some((d, f, t)),
+						_ => None,
+					})
+					.collect();
+				let link_dir = |j: usize| -> Option<usize> {
+					if matches!(kinds[j], Kind::Gap) {
+						return None;
+					}
+					let s2 = slots[j].as_ref()?;
+					(0..4).find(|&d| (s.x + RING[d].0, s.y + RING[d].1) == (s2.x, s2.y))
+				};
+				let links = [link_dir((i + n - 1) % n), link_dir((i + 1) % n)];
+				let pending_links: Vec<usize> =
+					links.iter().flatten().copied().filter(|&d| matches!(views[d], Nb::Pending)).collect();
+				let cont_capable =
+					|f: u16, t: Transform, d: usize| !families[f as usize].dirs[base_dir(d, t)].tiles.is_empty();
+				let matches_shore =
+					|f: u16, t: Transform| shore_dirs.iter().all(|&(d, nf, nt)| cseam(f, t, d, nf, nt) > 0);
+				let prev_dir =
+					prev.and_then(|(px, py)| (0..4).find(|&d| (s.x + RING[d].0, s.y + RING[d].1) == (px, py)));
+				// Land edges belong against land - keep the best fit (corner
+				// pieces at corners, straights on straights).
+				let fitness = |&(fi, t): &(u16, Transform)| -> i32 {
+					(0..4)
+						.map(|d| {
+							let rule = &families[fi as usize].dirs[base_dir(d, t)];
+							match (rule.land, matches!(views[d], Nb::Hard)) {
+								(true, true) => 1,
+								(true, false) => -1,
+								_ => 0,
 							}
-							let s2 = slots[j].as_ref()?;
-							(0..4).find(|&d| (s.x + RING[d].0, s.y + RING[d].1) == (s2.x, s2.y))
-						};
-						let links = [link_dir((i + n - 1) % n), link_dir((i + 1) % n)];
-						let pending_links: Vec<usize> =
-							links.iter().flatten().copied().filter(|&d| matches!(views[d], Nb::Pending)).collect();
-						let cont_capable = |f: u16, t: Transform, d: usize| {
-							!families[f as usize].dirs[base_dir(d, t)].tiles.is_empty()
-						};
-						let matches_shore =
-							|f: u16, t: Transform| shore_dirs.iter().all(|&(d, nf, nt)| cseam(f, t, d, nf, nt) > 0);
-						let prev_dir =
-							prev.and_then(|(px, py)| (0..4).find(|&d| (s.x + RING[d].0, s.y + RING[d].1) == (px, py)));
-						// Tier 1: match settled shore AND stay shore-open toward
-						// pending loop links.
-						let mut pool: Vec<(u16, Transform)> = lawful
-							.iter()
-							.copied()
-							.filter(|&(f, t)| {
-								matches_shore(f, t) && pending_links.iter().all(|&d| cont_capable(f, t, d))
-							})
-							.collect();
-						// Keep-if-valid: a re-resolved old tile that still sits
-						// in the strongest tier stays put - no coastline churn,
-						// and idempotence falls out. Fresh water (no original)
-						// always rolls, so straights vary.
-						if let Some(orig) = original[ci].filter(|o| pool.contains(o)) {
-							state[ci] = ST_DECIDED;
-							choice[ci] = Some(orig);
-							decided.push((s.x, s.y));
-							prev = Some((s.x, s.y));
-							continue;
+						})
+						.sum()
+				};
+				// The hard constraint: tiles that match every settled shore
+				// neighbour (Tier 1 = also stays shore-open toward pending links).
+				let match_all: Vec<(u16, Transform)> =
+					lawful.iter().copied().filter(|&(f, t)| matches_shore(f, t)).collect();
+				if !match_all.is_empty() {
+					let tier1: Vec<(u16, Transform)> = match_all
+						.iter()
+						.copied()
+						.filter(|&(f, t)| pending_links.iter().all(|&d| cont_capable(f, t, d)))
+						.collect();
+					// Keep-if-valid (no churn / idempotence), else best-fit + roll
+					// - exactly the old pick whenever a matching tile exists.
+					let pick = if let Some(orig) = original[ci].filter(|o| tier1.contains(o)) {
+						orig
+					} else {
+						let mut pool = if !tier1.is_empty() { tier1.clone() } else { match_all.clone() };
+						let best = pool.iter().map(&fitness).max().unwrap();
+						pool.retain(|c| fitness(c) == best);
+						if pool.len() == 1 {
+							pool[0]
+						} else {
+							let mut rng = Rng::new(SALT ^ ((s.x as u64) << 32 | s.y as u64));
+							pool[rng.below(pool.len() as u32) as usize]
 						}
-						// Tier 2: match settled shore (drop the open-edge wish).
-						if pool.is_empty() {
-							pool = lawful.iter().copied().filter(|&(f, t)| matches_shore(f, t)).collect();
+					};
+					// The pick leads; the rest (different groups that still match)
+					// are the backtracking alternatives, best-fit first.
+					let mut rest: Vec<(u16, Transform)> = match_all.iter().copied().filter(|&c| c != pick).collect();
+					rest.sort_by_key(|&(f, t)| (std::cmp::Reverse(fitness(&(f, t))), f, t.bits()));
+					let mut pool = Vec::with_capacity(match_all.len());
+					pool.push(pick);
+					pool.extend(rest);
+					state[ci] = ST_DECIDED;
+					choice[ci] = Some(pick);
+					stack.push(Dec { k, ci, pool, cursor: 0 });
+					k += 1;
+					continue;
+				}
+				// Dead-end: nothing matches the settled shore. Back up.
+				budget -= 1;
+				let mut undone: Vec<Dec> = Vec::new();
+				let mut resume: Option<usize> = None;
+				if budget > 0 {
+					while undone.len() < MAX_BACK {
+						let Some(last) = stack.last() else { break };
+						if last.cursor + 1 < last.pool.len() {
+							let d = stack.last_mut().unwrap();
+							d.cursor += 1;
+							choice[d.ci] = Some(d.pool[d.cursor]);
+							resume = Some(d.k + 1);
+							break;
 						}
-						// Tier 3: at least continue the walk predecessor.
-						if pool.is_empty() {
-							if let Some(d) = prev_dir {
-								if let Nb::Shore(nf, nt) = views[d] {
-									pool =
-										lawful.iter().copied().filter(|&(f, t)| cseam(f, t, d, nf, nt) > 0).collect();
-								}
-							}
-						}
-						if pool.is_empty() {
-							pool = lawful;
-						}
-						// Land edges belong against land: keep the best fit
-						// (corner pieces at corners, straights on straights),
-						// then roll the die among what's left.
-						let fitness = |&(fi, t): &(u16, Transform)| -> i32 {
-							(0..4)
-								.map(|d| {
-									let rule = &families[fi as usize].dirs[base_dir(d, t)];
-									match (rule.land, matches!(views[d], Nb::Hard)) {
-										(true, true) => 1,
-										(true, false) => -1,
-										_ => 0,
-									}
-								})
-								.sum()
-						};
-						let best = pool.iter().map(fitness).max();
-						pool.retain(|c| Some(fitness(c)) == best);
-						let pick = match pool.len() {
-							0 => original[ci], // law-broken band keeps itself
-							1 => Some(pool[0]),
-							_ => {
-								let mut rng = Rng::new(SALT ^ ((s.x as u64) << 32 | s.y as u64));
-								Some(pool[rng.below(pool.len() as u32) as usize])
-							}
-						};
-						state[ci] = ST_DECIDED;
-						choice[ci] = pick;
-						decided.push((s.x, s.y));
-						prev = pick.is_some().then_some((s.x, s.y));
+						let d = stack.pop().unwrap();
+						state[d.ci] = ST_FREE;
+						choice[d.ci] = None;
+						undone.push(d);
 					}
 				}
+				if let Some(rk) = resume {
+					// Cells we undid (after the re-picked one) stay free - the
+					// forward walk re-decides them from `rk`.
+					k = rk;
+					continue;
+				}
+				// No alternative within MAX_BACK: restore what we undid, strand
+				// this cell (the old single-pass fall-through), and reseed past it.
+				for d in undone.into_iter().rev() {
+					choice[d.ci] = Some(d.pool[d.cursor]);
+					state[d.ci] = ST_DECIDED;
+					stack.push(d);
+				}
+				let mut pool: Vec<(u16, Transform)> = Vec::new();
+				if let Some(d) = prev_dir {
+					if let Nb::Shore(nf, nt) = views[d] {
+						pool = lawful.iter().copied().filter(|&(f, t)| cseam(f, t, d, nf, nt) > 0).collect();
+					}
+				}
+				if pool.is_empty() {
+					pool = lawful;
+				}
+				let best = pool.iter().map(&fitness).max();
+				pool.retain(|c| Some(fitness(c)) == best);
+				let pick = match pool.len() {
+					0 => original[ci], // law-broken band keeps itself
+					1 => Some(pool[0]),
+					_ => {
+						let mut rng = Rng::new(SALT ^ ((s.x as u64) << 32 | s.y as u64));
+						Some(pool[rng.below(pool.len() as u32) as usize])
+					}
+				};
+				state[ci] = ST_DECIDED;
+				choice[ci] = pick;
+				k += 1;
 			}
 		}
+		// The decided cells (any state == ST_DECIDED) - rebuilt from state so the
+		// backtracking can undo/redo without bookkeeping a parallel list.
+		let decided: Vec<(i32, i32)> = (0..h)
+			.flat_map(|y| (0..w).map(move |x| (x, y)))
+			.filter(|&(x, y)| state[(y * w + x) as usize] == ST_DECIDED)
+			.collect();
 		mark("walk");
 
 		// Seams the walk couldn't close (the sweeps' report semantics).
@@ -1933,9 +2145,86 @@ impl Project {
 	/// shore-against-land), so it catches the broken/misplaced/missing tiles
 	/// those passes leave behind. Read-only. `0` = a perfect coast.
 	pub fn shore_defects(&self, region: Option<(u16, u16, u16, u16)>) -> usize {
+		// The engine's coast-defect count (the convergence metric `shore_repair`
+		// and worldgen loop against): judged with the placement matcher's own
+		// loose land tolerance, so it stays in lock-step with what the fix
+		// passes can see and close.
+		let mut n = 0;
+		self.scan_shore(region, false, |_, _| n += 1);
+		n
+	}
+
+	/// Every misplaced / broken / missing coast cell - the **strict** view the
+	/// Fix Shore tool outlines in red. Beyond [`shore_defects`]' seams it also
+	/// flags a shore tile whose **water edge is pressed against land**, or one
+	/// that is **orphaned in the terrain** (no sea or shore neighbour at all -
+	/// e.g. a shore tile sitting in the middle of the land). The placement
+	/// matcher tolerates these (its land test is loose by design), so the loose
+	/// count misses them; the tool's detector does not. Read-only.
+	pub fn shore_defect_cells(&self, region: Option<(u16, u16, u16, u16)>) -> Vec<(u16, u16)> {
+		let mut cells = Vec::new();
+		self.scan_shore(region, true, |x, y| cells.push((x, y)));
+		cells
+	}
+
+	/// Every placed **ruled** tile that violates its `tiles.match.json` rules -
+	/// the general "Show Problems" validator (Tools ▸ Validate). Unlike
+	/// [`Self::shore_defect_cells`] (shore-band only, plus a coast-touch rule)
+	/// this checks *every* ruled family (land, cliff, shore, ...): each of the
+	/// four edges must be one its rule allows - a `__WATER__` edge must face the
+	/// open sea, a `__LAND__` edge must face land, and a shore-continuation edge
+	/// must be satisfied by the neighbour (`comp_sseam > 0`). Unruled/plain tiles
+	/// (no match data) are never flagged. Read-only.
+	pub fn match_defect_cells(&self, region: Option<(u16, u16, u16, u16)>) -> Vec<(u16, u16)> {
+		let families = parse_families(self);
+		let (w, h) = (self.width as i32, self.height as i32);
+		let name_idx: HashMap<&str, u16> =
+			families.iter().enumerate().map(|(i, f)| (f.name.as_str(), i as u16)).collect();
+		let comp = build_comp(&families);
+		let snap = snapshot_cells(self, &name_idx);
+		let (x0, y0, x1, y1) = region_rect(region, w, h);
+		// A non-band ruled neighbour (a land/cliff family) reads as `Hard`, so a
+		// `__LAND__` edge against it is satisfied; only the shore band presents a
+		// continuation seam.
+		let nb_at = |x: i32, y: i32, d: usize| -> Nb {
+			let (nx, ny) = (x + RING[d].0, y + RING[d].1);
+			match cell_at(&snap, w, h, nx, ny) {
+				None => Nb::Edge,
+				Some(Cell::Water) => Nb::OpenWater,
+				Some(Cell::Ruled { fam, t }) if families[fam as usize].band => Nb::Shore(fam, t),
+				Some(_) => Nb::Hard,
+			}
+		};
+		let mut cells = Vec::new();
+		for y in y0..=y1 {
+			for x in x0..=x1 {
+				let Some(Cell::Ruled { fam, t }) = cell_at(&snap, w, h, x, y) else { continue };
+				let f = &families[fam as usize];
+				let bad = (0..4).any(|d| {
+					let rule = &f.dirs[base_dir(d, t)];
+					match nb_at(x, y, d) {
+						Nb::Edge | Nb::Pending => false,
+						Nb::OpenWater => !rule.water,
+						Nb::Hard => !rule.land,
+						Nb::Shore(nf, nt) => comp_sseam(&comp, &families, fam, t, d, nf, nt) == 0,
+					}
+				});
+				if bad {
+					cells.push((x as u16, y as u16));
+				}
+			}
+		}
+		cells
+	}
+
+	/// Visit every defective coast cell once. `strict` selects the Fix Shore
+	/// tool's exact coast invariant (water edges face the sea; the tile touches
+	/// the coast); otherwise the looser placement-matcher tolerance the engine's
+	/// repair loop converges against. See [`shore_defects`] / [`shore_defect_cells`].
+	fn scan_shore(&self, region: Option<(u16, u16, u16, u16)>, strict: bool, mut visit: impl FnMut(u16, u16)) {
 		let families = parse_families(self);
 		if families.iter().all(|f| !f.band) {
-			return 0;
+			return;
 		}
 		let (w, h) = (self.width as i32, self.height as i32);
 		let name_idx: HashMap<&str, u16> =
@@ -1952,27 +2241,223 @@ impl Project {
 				Some(_) => Nb::Hard,
 			}
 		};
-		let mut defects = 0;
 		for y in y0..=y1 {
 			for x in x0..=x1 {
-				match cell_at(&snap, w, h, x, y) {
-					Some(Cell::Ruled { fam, t }) if families[fam as usize].band => {
-						let bad = (0..4).any(|d| {
+				let bad = match cell_at(&snap, w, h, x, y) {
+					Some(Cell::Ruled { fam, t }) if families[fam as usize].band && strict => {
+						// Strict: judge the shore tile against the full coast
+						// invariant - water edges face the sea, land/continuation
+						// edges face land or a continuing shore, and it touches the
+						// coast somewhere.
+						let f = &families[fam as usize];
+						let mut touches_coast = false;
+						let mut edge_bad = false;
+						for d in 0..4 {
 							let nb = nb_at(x, y, d);
-							!dir_ok(&families[fam as usize], t, d, nb)
-								|| matches!(nb, Nb::Shore(nf, nt) if comp_cseam(&comp, fam, t, d, nf, nt) == 0)
-						});
-						defects += bad as usize;
+							let rule = &f.dirs[base_dir(d, t)];
+							match nb {
+								// Off-map reads as open sea (an edge beach is fine).
+								Nb::Edge => touches_coast = true,
+								Nb::OpenWater => {
+									touches_coast = true;
+									// A non-water edge against the open sea is wrong.
+									edge_bad |= !rule.water;
+								}
+								Nb::Shore(nf, nt) => {
+									touches_coast = true;
+									// A shore seam with no continuation is broken - unless
+									// both edges are water (open sea between two coasts).
+									edge_bad |= comp_sseam(&comp, &families, fam, t, d, nf, nt) == 0;
+								}
+								// Symmetric with the open-sea rule: a shore edge facing
+								// solid land must accept land (`__LAND__`). A water edge
+								// OR a pure shoreline-continuation edge pressed against
+								// land is misplaced (it has no land to continue onto -
+								// the GSa-where-GSg-belongs case).
+								Nb::Hard => edge_bad |= !rule.land,
+								Nb::Pending => {}
+							}
+						}
+						// Neither sea nor a shore neighbour anywhere => orphaned in
+						// the terrain (a shore tile sitting in the land).
+						edge_bad || !touches_coast
 					}
-					Some(Cell::Water) => {
-						// Open water touching land orthogonally wants a shore tile.
-						defects += (0..4).any(|d| matches!(nb_at(x, y, d), Nb::Hard)) as usize;
-					}
-					_ => {}
+					Some(Cell::Ruled { fam, t }) if families[fam as usize].band => (0..4).any(|d| {
+						// Loose: the placement matcher's own tolerance (but open sea
+						// between two coasts still isn't a broken seam).
+						let nb = nb_at(x, y, d);
+						!dir_ok(&families[fam as usize], t, d, nb)
+							|| matches!(nb, Nb::Shore(nf, nt) if comp_sseam(&comp, &families, fam, t, d, nf, nt) == 0)
+					}),
+					// Open water touching land orthogonally wants a shore tile.
+					Some(Cell::Water) => (0..4).any(|d| matches!(nb_at(x, y, d), Nb::Hard)),
+					_ => false,
+				};
+				if bad {
+					visit(x as u16, y as u16);
 				}
 			}
 		}
-		defects
+	}
+
+	/// A random-variant land tile cloned from an orthogonal land neighbour of
+	/// `(x, y)`, or `None` when no land cell is adjacent. The fill is
+	/// deterministic (per-cell seeded RNG) so it doesn't visibly tile.
+	fn land_clone(&self, families: &[Family], snap: &[Cell], x: i32, y: i32) -> Option<TileRef> {
+		let (w, h) = (self.width as i32, self.height as i32);
+		let donor = (0..4).find_map(|d| {
+			let (nx, ny) = (x + RING[d].0, y + RING[d].1);
+			is_land(families, snap, w, h, nx, ny)
+				.then(|| self.cell(nx as u16, ny as u16).and_then(|s| s[LAYER_GROUND]))
+				.flatten()
+		})?;
+		let pack = &self.packs[donor.pack as usize];
+		let variants = land_variants(pack, donor.tile);
+		if variants.is_empty() {
+			return None;
+		}
+		let mut rng = Rng::new(0x53484f5245 ^ ((x as u64) << 32 | y as u64));
+		let tile = variants[rng.below(variants.len() as u32) as usize];
+		Some(TileRef { pack: donor.pack, tile, transform: Transform::default() })
+	}
+
+	/// Clear shore-band tiles that aren't a real coast (a coast has sea on one side
+	/// and land on the other). Three ways a shore tile is stranded:
+	/// 1. **buried (per-cell):** all four of its neighbours present land toward it
+	///    (a land cell, or a shore tile whose facing edge is `__LAND__`), so it has
+	///    no sea on any side -> becomes a random variant of the surrounding land.
+	///    Iterated, so a just-filled cell can expose its neighbours.
+	/// 2. **landlocked blob (component):** a connected shore component that touches
+	///    no open water nor the map edge anywhere -> floods back into the terrain
+	///    (a shared land donor, so even a thick interior fills coherently).
+	/// 3. **floating chunk (component):** a connected shore component that touches
+	///    the sea but **no land anywhere** - shore drifting on open water -> erased
+	///    to open water (the ground layer cleared so the water base shows through).
+	///
+	/// A real coast (sea on a side *and* land on a side) is left for the seam fixer.
+	/// One call is a single sweep; the fix loop re-runs it each pass, so cascades
+	/// (filling one blob exposing the next) resolve until nothing improves. Part of
+	/// the open stroke when one is active; returns the number of cells changed.
+	pub fn replace_orphan_shore(&mut self, region: Option<(u16, u16, u16, u16)>) -> usize {
+		let (w, h) = (self.width as i32, self.height as i32);
+		let families = parse_families(self);
+		if families.iter().all(|f| !f.band) {
+			return 0;
+		}
+		let name_idx: HashMap<&str, u16> =
+			families.iter().enumerate().map(|(i, f)| (f.name.as_str(), i as u16)).collect();
+		let mut snap = snapshot_cells(self, &name_idx);
+		let (x0, y0, x1, y1) = region_rect(region, w, h);
+		let mut edits: Vec<(u16, u16, usize, Option<TileRef>)> = Vec::new();
+
+		// Buried tiles (per-cell): a shore tile whose four neighbours all present
+		// land toward it has no sea on any side -> it must become land.
+		loop {
+			let mut changed = false;
+			for y in y0..=y1 {
+				for x in x0..=x1 {
+					let Some(Cell::Ruled { fam, .. }) = cell_at(&snap, w, h, x, y) else { continue };
+					if !families[fam as usize].band {
+						continue;
+					}
+					let buried = (0..4).all(|d| {
+						let (nx, ny) = (x + RING[d].0, y + RING[d].1);
+						match cell_at(&snap, w, h, nx, ny) {
+							// Off-map / open water is not land.
+							None | Some(Cell::Water) => false,
+							// A shore neighbour presents land only if its facing edge is `__LAND__`.
+							Some(Cell::Ruled { fam: nf, t: nt }) if families[nf as usize].band => {
+								families[nf as usize].dirs[base_dir(opp(d), nt)].land
+							}
+							// A land cell (or unruled terrain) presents land.
+							_ => true,
+						}
+					});
+					if !buried {
+						continue;
+					}
+					let Some(entry) = self.land_clone(&families, &snap, x, y) else { continue };
+					edits.push((x as u16, y as u16, LAYER_GROUND, Some(entry)));
+					snap[(y * w + x) as usize] = Cell::Plain; // now land for the next round
+					changed = true;
+				}
+			}
+			if !changed {
+				break;
+			}
+		}
+
+		let is_shore = |x: i32, y: i32| matches!(cell_at(&snap, w, h, x, y), Some(Cell::Ruled { fam, .. }) if families[fam as usize].band);
+		let mut seen = vec![false; (w * h) as usize];
+		for y in y0..=y1 {
+			for x in x0..=x1 {
+				if !is_shore(x, y) || seen[(y * w + x) as usize] {
+					continue;
+				}
+				// Flood the connected shore component, noting whether it touches
+				// open sea (water / map edge) and whether it touches land.
+				let mut comp: Vec<(i32, i32)> = Vec::new();
+				let mut stack = vec![(x, y)];
+				seen[(y * w + x) as usize] = true;
+				let mut touches_sea = false;
+				let mut touches_land = false;
+				while let Some((cx, cy)) = stack.pop() {
+					comp.push((cx, cy));
+					for &(dx, dy) in &RING {
+						let (nx, ny) = (cx + dx, cy + dy);
+						match cell_at(&snap, w, h, nx, ny) {
+							None | Some(Cell::Water) => touches_sea = true, // off-map / open water
+							Some(Cell::Ruled { fam, .. }) if families[fam as usize].band => {} // shore
+							_ => touches_land = true,                       // a land cell / unruled terrain
+						}
+						if is_shore(nx, ny) && !seen[(ny * w + nx) as usize] {
+							seen[(ny * w + nx) as usize] = true;
+							stack.push((nx, ny));
+						}
+					}
+				}
+				if touches_sea && touches_land {
+					continue; // a real coast (sea on one side, land on the other)
+				}
+				if !touches_sea {
+					// Landlocked blob: flood it back into the land, cloning the
+					// family of a land cell adjacent to the blob (shared donor, so
+					// even a thick interior with no land neighbour fills coherently).
+					let donor = comp.iter().find_map(|&(cx, cy)| {
+						RING.iter().find_map(|&(dx, dy)| {
+							let (nx, ny) = (cx + dx, cy + dy);
+							is_land(&families, &snap, w, h, nx, ny)
+								.then(|| self.cell(nx as u16, ny as u16).and_then(|s| s[LAYER_GROUND]))
+								.flatten()
+						})
+					});
+					let Some(donor) = donor else { continue };
+					let pack = &self.packs[donor.pack as usize];
+					let variants = land_variants(pack, donor.tile);
+					if variants.is_empty() {
+						continue;
+					}
+					for &(cx, cy) in &comp {
+						// Per-cell seeded RNG (independent of order) so the random
+						// fill is deterministic and doesn't visibly tile.
+						let mut rng = Rng::new(0x53484f5245 ^ ((cx as u64) << 32 | cy as u64));
+						let tile = variants[rng.below(variants.len() as u32) as usize];
+						let entry = TileRef { pack: donor.pack, tile, transform: Transform::default() };
+						edits.push((cx as u16, cy as u16, LAYER_GROUND, Some(entry)));
+					}
+				} else {
+					// Floating chunk (touches the sea but no land anywhere): shore
+					// that isn't actually a coast. Erase it to open water - clear the
+					// ground layer so the water base shows through.
+					for &(cx, cy) in &comp {
+						edits.push((cx as u16, cy as u16, LAYER_GROUND, None));
+					}
+				}
+			}
+		}
+		let n = edits.len();
+		self.place_many(&edits);
+		n
 	}
 
 	/// Lay the coast and fix it **until it is clean** (one undo unit): place
@@ -2041,11 +2526,7 @@ impl Project {
 	/// reshapes water/shore/land until the coast is clean (the menu's
 	/// "+ Fix" actions and a script's `shore … fix` use this synchronously;
 	/// the modal drives a [`FixSession`] across frames instead).
-	pub fn fix_shore_with(
-		&mut self,
-		region: Option<(u16, u16, u16, u16)>,
-		strength: FixStrength,
-	) -> (usize, usize) {
+	pub fn fix_shore_with(&mut self, region: Option<(u16, u16, u16, u16)>, strength: FixStrength) -> (usize, usize) {
 		// Drive the resumable session to convergence in one shot. The total
 		// budget scales with the break count and hard-bounds the work on any
 		// tileset; `SHORE_REPAIR_BUDGET` overrides, `SHORE_TIME=1` times it.
@@ -2086,6 +2567,228 @@ mod tests {
 		std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks")
 	}
 
+	/// Two distinct shorelines running side by side (the user's ERR1 region for
+	/// GREEN): the 1-cell water gap between them is open sea, not a broken coast.
+	/// A shore↔shore seam where **both** facing edges are water reads as fine, so
+	/// the user's hand-fix (ERR1A) is a clean coast, and the Shore-only fixer (no
+	/// terrain destruction) drives the broken ERR1 to a perfect coast - the case
+	/// the old fixer could not handle, because it fought the phantom seam between
+	/// the two coasts. Fixtures embedded (the templates live under the gitignored
+	/// `resources/user`).
+	#[test]
+	fn adjacent_shorelines_meet_at_open_water_not_a_broken_seam() {
+		const ERR1: &str = r#"{"version":"1","name":"ERR1","width":4,"height":5,
+			"use":[{"name":"WATER","version":"1.1"},{"name":"GREEN","version":"1.1"}],"map":[
+			["WTR003,GSc001:!S","WTR005,GSf003:!S","WTR001,GLa009:!S","WTR003,GSf003:S"],
+			["WTR008,GSa003:!W","WTR006,GSf001:!E","WTR008,GSg004:!S","WTR001,GSc001:S"],
+			["WTR006,GSd004:!W","WTR005,GLa011:W","WTR000,GSf000:!N","WTR011,GSc002:!N"],
+			["WTR010,GSe008:E","WTR010,GLa001","WTR007,GLa009:!S","WTR004,GSg005:W"],
+			["WTR000,GSc003:!S","WTR008,GSj010:E","WTR005,GLa005:S","WTR004,GSf001:!N"]]}"#;
+		const ERR1A: &str = r#"{"version":"1","name":"ERR1A","width":4,"height":5,
+			"use":[{"name":"WATER","version":"1.1"},{"name":"GREEN","version":"1.1"}],"map":[
+			["WTR003,GSc001:!S","WTR005,GSf003:!S","WTR001,GLa009:!S","WTR003,GSf003:S"],
+			["WTR008","WTR006,GSc000:E","WTR008,GSg004:!S","WTR001,GSc001:S"],
+			["WTR006,GSd004:!W","WTR005,GSh000","WTR000,GSe004:!N","WTR011,GSc002:!N"],
+			["WTR010,GSe008:E","WTR010,GLa001","WTR007,GLa009:!S","WTR004,GSg005:W"],
+			["WTR000,GSa001:E","WTR008,GSj010:E","WTR005,GLa005:S","WTR004,GSf001:!N"]]}"#;
+
+		let root = assets_root();
+		let build = |json: &str| {
+			let t = crate::template::Template::from_str(json).unwrap();
+			let mut p = Project::new(4, 5, &["GREEN".to_string()], &root, 1).unwrap();
+			p.begin_stroke();
+			t.apply(&mut p, 0, 0).unwrap();
+			p.end_stroke();
+			p
+		};
+
+		// The user's hand-fix is clean: its only seams between the two shorelines
+		// are open-water (both edges water), which is not a defect.
+		assert_eq!(build(ERR1A).shore_defect_cells(None).len(), 0, "ERR1A is a clean coast");
+
+		// The broken region has real defects, which the Shore-only fix (re-tiles
+		// band cells only - never reshapes land/water) drives to zero.
+		let mut p = build(ERR1);
+		assert!(!p.shore_defect_cells(None).is_empty(), "ERR1 starts broken");
+		p.begin_stroke();
+		for _ in 0..32 {
+			let mut sess = p.fix_session(None, FixStrength::Shore);
+			for _ in 0..200 {
+				if sess.is_done() {
+					break;
+				}
+				sess.step(60_000);
+			}
+			sess.apply(&mut p);
+			p.auto_shore_alt(None);
+			if p.shore_defect_cells(None).is_empty() {
+				break;
+			}
+		}
+		p.end_stroke();
+		assert_eq!(p.shore_defect_cells(None).len(), 0, "Shore-only fix reaches a perfect coast");
+	}
+
+	/// On a map that mixes tilesets, each coast grows the shore of the pack its
+	/// land belongs to - a GREEN island wears GREEN shore, a DESERT island wears
+	/// DESERT shore, and neither borrows the other's tiles. Both matchers (the
+	/// sweep and the loop-walk) honour it. This is the whole point of the
+	/// per-cell / per-loop land-pack preference; without it the richest pack's
+	/// shore would win both coasts.
+	#[test]
+	fn shore_matches_the_neighbouring_lands_tileset() {
+		let root = assets_root();
+		// GREEN land block (cols 2..=4) and DESERT land block (cols 9..=11), a
+		// 4-cell water channel apart so no coastal cell touches both.
+		let build = || {
+			let mut p = Project::new(14, 8, &["GREEN".to_string(), "DESERT".to_string()], &root, 7).unwrap();
+			let gl = p.resolve_ref("GLa000").unwrap().0;
+			let dl = p.resolve_ref("DLa000").unwrap().0;
+			let mut edits = Vec::new();
+			for y in 2u16..=4 {
+				for x in 2u16..=4 {
+					edits.push((x, y, LAYER_GROUND, Some(gl)));
+				}
+				for x in 9u16..=11 {
+					edits.push((x, y, LAYER_GROUND, Some(dl)));
+				}
+			}
+			p.place_many(&edits);
+			p
+		};
+		let green_block = |x: i32, y: i32| (2..=4).contains(&x) && (2..=4).contains(&y);
+		let desert_block = |x: i32, y: i32| (9..=11).contains(&x) && (2..=4).contains(&y);
+
+		for loop_walk in [false, true] {
+			let mut p = build();
+			if loop_walk {
+				p.auto_shore_alt(None);
+			} else {
+				p.auto_shore(None);
+			}
+			let gp = p.packs.iter().position(|k| k.name == "GREEN").unwrap() as u8;
+			let dp = p.packs.iter().position(|k| k.name == "DESERT").unwrap() as u8;
+			let (mut green_shore, mut desert_shore) = (0, 0);
+			for y in 0..8i32 {
+				for x in 0..14i32 {
+					let Some(top) = p.cell(x as u16, y as u16).unwrap()[LAYER_GROUND] else { continue };
+					let pack = &p.packs[top.pack as usize];
+					// Only the placed shore band (pass 2); the land blocks are pass 0.
+					if pack.pass.as_ref().map(|pv| pv[top.tile as usize]) != Some(2) {
+						continue;
+					}
+					let near_g = RING8.iter().any(|&(dx, dy)| green_block(x + dx, y + dy));
+					let near_d = RING8.iter().any(|&(dx, dy)| desert_block(x + dx, y + dy));
+					if near_g && !near_d {
+						assert_eq!(top.pack, gp, "shore at ({x},{y}) hugs GREEN land (loop_walk={loop_walk})");
+						green_shore += 1;
+					} else if near_d && !near_g {
+						assert_eq!(top.pack, dp, "shore at ({x},{y}) hugs DESERT land (loop_walk={loop_walk})");
+						desert_shore += 1;
+					}
+				}
+			}
+			assert!(green_shore > 0, "the GREEN island grew a shore (loop_walk={loop_walk})");
+			assert!(desert_shore > 0, "the DESERT island grew a shore (loop_walk={loop_walk})");
+		}
+	}
+
+	/// A 48x36 sine coast walked clean, then every shore tile rotated a quarter
+	/// turn - a heavily but fully recoverable broken coast. (The loop-walk no
+	/// longer strands seams, so the breaks have to be introduced deliberately;
+	/// this is the shared fixture for the fixer tests.)
+	fn broken_steep_coast(root: &std::path::Path) -> Project {
+		let (w, h) = (48u16, 36u16);
+		let mut p = Project::new(w, h, &["GREEN".to_string()], root, 5).unwrap();
+		let land = p.resolve_ref("GLa000").unwrap().0;
+		for x in 0..w {
+			let top = (h as f64 / 2.0 + 8.0 * (x as f64 / 3.0).sin()).round() as u16;
+			for y in top.min(h)..h {
+				p.place(x, y, LAYER_GROUND, Some(land));
+			}
+		}
+		p.auto_shore_alt(None);
+		let families = parse_families(&p);
+		let band: std::collections::HashSet<String> =
+			families.iter().filter(|f| f.band).map(|f| f.name.clone()).collect();
+		let mut edits = Vec::new();
+		for y in 0..h {
+			for x in 0..w {
+				if let Some(top) = p.cell(x, y).unwrap()[LAYER_GROUND] {
+					let name = family_of(&p.packs[top.pack as usize].ids[top.tile as usize]).to_string();
+					if band.contains(&name) {
+						let t = Transform { rot: (top.transform.rot + 1) % 4, mirror: top.transform.mirror };
+						edits.push((x, y, LAYER_GROUND, Some(TileRef { transform: t, ..top })));
+					}
+				}
+			}
+		}
+		p.place_many(&edits);
+		p
+	}
+
+	/// A GREEN coast must present `__LAND__` to land: a shore tile whose water or
+	/// shoreline-continuation edge is pressed against solid land (a GSa corner
+	/// where a GSg straight-coast belongs) is a defect the detector catches, and
+	/// the symmetric `dir_ok` rule makes auto-shore place the right tile in the
+	/// first place. (User's ERR2/ERR2a/ERR2b/ERR2c GREEN region; the auto-shore
+	/// output ERR2a embedded since `resources/user` is gitignored.)
+	#[test]
+	fn green_coast_presents_land_to_land() {
+		// Auto-shore's old output for the raw region: GSa corners run their
+		// continuation edge against the x=7 land strip - misplaced.
+		const ERR2A: &str = r#"{"version":"1","name":"ERR2A","width":10,"height":13,
+			"use":[{"name":"WATER","version":"1.1"},{"name":"GREEN","version":"1.1"}],"map":[
+			["WTR005","WTR011","WTR009","WTR011","WTR010","WTR010","WTR000","WTR002","WTR002","WTR000"],
+			["WTR003","WTR006","WTR007","WTR001","WTR011","WTR007,GSd004:!W","WTR003,GSh009:!N","WTR009,GSh011","WTR004,GSa007:W","WTR000"],
+			["WTR008","WTR008","WTR005","WTR007","WTR005,GSd004:!W","WTR001,GSk002","WTR011,GLa000","WTR008,GLa000","WTR003,GSe003:W","WTR002"],
+			["WTR000","WTR003","WTR010","WTR011,GSa004:!W","WTR008,GSk000:!W","WTR004,GLa000","WTR010,GLa005","WTR000,GLa000","WTR004,GSh008:W","WTR000"],
+			["WTR007","WTR007","WTR002,GSc002:!W","WTR011,GSf002","WTR010,GLa000","WTR004,GSe005:W","WTR005,GSa002:E","WTR009,GLa000","WTR001,GSe007:!E","WTR002"],
+			["WTR008","WTR007,GSc000","WTR008,GSf001:!W","WTR002,GLa000","WTR008,GSe001:S","WTR010,GSa002:S","WTR008,GSa005","WTR003,GLa000","WTR010,GSg005:W","WTR009"],
+			["WTR005","WTR002,GSg000:!W","WTR005,GLa000","WTR008,GLa003","WTR002,GSa001:!N","WTR004","WTR004,GSa005:!S","WTR010,GLa000","WTR008,GSe008:W","WTR011"],
+			["WTR002","WTR000,GSc001:E","WTR010,GSf002:E","WTR010,GLa000","WTR009,GSj013:!N","WTR008,GSa003:W","WTR002,GSa002:!W","WTR010,GLa000","WTR003,GSh008:!E","WTR000"],
+			["WTR005","WTR009","WTR011,GSa000:E","WTR008,GSk001:!S","WTR008,GLa000","WTR005,GSf000:!N","WTR006,GSf000:!W","WTR003,GLa000","WTR009,GSi003:!E","WTR010"],
+			["WTR001","WTR000","WTR011","WTR008,GSa000:!S","WTR003,GSf001:!S","WTR001,GLa000","WTR000,GLa002","WTR008,GLa000","WTR009,GSh008:W","WTR000"],
+			["WTR010","WTR006","WTR011","WTR009","WTR002,GSa006:E","WTR001,GSk002:E","WTR000,GLa000","WTR003,GLa000","WTR011,GSi000:W","WTR001"],
+			["WTR006","WTR008","WTR007","WTR002","WTR010","WTR011,GSa000:!S","WTR006,GSe008:!S","WTR008,GSi002:S","WTR011,GSd004:!E","WTR006"],
+			["WTR007","WTR008","WTR005","WTR003","WTR002","WTR010","WTR009","WTR009","WTR004","WTR004"]]}"#;
+		// The same region with no shore yet (just the land/water mask).
+		const ERR2: &str = r#"{"version":"1","name":"ERR2","width":10,"height":13,
+			"use":[{"name":"WATER","version":"1.1"},{"name":"GREEN","version":"1.1"}],"map":[
+			["WTR005","WTR011","WTR009","WTR011","WTR010","WTR010","WTR000","WTR002","WTR002","WTR000"],
+			["WTR003","WTR006","WTR007","WTR001","WTR011","WTR007","WTR003","WTR009","WTR004","WTR000"],
+			["WTR008","WTR008","WTR005","WTR007","WTR005","WTR001","WTR011,GLa000","WTR008,GLa000","WTR003","WTR002"],
+			["WTR000","WTR003","WTR010","WTR011","WTR008","WTR004,GLa000","WTR010","WTR000,GLa000","WTR004","WTR000"],
+			["WTR007","WTR007","WTR002","WTR011","WTR010,GLa000","WTR004","WTR005","WTR009,GLa000","WTR001","WTR002"],
+			["WTR008","WTR007","WTR008","WTR002,GLa000","WTR008","WTR010","WTR008","WTR003,GLa000","WTR010","WTR009"],
+			["WTR005","WTR002","WTR005,GLa000","WTR008","WTR002","WTR004","WTR004","WTR010,GLa000","WTR008","WTR011"],
+			["WTR002","WTR000","WTR010","WTR010,GLa000","WTR009","WTR008","WTR002","WTR010,GLa000","WTR003","WTR000"],
+			["WTR005","WTR009","WTR011","WTR008","WTR008,GLa000","WTR005","WTR006","WTR003,GLa000","WTR009","WTR010"],
+			["WTR001","WTR000","WTR011","WTR008","WTR003","WTR001,GLa000","WTR000","WTR008,GLa000","WTR009","WTR000"],
+			["WTR010","WTR006","WTR011","WTR009","WTR002","WTR001","WTR000,GLa000","WTR003,GLa000","WTR011","WTR001"],
+			["WTR006","WTR008","WTR007","WTR002","WTR010","WTR011","WTR006","WTR008","WTR011","WTR006"],
+			["WTR007","WTR008","WTR005","WTR003","WTR002","WTR010","WTR009","WTR009","WTR004","WTR004"]]}"#;
+
+		let root = assets_root();
+		let build = |json: &str| {
+			let t = crate::template::Template::from_str(json).unwrap();
+			let mut p = Project::new(10, 13, &["GREEN".to_string()], &root, 1).unwrap();
+			p.begin_stroke();
+			t.apply(&mut p, 0, 0).unwrap();
+			p.end_stroke();
+			p
+		};
+
+		// The detector now catches the misplaced GSa-against-land tiles.
+		assert!(!build(ERR2A).shore_defect_cells(None).is_empty(), "ERR2a's continuation-against-land is caught");
+
+		// Auto-shore now presents `__LAND__` to land from the start: the raw mask
+		// shores to a clean coast in one pass (no GSa-where-GSg-belongs).
+		let mut p = build(ERR2);
+		p.auto_shore_alt(None);
+		assert_eq!(p.shore_defect_cells(None).len(), 0, "auto-shore lays ERR2 as a clean GREEN coast");
+	}
+
 	/// Hand-computed direction table: a feature on the base tile's N edge
 	/// faces E after one cw turn; a horizontal mirror swaps E and W.
 	#[test]
@@ -2111,7 +2814,8 @@ mod tests {
 
 	/// Continuations compose transforms: rotating a pair together keeps the
 	/// listed continuation, rotating one side alone breaks it. The shipped
-	/// lists are one-directional, and bare `:!` parses as mirror.
+	/// lists are reciprocal (the Match Editor stages both sides of a pair),
+	/// and bare `:!` parses as mirror.
 	#[test]
 	fn continuations_follow_transforms() {
 		let root = assets_root();
@@ -2127,9 +2831,10 @@ mod tests {
 		assert!(continues(&families, gsh, cw, 2, gsi, cw));
 		// A rotated tile does NOT continue an unrotated one sideways.
 		assert!(!continues(&families, gsh, cw, 1, gsi, id));
-		// One-directional: GSi's W does not list GSh.
-		assert!(!continues(&families, gsi, id, 3, gsh, id));
-		assert_eq!(seam_score(&families, gsh, id, 1, gsi, id), 1);
+		// Reciprocal: GSi's W lists GSh back (match data 03d5552), so the
+		// straight seam scores full marks - each direction counted once.
+		assert!(continues(&families, gsi, id, 3, gsh, id));
+		assert_eq!(seam_score(&families, gsh, id, 1, gsi, id), 2);
 		// `GSe:!` is GSe MIRRORED - it must not admit plain GSe (the parse
 		// regression behind the saw-pattern bug).
 		let m = Transform { rot: 0, mirror: true };
@@ -2185,7 +2890,7 @@ mod tests {
 				let (nx, ny) = (x as i32 + dx, y as i32 + dy);
 				if ring.contains(&(nx as u16, ny as u16)) {
 					let (fb, tb) = shore_of(nx as u16, ny as u16);
-					assert!(seam_score(&families, fa, ta, dir, fb, tb) > 0, "broken seam ({x},{y})→({nx},{ny})",);
+					assert!(seam_score(&families, fa, ta, dir, fb, tb) > 0, "broken seam ({x},{y})->({nx},{ny})",);
 				}
 			}
 		}
@@ -2197,6 +2902,158 @@ mod tests {
 		assert_eq!(p.hash(), painted, "auto-shore undoes as one unit");
 		p.redo();
 		assert_eq!(p.hash(), shored, "and replays deterministically");
+	}
+
+	/// A shore tile whose four neighbours all present land toward it (a land cell,
+	/// or a corner shore tile whose facing edge is `__LAND__`) is buried in the
+	/// terrain - it must become land, even though its shore component reaches the
+	/// map edge so the landlocked-blob pass leaves it. (User's ERR3 GREEN region:
+	/// the centre GSf000:E is ringed by GLa and by GSf/GSj corners facing it with
+	/// their `__LAND__` edge.)
+	#[test]
+	fn replace_orphan_shore_clears_a_tile_buried_in_land() {
+		const ERR3: &str = r#"{"version":"1","name":"ERR3","width":3,"height":3,
+			"use":[{"name":"WATER","version":"1.1"},{"name":"GREEN","version":"1.1"}],"map":[
+			["WTR005,GSf002:E","WTR009,GLa010:!E","WTR001,GLa005"],
+			["WTR010,GSf001","WTR004,GSf000:E","WTR001,GLa000"],
+			["WTR011,GLa003:!E","WTR010,GSj014:S","WTR009,GSi001:!S"]]}"#;
+		let root = assets_root();
+		let t = crate::template::Template::from_str(ERR3).unwrap();
+		let mut p = Project::new(3, 3, &["GREEN".to_string()], &root, 1).unwrap();
+		p.begin_stroke();
+		t.apply(&mut p, 0, 0).unwrap();
+		p.end_stroke();
+
+		let is_band = |p: &Project, x: u16, y: u16| {
+			let families = parse_families(p);
+			let top = p.cell(x, y).unwrap()[LAYER_GROUND].unwrap();
+			let name = family_of(&p.packs[top.pack as usize].ids[top.tile as usize]).to_string();
+			families.iter().find(|f| f.name == name).is_some_and(|f| f.band)
+		};
+		assert!(is_band(&p, 1, 1), "the centre starts as a (misplaced) shore tile");
+
+		let cleared = p.replace_orphan_shore(None);
+		assert_eq!(cleared, 1, "only the buried centre is replaced");
+		assert!(!is_band(&p, 1, 1), "the buried centre became land");
+		// The coast tiles around it (which reach the map edge) are untouched.
+		for &(x, y) in &[(0u16, 0u16), (0, 1), (1, 2), (2, 2)] {
+			assert!(is_band(&p, x, y), "edge-touching coast tile ({x},{y}) is kept");
+		}
+		assert_eq!(p.replace_orphan_shore(None), 0, "idempotent");
+	}
+
+	/// A floating shore chunk - shore drifting on open water with no land anywhere -
+	/// is erased back to open water; a real coast (shore touching both land and
+	/// sea) is left alone.
+	#[test]
+	fn replace_orphan_shore_erases_a_floating_chunk_keeps_real_coast() {
+		let root = assets_root();
+		let mut p = Project::new(12, 9, &["GREEN".to_string()], &root, 7).unwrap();
+		let land = p.resolve_ref("GLa000").unwrap().0;
+		let shore = p.resolve_ref("GSa000").unwrap().0;
+		// A real island with its auto-shored ring (a genuine land/water coast).
+		p.begin_stroke();
+		for y in 2..5u16 {
+			for x in 2..5u16 {
+				p.place(x, y, LAYER_GROUND, Some(land));
+			}
+		}
+		p.end_stroke();
+		p.auto_shore(None);
+		// A 2-cell shore chunk far out in open water (no land adjacent).
+		p.begin_stroke();
+		p.place(9, 6, LAYER_GROUND, Some(shore));
+		p.place(10, 6, LAYER_GROUND, Some(shore));
+		p.end_stroke();
+
+		let is_band = |p: &Project, x: u16, y: u16| {
+			let families = parse_families(p);
+			p.cell(x, y).unwrap()[LAYER_GROUND].is_some_and(|top| {
+				let name = family_of(&p.packs[top.pack as usize].ids[top.tile as usize]).to_string();
+				families.iter().find(|f| f.name == name).is_some_and(|f| f.band)
+			})
+		};
+		let is_open_water = |p: &Project, x: u16, y: u16| p.cell(x, y).unwrap()[LAYER_GROUND].is_none();
+		assert!(is_band(&p, 9, 6) && is_band(&p, 10, 6), "the floating chunk starts as shore");
+		assert!(is_band(&p, 1, 3), "the island's ring is real coast");
+
+		let cleared = p.replace_orphan_shore(None);
+		assert_eq!(cleared, 2, "only the 2-cell floating chunk is erased");
+		assert!(is_open_water(&p, 9, 6) && is_open_water(&p, 10, 6), "the floating chunk is erased to water");
+		assert!(is_band(&p, 1, 3), "the island's real coast is kept");
+		assert_eq!(p.replace_orphan_shore(None), 0, "idempotent");
+	}
+
+	/// A shore tile stranded in the land (its connected component touches no open
+	/// water anywhere) is replaced with a random land tile; a shore cell that
+	/// touches the sea is left alone.
+	#[test]
+	fn replace_orphan_shore_clears_landlocked_shore_keeps_real_coast() {
+		let root = assets_root();
+		let mut p = Project::new(12, 10, &["GREEN".to_string()], &root, 7).unwrap();
+		let land = p.resolve_ref("GLa000").unwrap().0;
+		let shore = p.resolve_ref("GSa000").unwrap().0;
+		// A solid land block; a 2-cell shore blob buried in its middle (all-land
+		// neighbours), plus a lone shore cell on the block's edge facing water.
+		p.begin_stroke();
+		for y in 1..9 {
+			for x in 2..8 {
+				p.place(x, y, LAYER_GROUND, Some(land));
+			}
+		}
+		p.place(4, 4, LAYER_GROUND, Some(shore)); // buried (landlocked)
+		p.place(4, 5, LAYER_GROUND, Some(shore)); // buried, joined to (4,4)
+		p.place(2, 6, LAYER_GROUND, Some(shore)); // x=2 edge: (1,6) is open water
+		p.end_stroke();
+
+		let is_band = |p: &Project, x: u16, y: u16| {
+			let families = parse_families(p);
+			let top = p.cell(x, y).unwrap()[LAYER_GROUND].unwrap();
+			let name = family_of(&p.packs[top.pack as usize].ids[top.tile as usize]).to_string();
+			families.iter().find(|f| f.name == name).is_some_and(|f| f.band)
+		};
+		assert!(is_band(&p, 4, 4) && is_band(&p, 2, 6), "all three start as shore");
+
+		let cleared = p.replace_orphan_shore(None);
+		assert_eq!(cleared, 2, "only the 2-cell landlocked blob is replaced");
+		assert!(!is_band(&p, 4, 4) && !is_band(&p, 4, 5), "the buried shore became land");
+		assert!(is_band(&p, 2, 6), "the sea-touching shore cell is left alone");
+
+		// Idempotent: nothing left landlocked.
+		assert_eq!(p.replace_orphan_shore(None), 0, "a second pass changes nothing");
+	}
+
+	/// The loop-walk (now with bounded backtracking) lays missing shore around
+	/// an irregular, concave-cornered landmass, and the combined place + fix
+	/// reaches a clean coast and settles - the "do both" pipeline.
+	#[test]
+	fn loop_walk_plus_fix_cleans_a_concave_coast() {
+		let root = assets_root();
+		let mut p = Project::new(15, 15, &["GREEN".to_string()], &root, 13).unwrap();
+		let land = p.resolve_ref("GLa000").unwrap().0;
+		// An L: a vertical bar with a foot - two concave inner corners.
+		p.begin_stroke();
+		for y in 3..12 {
+			for x in 3..7 {
+				p.place(x, y, LAYER_GROUND, Some(land));
+			}
+		}
+		for y in 8..12 {
+			for x in 7..12 {
+				p.place(x, y, LAYER_GROUND, Some(land));
+			}
+		}
+		p.end_stroke();
+
+		// Loop-walk adds the shore (backing up on any dead-end), then fix resolves
+		// what the single pass strands.
+		let (placed, _) = p.auto_shore_alt(None);
+		assert!(placed > 0, "shore laid around the landmass");
+		p.fix_shore(None);
+		assert_eq!(p.shore_defects(None), 0, "place + fix yields a clean coast");
+		// Idempotent: a second loop-walk settles, and so does a second fix.
+		assert_eq!(p.auto_shore_alt(None).0, 0, "loop-walk settles");
+		assert_eq!(p.shore_defects(None), 0, "still clean");
 	}
 
 	/// Straight runs must not alternate mirrored pieces (the "saw"): a long
@@ -2267,8 +3124,54 @@ mod tests {
 		let (changed, unresolved) = p.auto_shore(None);
 		assert_eq!((changed, unresolved), (1, 0), "just the fill, no seams");
 		let top = p.cell(5, 5).unwrap()[LAYER_GROUND].expect("pond filled");
-		assert_eq!(family_of(&p.packs[top.pack as usize].ids[top.tile as usize]), "GLa");
+		let id = &p.packs[top.pack as usize].ids[top.tile as usize];
+		assert_eq!(family_of(id), "GLa");
+		// The fill is a true land tile (id `.L....`, all-`__LAND__`), never a
+		// shore/multi-tile-pattern tile, and placed upright.
+		assert_eq!(id.as_bytes()[1], b'L', "fill is a land tile, not a shore piece");
+		assert_eq!(top.transform, Transform::default(), "land fills are upright");
 		assert_eq!(p.auto_shore(None).0, 0, "and settles");
+	}
+
+	/// The general match validator (`match_defect_cells`): a cleanly shored
+	/// island satisfies every family's `tiles.match.json` rules (no false
+	/// positives on land or shore), and rotating the whole coast a quarter turn
+	/// makes it flag violations.
+	#[test]
+	fn match_defect_cells_flags_only_rule_violations() {
+		let root = assets_root();
+		let mut p = Project::new(9, 9, &["GREEN".to_string()], &root, 42).unwrap();
+		let land = p.resolve_ref("GLa000").unwrap().0;
+		for y in 3..6 {
+			for x in 3..6 {
+				p.place(x, y, LAYER_GROUND, Some(land));
+			}
+		}
+		p.auto_shore_alt(None);
+		assert!(
+			p.match_defect_cells(None).is_empty(),
+			"clean coast has no violations: {:?}",
+			p.match_defect_cells(None)
+		);
+
+		// Rotate every shore-band tile a quarter turn: the ring no longer matches.
+		let families = parse_families(&p);
+		let band: std::collections::HashSet<String> =
+			families.iter().filter(|f| f.band).map(|f| f.name.clone()).collect();
+		let mut edits = Vec::new();
+		for y in 0..9u16 {
+			for x in 0..9u16 {
+				if let Some(top) = p.cell(x, y).unwrap()[LAYER_GROUND] {
+					let name = family_of(&p.packs[top.pack as usize].ids[top.tile as usize]).to_string();
+					if band.contains(&name) {
+						let t = Transform { rot: (top.transform.rot + 1) % 4, mirror: top.transform.mirror };
+						edits.push((x, y, LAYER_GROUND, Some(TileRef { transform: t, ..top })));
+					}
+				}
+			}
+		}
+		p.place_many(&edits);
+		assert!(!p.match_defect_cells(None).is_empty(), "rotating the coast creates match violations");
 	}
 
 	/// The loop walk dresses the same 16-cell ring as the sweeps - every
@@ -2308,7 +3211,7 @@ mod tests {
 				let (nx, ny) = (x as i32 + dx, y as i32 + dy);
 				if ring.contains(&(nx as u16, ny as u16)) {
 					let (fb, tb) = shore_of(nx as u16, ny as u16);
-					assert!(seam_score(&families, fa, ta, dir, fb, tb) > 0, "broken seam ({x},{y})→({nx},{ny})",);
+					assert!(seam_score(&families, fa, ta, dir, fb, tb) > 0, "broken seam ({x},{y})->({nx},{ny})",);
 				}
 			}
 		}
@@ -2404,62 +3307,41 @@ mod tests {
 		assert_eq!(right_before, snapshot(&p), "right stub untouched");
 	}
 
-	/// `fix_shore` closes the discontinuities the greedy walk leaves on a
-	/// steep coast. This `sin(x/3)·8` coastline is fully expressible, but
-	/// the single-pass `auto_shore_alt` strands 3 broken seams at its folds
-	/// (it no longer auto-repairs - `unresolved == 3`); the separate
-	/// `fix_shore` pass re-tiles those local windows down to zero. It is one
-	/// undo unit and idempotent (a second pass changes nothing).
+	/// `fix_shore` re-tiles the broken local windows of a corrupted steep coast
+	/// (every shore tile rotated a quarter-turn) back down to zero broken seams.
+	/// One undo unit, deterministic, idempotent (a second pass changes nothing).
 	#[test]
-	fn fix_shore_closes_steep_coast() {
+	fn fix_shore_closes_a_corrupted_steep_coast() {
 		let root = assets_root();
-		let (w, h) = (48u16, 36u16);
-		let mut p = Project::new(w, h, &["GREEN".to_string()], &root, 5).unwrap();
-		let land = p.resolve_ref("GLa000").unwrap().0;
-		for x in 0..w {
-			let top = (h as f64 / 2.0 + 8.0 * (x as f64 / 3.0).sin()).round() as u16;
-			for y in top.min(h)..h {
-				p.place(x, y, LAYER_GROUND, Some(land));
-			}
-		}
-		// The walk alone leaves broken seams (no automatic repair).
-		let (_, walk_unresolved) = p.auto_shore_alt(None);
-		assert!(walk_unresolved > 0, "the steep walk strands seams");
-		let shored = p.hash();
+		let mut p = broken_steep_coast(&root);
+		assert!(p.shore_defects(None) > 0, "the rotated coast is broken");
+		let broken = p.hash();
 
 		let (changed, remaining) = p.fix_shore(None);
 		assert!(changed > 0, "fix_shore re-tiled the broken windows");
 		assert_eq!(remaining, 0, "and closed every seam");
+		assert_eq!(p.shore_defect_cells(None).len(), 0, "the strict detector agrees it is clean");
 
 		// One undo unit, deterministic, and a second pass settles.
 		let fixed = p.hash();
 		assert!(p.undo());
-		assert_eq!(p.hash(), shored, "fix_shore stays inside one batch");
+		assert_eq!(p.hash(), broken, "fix_shore stays inside one batch");
 		p.redo();
 		assert_eq!(p.hash(), fixed);
 		assert_eq!(p.fix_shore(None).0, 0, "idempotent after the fix");
 	}
 
-	/// The resumable session reaches the same result as `fix_shore`,
+	/// The resumable session reaches the same clean result as `fix_shore`,
 	/// stepping in tiny budget slices - what the Auto Fix Shore modal does
 	/// frame by frame (live found/fixed/remaining, then apply as one unit).
 	#[test]
 	fn fix_session_steps_to_the_same_result() {
 		let root = assets_root();
-		let (w, h) = (48u16, 36u16);
-		let mut p = Project::new(w, h, &["GREEN".to_string()], &root, 5).unwrap();
-		let land = p.resolve_ref("GLa000").unwrap().0;
-		for x in 0..w {
-			let top = (h as f64 / 2.0 + 8.0 * (x as f64 / 3.0).sin()).round() as u16;
-			for y in top.min(h)..h {
-				p.place(x, y, LAYER_GROUND, Some(land));
-			}
-		}
-		p.auto_shore_alt(None);
+		let mut p = broken_steep_coast(&root);
 		let shored = p.hash();
 
 		let mut s = p.fix_session(None, FixStrength::Shore);
-		assert!(s.found() > 0, "the steep walk left broken seams");
+		assert!(s.found() > 0, "the corrupted coast has broken seams");
 		let mut guard = 0;
 		while !s.is_done() {
 			s.step(2_000); // tiny slices, like a frame budget
@@ -2467,7 +3349,7 @@ mod tests {
 			guard += 1;
 			assert!(guard < 100_000, "session must converge");
 		}
-		assert_eq!(s.remaining(), 0, "the steep coast fully closes");
+		assert_eq!(s.remaining(), 0, "the corrupted coast fully closes");
 		let changed = s.apply(&mut p);
 		assert!(changed > 0);
 		assert_ne!(p.hash(), shored, "the fix changed the map");
@@ -2602,11 +3484,14 @@ mod tests {
 	}
 
 	#[test]
-	fn mangle_fix_converges_and_a_region_fix_stays_local() {
+	fn mangle_fix_reduces_a_broken_coast_and_a_region_fix_stays_local() {
 		let root = assets_root();
 		let (w, h) = (48u16, 36u16);
-		// A steep sine coastline that the loop-walk strands broken seams along.
-		let steep = || {
+		// A clean sine coast, then deliberately broken: every shore tile rotated a
+		// quarter-turn so its land/water edges face the wrong way (the kind of mess
+		// hand-editing or a foreign tileset leaves). This is exactly what Fix Shore
+		// is for - the loop-walk itself no longer strands seams.
+		let broken = || {
 			let mut p = Project::new(w, h, &["GREEN".to_string()], &root, 5).unwrap();
 			let land = p.resolve_ref("GLa000").unwrap().0;
 			for x in 0..w {
@@ -2616,15 +3501,32 @@ mod tests {
 				}
 			}
 			p.auto_shore_alt(None);
+			let families = parse_families(&p);
+			let band: std::collections::HashSet<String> =
+				families.iter().filter(|f| f.band).map(|f| f.name.clone()).collect();
+			let mut edits = Vec::new();
+			for y in 0..h {
+				for x in 0..w {
+					if let Some(top) = p.cell(x, y).unwrap()[LAYER_GROUND] {
+						let name = family_of(&p.packs[top.pack as usize].ids[top.tile as usize]).to_string();
+						if band.contains(&name) {
+							let t = Transform { rot: (top.transform.rot + 1) % 4, mirror: top.transform.mirror };
+							edits.push((x, y, LAYER_GROUND, Some(TileRef { transform: t, ..top })));
+						}
+					}
+				}
+			}
+			p.place_many(&edits);
 			p
 		};
 
-		// Mangle (re-tiles band tiles + keeps a cell's own tile as an option, no
-		// destructive water) sees the stranded seams, converges, and rewrites.
-		let mut p = steep();
+		// Mangle (re-tiles band tiles, keeps each cell's own tile as an option, no
+		// destructive water) converges and cuts the real (match.json) defect count.
+		let mut p = broken();
+		assert!(p.shore_defects(None) > 0, "the corrupted coast is broken");
 		let mut s = p.fix_session(None, FixStrength::Mangle);
 		let found = s.found();
-		assert!(found > 0, "mangle sees the stranded seams");
+		assert!(found > 0, "mangle sees the broken seams");
 		let mut guard = 0;
 		while !s.is_done() {
 			s.step(2_000);
@@ -2632,11 +3534,14 @@ mod tests {
 			assert!(guard < 100_000, "mangle must converge");
 		}
 		assert!(s.apply(&mut p) > 0, "mangle rewrote tiles");
-		assert!(p.fix_session(None, FixStrength::Mangle).found() < found, "a second mangle pass finds fewer seams");
+		assert!(
+			p.fix_session(None, FixStrength::Mangle).found() < found,
+			"a second mangle pass finds fewer broken seams",
+		);
 
 		// A region-limited fix only writes inside its (halo-expanded) rect: cells
 		// far from the region stay byte-for-byte unchanged.
-		let mut p = steep();
+		let mut p = broken();
 		let far = |p: &Project| -> Vec<String> {
 			(30..w).flat_map(|x| (0..h).map(move |y| (x, y))).map(|(x, y)| p.cell_spec(x, y).unwrap()).collect()
 		};

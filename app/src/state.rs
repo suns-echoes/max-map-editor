@@ -7,8 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use map_core::{
-	LAYER_GROUND, LAYER_WATER, Project, Rng, SelectMode, Selection, Template, TileKind, TileRef, Transform,
-	clear_selection, clear_selection_layer,
+	LAYER_GROUND, LAYER_WATER, PaletteReimport, Project, Rng, SelectMode, Selection, Template, TileKind, TileRef,
+	Transform, clear_selection, clear_selection_layer,
 };
 use max_assets::wrl::{read_wrl_file, read_wrl_header, write_wrl_file};
 
@@ -16,11 +16,15 @@ use crate::command::{Command, FilePurpose, ShoreMode};
 use crate::console::Console;
 use crate::menu::{self, MenuBar};
 use crate::minimap;
-use crate::newmap::NewMap;
 use crate::palette::PaletteCycler;
 use crate::picker::{self, PickerState};
 use crate::render::{TILE_PX, Uniforms};
-use crate::workspace::Workspace;
+use crate::workspace::{LayoutGroup, Workspace, WorkspaceLayout};
+
+mod doc_tabs;
+mod scenery_authoring;
+#[cfg(test)]
+mod tests;
 
 const ZOOM_MIN: f32 = 0.0625;
 const ZOOM_MAX: f32 = 8.0;
@@ -42,6 +46,19 @@ fn write_tile_png(path: &Path, rgba: &[u8], width: u32, height: u32) -> Result<(
 	encoder.set_depth(png::BitDepth::Eight);
 	let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
 	writer.write_image_data(rgba).map_err(|e| e.to_string())
+}
+
+/// Write one byte per pixel to an 8-bit greyscale PNG - a **height map** on its
+/// way out to be painted on. One channel, because that is what a height map is:
+/// anything wider would invite a paint program to store a colour nobody could
+/// read back as an elevation.
+fn write_grey_png(path: &Path, grey: &[u8], width: u32, height: u32) -> Result<(), String> {
+	let file = std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
+	let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
+	encoder.set_color(png::ColorType::Grayscale);
+	encoder.set_depth(png::BitDepth::Eight);
+	let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
+	writer.write_image_data(grey).map_err(|e| e.to_string())
 }
 
 /// The palette index whose RGB is visually closest to `(r, g, b)` by squared
@@ -111,12 +128,50 @@ fn decode_png_rgba(path: &Path) -> Result<(Vec<u8>, u32, u32), String> {
 	Ok((rgba, w, h))
 }
 
+/// Classify an RGBA image into a per-tile land mask (`true` = land, row-major
+/// `w×h`) for use as a New Map shape template. A pixel reads as **water** when
+/// blue is its dominant channel ("most blue color is water"); everything else
+/// is land. Each tile samples the image region it covers (backward-mapped, so
+/// images larger *or* smaller than the map both resample cleanly) and takes the
+/// majority vote; ties default to water - the new map's base fill - so only a
+/// clear land majority carves land.
+fn shape_land_mask(rgba: &[u8], iw: u32, ih: u32, w: u16, h: u16) -> Vec<bool> {
+	let (w, h) = (w as usize, h as usize);
+	let (iw, ih) = (iw as usize, ih as usize);
+	if w == 0 || h == 0 || iw == 0 || ih == 0 || rgba.len() < iw * ih * 4 {
+		return vec![false; w * h];
+	}
+	let mut mask = vec![false; w * h];
+	for ty in 0..h {
+		let py0 = ty * ih / h;
+		let py1 = ((ty + 1) * ih / h).max(py0 + 1).min(ih); // always ≥ 1 row
+		for tx in 0..w {
+			let px0 = tx * iw / w;
+			let px1 = ((tx + 1) * iw / w).max(px0 + 1).min(iw); // always ≥ 1 col
+			let (mut land, mut total) = (0u32, 0u32);
+			for py in py0..py1 {
+				let row = py * iw * 4;
+				for px in px0..px1 {
+					let at = row + px * 4;
+					let (r, g, b) = (rgba[at] as u16, rgba[at + 1] as u16, rgba[at + 2] as u16);
+					total += 1;
+					if !(b > r && b > g) {
+						land += 1;
+					}
+				}
+			}
+			mask[ty * w + tx] = land * 2 > total; // tie (incl. all-equal) → water
+		}
+	}
+	mask
+}
+
 /// Decode the modal's image and build a conversion session from its settings -
 /// the conversion's first stage, shared by the stepped and synchronous
 /// (`convert`) paths.
-fn decode_and_build(m: &crate::newfromimage::NewFromImage) -> Result<map_core::ConvertSession, String> {
-	let opts = m.opts()?;
-	let (rgba, w, h) = decode_png_rgba(&m.path)?;
+/// Decode `path` and build a conversion session for `opts`.
+fn build_convert_session(path: &Path, opts: map_core::ConvertOpts) -> Result<map_core::ConvertSession, String> {
+	let (rgba, w, h) = decode_png_rgba(path)?;
 	map_core::ConvertSession::new(rgba, w, h, opts)
 }
 
@@ -166,15 +221,181 @@ pub enum Tool {
 	/// coastal waves) grows over the stroke when it's released.
 	PaintMask,
 	/// Stamp a unit preview at the clicked cell (Units panel - palette aid).
+	/// Also the object-editor's **Place** tool (save editing, S3).
 	Unit,
-	/// Remove the unit preview on the clicked cell.
+	/// Remove the unit preview on the clicked cell. Also the object-editor's
+	/// **Delete** tool.
 	UnitEraser,
+	/// Object **Select**: click picks the topmost object at a cell (footprint +
+	/// z aware) and highlights it (save editing, S3.2).
+	ObjSelect,
+	/// Object **Pick** (eyedropper): click arms the unit type + team under the
+	/// cursor for placing (like the tile eyedropper, but for objects).
+	ObjPick,
+	/// Object **Move**: drag an object to a new cell (undoable, collision-aware).
+	ObjMove,
+	/// Object **Clone** (clone stamp): click an object to take it as the source -
+	/// type, team and every per-unit property - then click bare cells to stamp
+	/// copies of it.
+	ObjClone,
 	/// Freehand cell selection: drag paints the mask (Shift adds,
 	/// Ctrl subtracts, plain drag starts fresh).
 	Select,
 	/// Rectangle selection: drag spans a rect, applied on release (same
 	/// modifier logic).
 	SelectRect,
+	/// Place the armed scenery cut-out where the pointer is (SCENERY.md D).
+	/// Free-positioned: the click's map pixel is the footprint origin, not a
+	/// cell.
+	Scenery,
+	/// Drag a placed scenery object to a new pixel position (one undo unit per
+	/// drag).
+	SceneryMove,
+	/// Remove the topmost scenery object under the pointer.
+	SceneryEraser,
+	/// Resource brush (save editing, S5.3): drag paints the current resource
+	/// material / amount into the cargo map (mode = set / add / subtract), one
+	/// stroke = one undo unit. Only meaningful with a save open.
+	ResourceBrush,
+}
+
+impl Tool {
+	/// The `tool NAME` word this tool is selected by — the canonical alias of the
+	/// several [`Command::ToolSelect`] accepts, so a tool the editor picks for
+	/// itself (`tool default`) echoes the same word a user would have typed.
+	pub fn slug(self) -> &'static str {
+		match self {
+			Tool::Pencil => "pencil",
+			Tool::Picker => "picker",
+			Tool::Eraser => "eraser",
+			Tool::Fill => "fill",
+			Tool::PaintMask => "paint-mask",
+			Tool::Unit => "unit",
+			Tool::UnitEraser => "unit-eraser",
+			Tool::ObjSelect => "obj-select",
+			Tool::ObjPick => "obj-pick",
+			Tool::ObjMove => "obj-move",
+			Tool::ObjClone => "obj-clone",
+			Tool::Scenery => "scenery",
+			Tool::SceneryMove => "scenery-move",
+			Tool::SceneryEraser => "scenery-eraser",
+			Tool::Select => "select",
+			Tool::SelectRect => "select-rect",
+			Tool::ResourceBrush => "resource-brush",
+		}
+	}
+}
+
+/// The Scenery edit layer (the Layers menu).
+///
+/// It sits in the same `active_layer` slot as the two tile layers because it is
+/// the same choice to the user - *what am I editing* - but it is deliberately
+/// **not** a tile-layer index: the cut-outs are a free-placed list, not a cell
+/// stack, so this value is `MAX_LAYERS` and every tile path routes through
+/// [`EditorState::tile_layer`] rather than reading `active_layer` raw. Picking
+/// it re-points the three tools the toolbox already has (see
+/// [`scenery_twin`]) instead of adding any.
+pub const LAYER_SCENERY: usize = map_core::MAX_LAYERS;
+
+/// The Scenery-layer twin of a terrain tool, and back again ([`terrain_twin`]).
+///
+/// Selecting a layer never adds a tool - it re-points the ones already on the
+/// toolbox: the pencil drops a cut-out, the eraser removes one, the arrow drags
+/// one. Everything else (fill, the terrain brushes, rect select, the unit and
+/// object tools) has no scenery meaning and is left exactly as it is.
+fn scenery_twin(tool: Tool) -> Tool {
+	match tool {
+		Tool::Pencil => Tool::Scenery,
+		Tool::Eraser => Tool::SceneryEraser,
+		Tool::Select => Tool::SceneryMove,
+		other => other,
+	}
+}
+
+/// The top-left cell a multi-cell chunk lands on when its footprint is
+/// **centred** on cell `(x, y)` - the rule for placing chunks (a paste, a
+/// template stamp), matching the pencil brush, which is centred on the cursor
+/// too. Saturates at the map's top and left edges, where a centred footprint
+/// would run off (the right and bottom edges clip instead, in
+/// [`map_core::Template::apply`]).
+pub fn stamp_origin(t: &Template, x: u16, y: u16) -> (u16, u16) {
+	(x.saturating_sub(t.width / 2), y.saturating_sub(t.height / 2))
+}
+
+/// The terrain twin of a scenery tool - [`scenery_twin`] inverted, run when the
+/// active layer goes back to water or ground so the toolbox key that is lit
+/// stays the one the user pressed.
+fn terrain_twin(tool: Tool) -> Tool {
+	match tool {
+		Tool::Scenery => Tool::Pencil,
+		Tool::SceneryEraser => Tool::Eraser,
+		Tool::SceneryMove => Tool::Select,
+		other => other,
+	}
+}
+
+/// How full the WRL tile budget has to get before an export says so. Far enough
+/// below the ceiling that a map still has room to lose some scenery, close
+/// enough that an ordinary map never trips it (the originals bake ~1-2k tiles of
+/// 65,535).
+const BUDGET_WARN_PERCENT: usize = 80;
+
+/// How the resource brush ([`Tool::ResourceBrush`], S5.3) combines its amount
+/// with a cell's existing value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceMode {
+	/// Replace the cell with the brush material + amount.
+	Set,
+	/// Raise the cell's amount by the brush amount (capped at 31), setting the
+	/// material to the brush's.
+	Add,
+	/// Lower the cell's amount by the brush amount (down to 0 = cleared), keeping
+	/// the cell's own material.
+	Sub,
+}
+
+impl ResourceMode {
+	/// The lowercase command/UI slug.
+	pub fn slug(self) -> &'static str {
+		match self {
+			ResourceMode::Set => "set",
+			ResourceMode::Add => "add",
+			ResourceMode::Sub => "sub",
+		}
+	}
+
+	/// Parse a mode slug (`set`/`add`/`sub`).
+	pub fn from_slug(s: &str) -> Option<Self> {
+		match s {
+			"set" => Some(ResourceMode::Set),
+			"add" => Some(ResourceMode::Add),
+			"sub" | "subtract" => Some(ResourceMode::Sub),
+			_ => None,
+		}
+	}
+
+	/// Combine `amount` of `material` (None = erase) with a cell's current cargo
+	/// `cur` under this mode → the new cargo value (survey bits preserved). Set
+	/// replaces; Add raises the amount (capped 31) and sets the brush material;
+	/// Sub lowers it (0 = cleared), keeping the cell's own material.
+	pub fn apply(self, cur: u16, material: Option<max_assets::save::CargoMaterial>, amount: u16) -> u16 {
+		use max_assets::save::{cargo_amount, cargo_compose, cargo_material, cargo_surveyed};
+		let Some(mat) = material else {
+			return cargo_compose(cur, None, 0); // erase, regardless of mode
+		};
+		let value = match self {
+			ResourceMode::Set => cargo_compose(cur, Some(mat), amount),
+			ResourceMode::Add => cargo_compose(cur, Some(mat), (cargo_amount(cur) + amount).min(31)),
+			ResourceMode::Sub => {
+				let new_amt = cargo_amount(cur).saturating_sub(amount);
+				let m = if new_amt == 0 { None } else { cargo_material(cur).or(Some(mat)) };
+				cargo_compose(cur, m, new_amt)
+			}
+		};
+		// A painted resource is marked surveyed by all players so it's usable
+		// in-game; a Sub that emptied the cell stays empty (S5.5).
+		cargo_surveyed(value)
+	}
 }
 
 /// Editor mode (Mode menu) - what the map surface edits.
@@ -188,6 +409,66 @@ pub enum EditorMode {
 	/// Local Pass Override editing - LMB sets a *per-cell* override on top of
 	/// the tile's passability (eraser clears it).
 	LocalPass,
+	/// Save-file editing (experimental). The map surface behaves like [`Map`];
+	/// the mode exists so the save editor gets its own dock layout. Reached via
+	/// Mode ▸ Experimental ▸ Save Editor.
+	SaveEditor,
+}
+
+impl EditorMode {
+	/// Which dock-layout group this mode uses. Map has the main layout, the two
+	/// pass editors share one, and the save editor has its own.
+	pub fn layout_group(self) -> LayoutGroup {
+		match self {
+			EditorMode::Map => LayoutGroup::Main,
+			EditorMode::Pass | EditorMode::LocalPass => LayoutGroup::Pass,
+			EditorMode::SaveEditor => LayoutGroup::Save,
+		}
+	}
+
+	/// The tool this mode falls back to when the armed one stops making sense —
+	/// **its own select tool**, because selecting is the one gesture that edits
+	/// nothing. Cell selection in the map/pass editors, object selection in the
+	/// save editor: same intent, different domain. Reached through
+	/// `tool default`, so no caller has to know which is which.
+	pub fn default_tool(self) -> Tool {
+		match self {
+			EditorMode::Map | EditorMode::Pass | EditorMode::LocalPass => Tool::Select,
+			EditorMode::SaveEditor => Tool::ObjSelect,
+		}
+	}
+
+	/// Whether `tool` is one of this mode's own — i.e. some visible toolbox in
+	/// this mode offers it. A tool that is *not* reads as "no tool selected":
+	/// nothing lights, and the map does something the mode's UI never offered.
+	/// [`Command::Mode`] reverts such a tool to [`default_tool`](Self::default_tool).
+	///
+	/// The object place/erase pair is shared: the Units panel arms it as a map
+	/// annotation aid, and the Save Toolbox as its place/delete tools.
+	pub fn owns_tool(self, tool: Tool) -> bool {
+		match self {
+			// The terrain toolbox's keys (its "pass type" group moved out to the
+			// Pass Types Palette, which offers no tool of its own — so the two pass
+			// editors keep the map's set; the eraser is what clears an override).
+			EditorMode::Map | EditorMode::Pass | EditorMode::LocalPass => matches!(
+				tool,
+				Tool::Pencil
+					| Tool::Picker | Tool::Eraser
+					| Tool::Fill | Tool::PaintMask
+					| Tool::Select | Tool::SelectRect
+					| Tool::Unit | Tool::UnitEraser
+			),
+			// The Save Toolbox's keys.
+			EditorMode::SaveEditor => matches!(
+				tool,
+				Tool::ObjSelect
+					| Tool::ObjPick | Tool::ObjMove
+					| Tool::ObjClone
+					| Tool::Unit | Tool::UnitEraser
+					| Tool::ResourceBrush
+			),
+		}
+	}
 }
 
 /// Brush footprint shape, paired with the brush size.
@@ -275,8 +556,264 @@ pub enum Outcome {
 		crop: Option<(u32, u32, u32, u32)>,
 		resize: Option<(u32, u32)>,
 	},
+	/// Open a wgpu-ui overlay dialog (shell-routed; see [`DialogRequest`]).
+	OpenDialog(DialogRequest),
 	Quit,
 	Failed(String),
+}
+
+/// A wgpu-ui overlay dialog for the shell to open. Travels as an [`Outcome`]
+/// so every opener - menu click, console command, script - goes through
+/// `execute` and the shell routes the request in `App::act_on` (headless runs
+/// have no overlay and drop it harmlessly).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DialogRequest {
+	About,
+	/// The Map Metadata form. `save_after` marks the first-save flow: a
+	/// never-saved map's Save-As prompts for metadata first, and the dialog's
+	/// Save resumes the file dialog (Cancel abandons the save).
+	Metadata {
+		save_after: bool,
+	},
+	/// The New Map form; `shape` carries the land/water PNG when opened via
+	/// File → New Terrain from Image (Create then carves it in).
+	NewMap {
+		shape: Option<PathBuf>,
+	},
+	Resize,
+	PaletteSave,
+	PaletteRename,
+	PaletteDelete,
+	/// The Save / Discard / Cancel unsaved-changes guard. `quit` picks the
+	/// fired command pair (`save-and-quit`/`quit!` vs
+	/// `save-and-close`/`close-project!`); `prompt` names what's unsaved.
+	ConfirmClose {
+		quit: bool,
+		prompt: String,
+	},
+	/// Remove Duplicate Templates: the duplicate names to confirm removing
+	/// (Remove fires `template-dedupe!`; empty = an acknowledgement).
+	DedupeTemplates {
+		names: Vec<String>,
+	},
+	/// Delete Template: the selected template's name, footprint, and a composed
+	/// RGBA thumbnail `(rgba, w_px, h_px)`; Delete fires `template-delete!`.
+	DeleteTemplate {
+		name: String,
+		footprint: (u16, u16),
+		preview: (Vec<u8>, u32, u32),
+	},
+	/// Rename Template: the source name, footprint, sibling names (collision
+	/// check), and a composed thumbnail; Save fires `template-rename "from" "to"`.
+	RenameTemplate {
+		from: String,
+		footprint: (u16, u16),
+		existing: Vec<String>,
+		preview: (Vec<u8>, u32, u32),
+	},
+	/// New Scenery (author a cut-out from an image); the run's live state is
+	/// [`EditorState::scenerypaint`] and the dialog owns the derived piece.
+	SceneryNew,
+	/// Delete Scenery: the armed piece's pack, id, display name, and how many
+	/// times it is placed on the open map (deleting it makes those inert).
+	/// Delete fires `scenery-delete!`.
+	DeleteScenery {
+		pack: String,
+		id: String,
+		name: String,
+		placed: usize,
+	},
+	/// Rename Scenery: the armed piece's pack, id and current display name.
+	/// Save fires `scenery-rename "to"`.
+	RenameScenery {
+		pack: String,
+		id: String,
+		from: String,
+	},
+	/// The (non-blocking) Fix Shore window; its live run state is
+	/// [`EditorState::autofix`], synced into the dialog by the shell per frame.
+	AutoFix,
+	/// Convert to Compatible Palette (a WRL import's internal palette); the
+	/// rasterize run's live state is [`EditorState::pconvert`].
+	ConvertPalette,
+	/// New from Image (PNG → tiles); the conversion's live state is
+	/// [`EditorState::newimage`].
+	NewFromImage,
+	/// Generate Random Terrain (a non-blocking float over the live map); the
+	/// run's live state is [`EditorState::genrun`].
+	Generate,
+	/// Import WRL (pack picker → unmapped review); the parked import is
+	/// [`EditorState::wrlimport`].
+	ImportWrl,
+	/// The Tile Painter (New/Clone/Edit context is [`EditorState::tilepaint`];
+	/// the dialog owns the working canvas and tool state).
+	TilePaint,
+	/// The UI Tests font/raster probe (DEV): a dismiss-only diagnostic that
+	/// derives everything it shows from the theme and the UI scale, so it
+	/// carries nothing.
+	UiTests,
+	/// The Edit Tile Match Data editor (DEV): the staged model is parked in
+	/// [`EditorState::matchedit_stage`] for the shell to hand to the dialog
+	/// (which owns it; Save returns self-contained
+	/// [`crate::matcheditor::PackCommit`]s).
+	MatchEdit,
+	/// The resource brush's exact-amount entry (S5.4): a one-field modal seeded
+	/// with the current brush amount; OK runs `resource-brush amount N`.
+	ResourceAmount,
+	/// Experimental-feature warning shown *before* the Open Save File picker: the
+	/// save editor can break real saves. Cancel / I Understand — confirming runs
+	/// `file-dialog open-save`.
+	ConfirmExperimentalOpenSave,
+	/// Save-open confirm (swapped map): the installed map at the slot didn't fit
+	/// but the pristine stock world did (dimensions match). Abort / Open Anyway —
+	/// Open Anyway runs `open-save-anyway`.
+	ConfirmOpenSave {
+		message: String,
+	},
+	/// Save-open error (dimension mismatch / unresolvable world): a dismiss-only
+	/// notice with a single **Abort** button.
+	OpenSaveError {
+		message: String,
+	},
+	/// Editor Preferences: the M.A.X. + M.A.X. Port folder paths (with Browse
+	/// pickers) and a "don't ask again" toggle.
+	EditorPreferences,
+	/// Edit Save Data (Edit > Experimental): the tabbed non-map settings form,
+	/// pre-extracted so the overlay never reaches into editor state.
+	EditSaveData(Box<crate::savedata::SaveDataInit>),
+}
+
+/// The live Fix Shore run — owned by [`EditorState`] (not the dialog), so the
+/// stepping (`autofix_tick`) works with or without a window; the Fix Shore
+/// overlay is a pure view the shell syncs from this each frame.
+pub struct FixRun {
+	pub running: bool,
+	/// The live session for the current pass (the run loops passes).
+	pub session: Option<map_core::FixSession>,
+	/// Cumulative cells changed across every pass (placement + fixes).
+	pub total_changed: usize,
+	/// Faithful defect count after the first placement (the baseline).
+	pub found: usize,
+	pub fixed: usize,
+	pub remaining: usize,
+	/// Lowest defect count seen, passes completed, and stalled passes - the
+	/// multi-pass loop's convergence bookkeeping.
+	pub best: usize,
+	pub passes: u32,
+	pub stall: u32,
+	pub elapsed: f32,
+	/// Cells changed once a run finishes (Stop / converged). `None` after Abort.
+	pub applied: Option<usize>,
+	/// The map region the run is confined to - the active selection's bounds when
+	/// the run opened (`None` = the whole map). Every shore pass runs within it.
+	pub region: Option<(u16, u16, u16, u16)>,
+}
+
+impl FixRun {
+	/// Idle, seeded with the initial broken-seam count and the run's region
+	/// (the active selection, or `None` for the whole map).
+	pub fn new(found: usize, region: Option<(u16, u16, u16, u16)>) -> Self {
+		Self {
+			running: false,
+			session: None,
+			total_changed: 0,
+			found,
+			fixed: 0,
+			remaining: found,
+			best: usize::MAX,
+			passes: 0,
+			stall: 0,
+			elapsed: 0.0,
+			applied: None,
+			region,
+		}
+	}
+}
+
+/// A parked WRL import — state-owned; the Import WRL dialog is a view. `Some`
+/// while the dialog is open: the settings stage picks packs, then `wrl_match`
+/// parks the heavy [`map_core::WrlImport`] in `result` for the unmapped-review
+/// stage, and `wrl_finish` commits it.
+pub struct WrlImportRun {
+	pub path: PathBuf,
+	/// The WRL's base name (the converted project + extras pack id).
+	pub name: String,
+	/// (width, height, tile_count) from the WRL header.
+	pub info: (u16, u16, u16),
+	/// The parked match result (the dialog shows the unmapped review while set).
+	pub result: Option<map_core::WrlImport>,
+	/// One display row per unmapped tile (id · class · cell count).
+	pub rows: Vec<String>,
+	pub matched: usize,
+	pub used: usize,
+}
+
+/// A save-editor open that decoded on the *fallback* map (the pristine stock
+/// world) after the installed map at the slot didn't fit — parked here while the
+/// "Open Anyway" confirm dialog is up. Committing it (`open-save-anyway`) hands
+/// the ready project to `add_doc`; aborting drops it.
+pub struct PendingSaveOpen {
+	/// The fully-built, save-attached, named project ready to become a tab.
+	pub project: Project,
+	/// The console inventory line to echo when it's committed.
+	pub summary: String,
+}
+
+/// The terrain class of a pass byte, for the unmapped-tile rows.
+fn class_name(pass: u8) -> &'static str {
+	match pass {
+		1 => "water",
+		2 => "shore",
+		3 => "blocked",
+		_ => "land",
+	}
+}
+
+/// The live terrain generation run — state-owned; the Generate dialog is a
+/// synced view. `Some` while the dialog is open (it stays open across runs so
+/// seeds can be rerolled).
+#[derive(Default)]
+pub struct GenerateRun {
+	pub running: bool,
+	pub session: Option<map_core::GenSession>,
+	/// The parameters the last run started with (its rolled seed is what
+	/// Copy Seed copies).
+	pub started: Option<map_core::GenParams>,
+	/// The report lines shown once a run finishes (seed / counts / shore).
+	pub status: Vec<String>,
+}
+
+/// The live New-from-Image conversion — state-owned; the dialog is a synced
+/// view. `Some` from Convert until it finishes (opens the new tab), aborts
+/// (back to settings, kept), or the dialog closes.
+pub struct NewImageRun {
+	/// The image file (pixels are decoded on the first tick).
+	pub path: PathBuf,
+	/// The base name for the converted project.
+	pub name: String,
+	/// The validated settings the run started with.
+	pub opts: map_core::ConvertOpts,
+	pub session: Option<map_core::ConvertSession>,
+	pub running: bool,
+	pub progress: f32,
+	pub stage: String,
+	pub elapsed: f32,
+}
+
+/// The live rasterize palette conversion — state-owned; the Convert Palette
+/// overlay dialog is a view the shell syncs from this each frame. `Some` from
+/// Convert until the dialog closes or the document swaps in (finish drops it).
+pub struct PaletteConvertRun {
+	pub running: bool,
+	pub session: Option<PaletteReimport>,
+	pub progress: f32,
+	pub stage: String,
+	pub elapsed: f32,
+	/// The options the run started with (validated by the dialog).
+	pub water: bool,
+	pub relaxed: bool,
+	/// Relaxed similarity threshold as a fraction (0..=1).
+	pub threshold: f32,
 }
 
 /// A fresh random seed from the wall clock (nanos since the epoch), 0 if the
@@ -310,7 +847,7 @@ fn check_pass(value: u8, verb: &str) -> Option<Outcome> {
 /// rfd). Save destinations are created on first use so the dialog always has
 /// somewhere to land: palettes → `user/palettes`; templates → the user
 /// templates dir; maps → the open doc's folder, else MaxPath / `assets/maps`
-/// (Load) or `resources/maps` (Save). `doc_path` is the active document's path,
+/// (Load) or `user/maps` (Save). `doc_path` is the active document's path,
 /// `max_path` the configured game directory, `user_templates` the user's saved-
 /// templates dir.
 fn dialog_default_dir(
@@ -318,10 +855,16 @@ fn dialog_default_dir(
 	resources_root: &Path,
 	doc_path: Option<&Path>,
 	max_path: Option<&Path>,
+	max_port_path: Option<&Path>,
 	user_templates: Option<&Path>,
 ) -> PathBuf {
 	use FilePurpose::*;
 	match purpose {
+		// Saved games live in the M.A.X. Port directory (open + export there).
+		OpenSave | ExportSave | ExportWrlAndSave => max_port_path
+			.filter(|p| p.is_dir())
+			.map(Path::to_path_buf)
+			.unwrap_or_else(|| resources_root.join("assets/maps")),
 		LoadPalette | SavePalette | ImportPalette | ExportPalette => {
 			let dir = resources_root.join("user/palettes");
 			let _ = std::fs::create_dir_all(&dir);
@@ -341,7 +884,9 @@ fn dialog_default_dir(
 					.map(Path::to_path_buf)
 					.or_else(|| Some(resources_root.join("assets/maps"))),
 				_ => {
-					let maps = resources_root.join("maps");
+					// User-written maps live beside the other user content, not at
+					// the resources root (which is the shipped, tracked tree).
+					let maps = resources_root.join("user/maps");
 					let _ = std::fs::create_dir_all(&maps);
 					Some(maps)
 				}
@@ -361,14 +906,75 @@ fn dialog_suggested_name(purpose: FilePurpose, doc_path: Option<&Path>, project_
 			.map(|n| n.to_string_lossy().into_owned())
 			.or_else(|| Some(project_name.to_string())),
 		SavePalette | ExportPalette => Some(project_name.to_string()),
+		// A save session has no doc `.json`; suggest the save's name as the base.
+		ExportSave => Some(project_name.to_string()),
 		_ => None,
 	};
-	// WRL export carries a `.wrl` name; everything else here is a `.json` doc.
-	let ext = if matches!(purpose, ExportWrl) { "wrl" } else { "json" };
+	// WRL export carries a `.WRL` name, a save export a `.dta`; else a `.json` doc.
+	let ext = match purpose {
+		ExportWrl => "WRL",
+		ExportSave => "dta",
+		_ => "json",
+	};
 	raw.map(|n| {
-		let stem = n.strip_suffix(".json").or_else(|| n.strip_suffix(".wrl")).unwrap_or(n.as_str());
+		let stem = n
+			.strip_suffix(".json")
+			.or_else(|| n.strip_suffix(".wrl"))
+			.or_else(|| n.strip_suffix(".WRL"))
+			.or_else(|| n.strip_suffix(".dta"))
+			.or_else(|| n.strip_suffix(".DTA"))
+			.unwrap_or(n.as_str());
 		format!("{stem}.{ext}")
 	})
+}
+
+/// Force a WRL export path (from the file picker) to end in exactly one
+/// uppercase `.WRL`: replace an existing `.wrl`/`.WRL` extension - so a
+/// user-typed `MAP.WRL` is kept as-is, not doubled to `MAP.WRL.wrl` - or append
+/// `.WRL` when there's none. M.A.X. world files are conventionally uppercase and
+/// the game loads them case-insensitively.
+fn wrl_export_path(path: PathBuf) -> PathBuf {
+	match path.extension() {
+		Some(ext) if ext.eq_ignore_ascii_case("wrl") => path.with_extension("WRL"),
+		_ => {
+			let mut name = path.into_os_string();
+			name.push(".WRL");
+			PathBuf::from(name)
+		}
+	}
+}
+
+/// How many prior versions of an overwritten save to retain (`NAME.bak1..bak5`).
+const SAVE_BACKUP_KEEP: usize = 5;
+
+/// Rotate the backup history before overwriting `path` (S6.5): drop the oldest
+/// kept backup (`.bak{keep}`), shift each `.bak{n}` up to `.bak{n+1}`, then move
+/// the current file to `.bak1`. Returns `true` when a backup was made (the file
+/// existed), `false` when `path` was absent (a fresh write, nothing to preserve).
+/// The editor never overwrites a save without first preserving the prior bytes.
+fn rotate_backups(path: &Path, keep: usize) -> std::io::Result<bool> {
+	if !path.exists() {
+		return Ok(false);
+	}
+	let backup = |n: usize| -> PathBuf {
+		let mut name = path.as_os_str().to_owned();
+		name.push(format!(".bak{n}"));
+		PathBuf::from(name)
+	};
+	// Drop the oldest kept backup, then shift the rest up by one.
+	let oldest = backup(keep);
+	if oldest.exists() {
+		std::fs::remove_file(&oldest)?;
+	}
+	for n in (1..keep).rev() {
+		let from = backup(n);
+		if from.exists() {
+			std::fs::rename(&from, backup(n + 1))?;
+		}
+	}
+	// The current file becomes the newest backup; the caller writes the new one.
+	std::fs::rename(path, backup(1))?;
+	Ok(true)
 }
 
 /// A project `.json`'s top-level `"name"` (for Template Maps labels); `None`
@@ -390,12 +996,10 @@ fn template_map_entries(maps_dir: &Path) -> Vec<crate::menu::MapEntry> {
 		.into_iter()
 		.map(|path| {
 			let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-			// Map name on the left, file name right-aligned (the hint column);
-			// a nameless map just shows its file name as the label.
-			match read_map_name(&path) {
-				Some(name) => crate::menu::MapEntry { label: name, note: Some(stem), path },
-				None => crate::menu::MapEntry { label: stem, note: None, path },
-			}
+			// Map name as the label (file name as a fallback). The Template Maps
+			// submenu groups by terrain column, so no right-aligned file name.
+			let label = read_map_name(&path).unwrap_or_else(|| stem.clone());
+			crate::menu::MapEntry { label, note: None, path }
 		})
 		.collect()
 }
@@ -445,15 +1049,35 @@ struct TabSet {
 #[derive(Default)]
 pub struct TemplateLibrary {
 	/// Templates known to the explorer (stock + user), rescanned on changes.
+	/// Production code replaces the list only through [`Self::set_entries`],
+	/// which stamps [`Self::revision`] — the template atlas's staleness key.
 	pub entries: Vec<TemplateEntry>,
-	/// Explorer scroll (px, clamped at draw time).
-	pub scroll: f32,
+	/// Bumped by every [`Self::set_entries`]; the atlas compares this instead
+	/// of re-joining every template name into a `String` each frame.
+	revision: u64,
 	/// The explorer's selected template (index into `entries`).
 	pub sel: Option<usize>,
 	/// Thumbnail size (px), chosen from the panel's size dropdown (32..128).
 	pub cell: f32,
-	/// The preview-size dropdown's open state.
-	pub dropdown_open: bool,
+	/// Restrict the grid to templates of one tileset by its `template_pack`
+	/// label (None = all). Stored by label so it survives map switches; a label
+	/// absent from the current map reads as "all" (nothing matches → empty).
+	pub tileset: Option<String>,
+}
+
+impl TemplateLibrary {
+	/// Replaces the entry list and stamps a new [`Self::revision`]. The one
+	/// mutation path production code uses (the rescan) — a direct `entries`
+	/// write would leave the atlas key stale.
+	pub fn set_entries(&mut self, entries: Vec<TemplateEntry>) {
+		self.entries = entries;
+		self.revision += 1;
+	}
+
+	/// The entry-list generation the template atlas keys on.
+	pub fn revision(&self) -> u64 {
+		self.revision
+	}
 }
 
 /// Color Palette + WRL-palette panel state (selection range, scrolls, the
@@ -468,10 +1092,10 @@ pub struct PaletteManager {
 	/// it's the active selection (the range is cleared); block re-tint applies
 	/// to all of them.
 	pub multi: Vec<u8>,
-	/// Color Palette grid scroll (px, clamped at draw time).
-	pub scroll: f32,
-	/// WRL Internal Palette grid scroll (px, clamped at draw time).
-	pub wrl_scroll: f32,
+	/// An offset `palette scroll N` asked for, pending until the Color Palette
+	/// panel widget drains it (U2.5) — the offsets themselves live in that
+	/// widget's `Scroller`, one per panel.
+	pub scroll_request: Option<f32>,
 	/// Panel tab: false = the grid, true = the saved-palettes list.
 	pub show_saved: bool,
 	/// Saved/installed palette files for the "saved" tab - scanned on switching.
@@ -509,6 +1133,35 @@ pub struct EditorState {
 	/// Load dialogs start there; future features (open MAX dir from the menu,
 	/// install maps into the game) build on it.
 	pub max_path: Option<PathBuf>,
+	/// `[Paths] MaxPortPath` from `mme.ini`: the M.A.X. Port directory where the
+	/// user's saved games (`.DTA` and stock missions) live. The save editor's
+	/// Open Save File dialog starts here (and, later, Export Save File).
+	pub max_port_path: Option<PathBuf>,
+	/// `[Paths] MaxPortDataPath` from `mme.ini`: the M.A.X. Port *game data*
+	/// directory — where `PATCHES.RES` lives (the install/assets dir, distinct
+	/// from `MaxPortPath`, which is the pref dir holding saves). Source of the
+	/// unit-stats database ([`Self::unit_stats`]).
+	pub max_port_data_path: Option<PathBuf>,
+	/// The max-port unit database (`SC_ATTRI`/`SC_CLANS`/`SC_UNITS` out of
+	/// `PATCHES.RES`): stock base `UnitValues` per unit type, clan advantages,
+	/// and per-type applicability metadata. `None` until located — the stats
+	/// editor then falls back to save-provided seeds only.
+	pub unit_stats: Option<max_assets::attribs::UnitStatsDb>,
+	/// `[Paths] SkipPathPrompt`: the "don't ask again" toggle from Editor
+	/// Preferences. When set, a missing path no longer pops the dialog on start;
+	/// the user opens it manually (Edit ▸ Editor Preferences).
+	pub skip_path_prompt: bool,
+	/// Why the Preferences dialog was opened by a *missing-path* trigger (opening
+	/// a save / using the Units panel). `Some` marks the dialog "required": a
+	/// cancel then leads to the Attention notice. Cleared on Save / a menu open.
+	pub paths_prompt_reason: Option<String>,
+	/// `[Preferences] PalettePreview`: the New Map dialog's palette-preview
+	/// toggle (off = strips show original pack colours). Persisted on toggle.
+	pub palette_preview: bool,
+	/// One-shot: the Map Metadata dialog was just applied for a first save,
+	/// so the next Save-As file dialog proceeds without re-prompting (set by
+	/// the shell on `Outcome::ApplyMetadata { save_after: true }`).
+	pub first_save_meta: bool,
 	/// Working palette with the original M.A.X. color-cycle ranges.
 	pub cycler: PaletteCycler,
 	pub animate: bool,
@@ -524,6 +1177,27 @@ pub struct EditorState {
 	pub show_grid: bool,
 	/// Pass-value overlay on? - auto-on in Pass Table Editor mode.
 	pub show_pass_overlay: bool,
+	/// Resource-distribution overlay on? (View ▸ Resources, S5) - tints each
+	/// surveyed cargo cell by material, over an opened save's map.
+	pub show_resources: bool,
+	/// Resource brush material (`Tool::ResourceBrush`, S5.3); `None` = erase.
+	pub resource_material: Option<max_assets::save::CargoMaterial>,
+	/// Resource brush amount (0-31).
+	pub resource_amount: u8,
+	/// Resource brush combine mode (set / add / subtract).
+	pub resource_mode: ResourceMode,
+	/// Outline broken / missing shore cells over the map (Tools ▸ Shore ▸ Show
+	/// Shore Bugs)?
+	pub show_shore_bugs: bool,
+	/// Outline every tile that violates its match rules (Tools ▸ Validate ▸ Show
+	/// Problems)?
+	pub show_match_problems: bool,
+	/// Cached problem-overlay cells (the shell outlines them in red), recomputed
+	/// lazily while the matching toggle is on and the map has changed since.
+	pub shore_bug_cells: Vec<(u16, u16)>,
+	shore_bug_rev: u64,
+	pub match_problem_cells: Vec<(u16, u16)>,
+	match_problem_rev: u64,
 	/// View filter: composite only the active layer, hiding the others.
 	/// A view-only flag - the document is untouched.
 	pub show_only_layer: bool,
@@ -535,14 +1209,37 @@ pub struct EditorState {
 	/// map itself renders at native resolution (it's the document, not chrome).
 	pub ui_scale: f32,
 	pub console: Console,
-	/// Live pointer snapshot (cursor + held press) for widget hover/pressed
-	/// rendering - written by the shell from winit events, read by the views.
-	/// Stays inert (`Hot::NONE`) in headless runs, so captures are mouse-free.
-	pub hot: crate::ui::Hot,
+	/// Where the pointer is over the **map**, in logical UI px - written by the
+	/// shell from winit events, read by the map layer alone (the brush outline,
+	/// the ghost previews, the cell readout). Every *widget's* hover is its own
+	/// `Ui`'s and the panel frame's is the `Workspace`'s, so this is all that is
+	/// left of the shell's old pointer snapshot (U6.2). Stays `None` in headless
+	/// runs, so captures are mouse-free.
+	pub cursor: Option<(f32, f32)>,
 	/// Dockable panels around the map view.
 	pub workspace: Workspace,
-	/// The main menu bar.
-	pub menu: MenuBar,
+	/// One saved dock layout per [`LayoutGroup`], indexed by its discriminant.
+	/// The active group's slot is a stale copy (its live truth is
+	/// [`workspace`](Self::workspace)); the inactive slots hold the stored
+	/// layouts, swapped in when the mode switches groups.
+	pub saved_layouts: [WorkspaceLayout; 3],
+	/// The main menu bar: a `wgpu_ui::MenuBar` widget (input + draw both)
+	/// hosted in a retained `Ui`, rebuilt from [`EditorState::menu_tree`] when
+	/// the structure changes. Command handlers reach the widget via
+	/// [`EditorState::menu`]/[`menu_ref`] (close / open-by-title / is-open).
+	pub menu_panel: crate::panel_ui::PanelUi,
+	pub menu_id: wgpu_ui::WidgetId,
+	/// The menu model (labels, command lines, toggle keys, hints) the widget
+	/// is built from — the editor mutates THIS (dev menu, Quick Load, shortcut
+	/// hints), then rebuilds the widget.
+	pub menu_tree: menu::MenuBar,
+	/// Fired widget action id → what it runs (parallel to the built items).
+	pub menu_acts: Vec<menu::Act>,
+	/// Toggle action ids ↔ live state keys, re-synced each frame before draw.
+	pub menu_toggles: Vec<(u64, &'static str)>,
+	/// The project's undo sequence at the last Undo History rebuild, so the
+	/// submenu is only rebuilt when the history actually changed.
+	last_undo_seq: u64,
 	/// The right-click context menu, when open - items snapshot the state
 	/// at open time (selection, clipboard, stamp, the cell under the click).
 	pub context_menu: Option<menu::ContextMenu>,
@@ -550,13 +1247,9 @@ pub struct EditorState {
 	/// chord label (`"copy"` → `"Ctrl+C"`). Set once by the shell; menus and
 	/// the context menu annotate their items from it.
 	shortcut_hints: Vec<(String, String)>,
-	/// The single open modal (at most one at a time), behind a trait object.
-	/// The concrete type is recovered by downcast - see `modal_as`,
-	/// `modal_as_mut`, `take_modal_as`, and the `open` constructor.
-	pub modal: Option<Box<dyn crate::modal::Modal>>,
 	/// Per-generator last-used terrain-generator parameters, remembered for the
 	/// session so reopening the Generate modal restores them.
-	pub gen_memory: crate::generator::GenMemory,
+	pub gen_memory: crate::genform::GenMemory,
 	/// Headless run (`--headless`/`--screenshot`): native dialogs can't open.
 	pub headless: bool,
 	/// `--dev` mode: unlock editing shipped (stock) assets in the Tile Painter
@@ -575,28 +1268,111 @@ pub struct EditorState {
 	/// Guards the one load attempt (a missing MAX.RES shouldn't retry per
 	/// frame or per command).
 	units_loaded: bool,
+	/// Resource-marker sprite library from MAX.RES (`None` until loaded - needs
+	/// `MaxPath`). Drives the sprite resource overlay (View ▸ Resources); when it
+	/// can't load, the overlay falls back to the flat material tint.
+	pub markers: Option<crate::markers::MarkerLibrary>,
+	/// Guards the one marker load attempt (mirrors `units_loaded`).
+	markers_loaded: bool,
+	/// A save-open parked behind the "Open Anyway" confirm dialog (the installed
+	/// map at the slot didn't fit, but the pristine stock world did). Committed by
+	/// `open-save-anyway`, dropped on abort.
+	pub pending_save_open: Option<PendingSaveOpen>,
 	/// Selected unit in the Units panel (index into `units`). The placed
-	/// previews themselves live in `project.units` (saved with the map).
+	/// objects themselves live in `project.objects` (saved with the map).
 	pub active_unit: Option<usize>,
+	/// The armed scenery cut-out ([`crate::scenery::piece_at`] index) - what
+	/// [`Tool::Scenery`] drops and what the panel rings. A display index only:
+	/// the document names a placement's piece by string, so re-baking a library
+	/// cannot move a placed object.
+	pub active_scenery: Option<usize>,
+	/// The blend mode a *new* placement takes - the Scenery panel's header
+	/// dropdown, and `scenery-blend MODE` on the console. Changing it never
+	/// touches placements already on the map; `scenery-blend INDEX MODE` does
+	/// that one at a time.
+	pub scenery_blend: map_core::SceneryBlend,
+	/// The Scenery panel's thumbnail size in px - one of
+	/// [`crate::scenery::PREVIEW_SIZES`], chosen from its header dropdown and
+	/// persisted as `SceneryPreview` beside the two explorers' own.
+	pub scenery_cell: f32,
+	/// The Scenery panel's pack filter, by library name (`None` = every
+	/// library). A name no loaded library answers to lists nothing, exactly as
+	/// a stale tileset filter does in the Templates Explorer.
+	pub scenery_pack: Option<String>,
 	/// Show the placed unit previews on the map (View ▸ Show Units). Auto-
 	/// enables when a unit is picked or stamped.
 	pub show_units: bool,
+	/// The Clone tool's source object ([`Tool::ObjClone`]): a whole
+	/// [`map_core::MapObject`] taken off the map, so a stamp reproduces its
+	/// per-unit properties - name, hits, ammo, storage, orders, stat overrides -
+	/// not just its type and owner the way the eyedropper does. Its `x`/`y` are
+	/// the cell it came from and are overwritten on every stamp.
+	pub clone_source: Option<map_core::MapObject>,
 	/// Team color for new previews (0..5 - red green blue gray yellow).
 	pub unit_team: u8,
-	/// Units panel scroll (px, clamped at draw time).
-	pub units_scroll: f32,
+	/// The picked object (index into `project.objects`), highlighted on the map
+	/// and the target for the Unit Properties panel (S4). `None` = nothing
+	/// selected. Validated against the list length at use (edits can shift it).
+	pub selected_object: Option<usize>,
+	/// Whether the Unit Properties values section shows the *advanced* (static)
+	/// stats — build turns, attack radius, move-and-fire, … — as well as the
+	/// always-shown dynamic combat stats (S4.5). Toggled by the panel's "advanced"
+	/// checkbox.
+	pub unitprops_advanced: bool,
 	/// The selected-cell mask (editor state, never in the undo journal) -
 	/// the select tools edit it; copy/cut and template capture read it.
 	pub selection: Selection,
 	/// A live rect-select drag's preview `(x0, y0, x1, y1)` in cells - set
 	/// by the shell while dragging, drawn as a dashed-intent outline.
 	pub select_preview: Option<(u16, u16, u16, u16)>,
+	/// The coast cells the Fix Shore tool currently judges broken (against
+	/// `tiles.match.json`), refreshed as a run progresses; the shell outlines
+	/// each in red while the Fix Shore modal is open. Empty otherwise.
+	pub autofix_defects: Vec<(u16, u16)>,
+	/// The live Fix Shore run (`Some` while its window is open — idle or
+	/// running); the wgpu-ui dialog is a view the shell syncs from this.
+	pub autofix: Option<FixRun>,
+	/// The live rasterize palette conversion (`Some` from Convert until the
+	/// dialog closes / the document swaps); the dialog is a synced view.
+	pub pconvert: Option<PaletteConvertRun>,
+	/// The live New-from-Image conversion (`Some` while its dialog is open);
+	/// the dialog is a synced view.
+	pub newimage: Option<NewImageRun>,
+	/// The live terrain generation run (`Some` while its dialog is open);
+	/// the dialog is a synced view.
+	pub genrun: Option<GenerateRun>,
+	/// A parked WRL import (`Some` while the Import WRL dialog is open).
+	pub wrlimport: Option<WrlImportRun>,
+	/// The open Tile Painter's context (`Some` while its dialog is open): the
+	/// commit target plus a canvas mirror the shell re-syncs after every edit,
+	/// so command paths (`tile-commit`, PNG export/import) work on current
+	/// pixels without reaching into the dialog.
+	pub tilepaint: Option<crate::tilepaint::TilePaintRun>,
+	/// The open New Scenery dialog's context (`Some` while it is open): the
+	/// destination packs plus the *source image*, so a PNG chosen through the
+	/// native file dialog - a command path, outside any frame - can be written
+	/// here and picked up on the next sync.
+	pub scenerypaint: Option<crate::scenerypaint::SceneryPaintRun>,
+	/// A freshly-built match-editor model awaiting its dialog (set by the
+	/// `match-editor` command, taken by the shell when the dialog opens -
+	/// the dialog owns it from there).
+	pub matchedit_stage: Option<Box<crate::matcheditor::MatchEditor>>,
 	/// The copy/cut clipboard (a transient unnamed template).
 	pub clipboard: Option<Template>,
 	/// The armed ghost stamp riding under the cursor (paste or a picked
 	/// template); a map click places it, Esc disarms.
 	pub stamp: Option<Template>,
-	/// Templates Explorer state (the known templates + scroll/selection/size).
+	/// The armed stamp's identity-orientation **base** and current orientation,
+	/// so the 8-orientation grid can show every absolute orientation from one
+	/// base. `stamp == stamp_base.oriented(stamp_xform)` whenever a stamp is
+	/// armed; `None` when no stamp is armed.
+	pub stamp_base: Option<Template>,
+	pub stamp_xform: map_core::Transform,
+	/// The base stamp at each of the 8 orientations (`None` = the tiles forbid
+	/// it), cached when the stamp is armed - the 8-orientation grid greys out the
+	/// `None`s and renders the `Some`s. Empty (all `None`) when no stamp is armed.
+	pub stamp_orients: [Option<Template>; 8],
+	/// Templates Explorer state (the known templates + selection/size).
 	pub templates: TemplateLibrary,
 	/// Recently-opened maps for File ▸ Quick Load: most-recent first, ≤10,
 	/// templates excluded. Loaded from / saved to `[Workspace] Recent0..` and
@@ -614,7 +1390,9 @@ pub struct EditorState {
 	/// the same "random" sequence (scripts/tests stay reproducible).
 	paint_rng: Rng,
 	/// Active edit layer: paint + erase act only on it. Default
-	/// Ground (the detail layer over the water base).
+	/// Ground (the detail layer over the water base). One of
+	/// [`map_core::LAYER_WATER`], [`map_core::LAYER_GROUND`] or
+	/// [`LAYER_SCENERY`].
 	pub active_layer: usize,
 	/// Brush/eraser footprint: an odd-sided square (`1` = single cell)
 	/// centred on the cursor. Drives pencil paint and the eraser.
@@ -640,11 +1418,6 @@ pub struct EditorState {
 	pub active_color: Option<u8>,
 	/// Color Palette + WRL-palette panel state (selection range, scrolls, saved list).
 	pub palettes: PaletteManager,
-	/// Toolbox scroll (px, clamped at draw time) - the toolbox flows tall and
-	/// scrolls when it doesn't fit.
-	pub toolbox_scroll: f32,
-	/// The toolbox brush-size dropdown's open state.
-	pub brush_dropdown_open: bool,
 	/// The tile spec `paint` stamps - set by the `tile` command or
 	/// a Tile Explorer click. Resolved per paint, so it re-validates
 	/// after document switches.
@@ -804,11 +1577,17 @@ impl EditorState {
 		// user's own recent maps, filled in later from settings).
 		let templates_dir = resources_root.join("assets/maps");
 		let template_maps = template_map_entries(&templates_dir);
+		let menu_tree = MenuBar::new(&template_maps, &[]);
+		let (menu_widget, menu_acts, menu_toggles) = menu_tree.build_bar();
+		let menu_id = menu_widget.id();
 		let mut workspace = Workspace::default();
 		// The menu bar + project tab strip reserve the top strip; the status bar
 		// reserves the bottom (shown by default).
 		workspace.top = menu::BAR_H + crate::tabs::BAR_H;
 		workspace.bottom = crate::statusbar::BAR_H;
+		// Every layout group starts at the default arrangement; a settings load
+		// (see `seed_mode_layouts`) then overrides each with its saved section.
+		let default_layout = workspace.save_layout();
 		let mut s = Self {
 			project,
 			view,
@@ -819,6 +1598,13 @@ impl EditorState {
 			assets_root,
 			settings_path: None,
 			max_path: None,
+			max_port_path: None,
+			max_port_data_path: None,
+			unit_stats: None,
+			skip_path_prompt: false,
+			paths_prompt_reason: None,
+			palette_preview: false,
+			first_save_meta: false,
 			cycler,
 			animate: false,
 			ingame: false,
@@ -826,33 +1612,69 @@ impl EditorState {
 			debug_map_palette: false,
 			show_grid: false,
 			show_pass_overlay: false,
+			show_resources: false,
+			resource_material: Some(max_assets::save::CargoMaterial::Raw),
+			resource_amount: 15,
+			resource_mode: ResourceMode::Set,
+			show_shore_bugs: false,
+			show_match_problems: false,
+			shore_bug_cells: Vec::new(),
+			shore_bug_rev: u64::MAX,
+			match_problem_cells: Vec::new(),
+			match_problem_rev: u64::MAX,
 			show_only_layer: false,
 			status_bar: true,
 			ui_scale: 1.0,
 			console: Console::new(),
-			hot: crate::ui::Hot::NONE,
-			menu: MenuBar::new(&template_maps, &[]),
+			cursor: None,
+			menu_panel: crate::panel_ui::PanelUi::new(menu_widget),
+			menu_id,
+			menu_tree,
+			menu_acts,
+			menu_toggles,
+			last_undo_seq: u64::MAX, // force the first Undo History build
 			context_menu: None,
 			shortcut_hints: Vec::new(),
-			modal: None,
-			gen_memory: crate::generator::GenMemory::default(),
+			gen_memory: crate::genform::GenMemory::default(),
 			headless: false,
 			units: None,
 			units_loaded: false,
+			markers: None,
+			markers_loaded: false,
+			pending_save_open: None,
 			active_unit: None,
+			active_scenery: None,
+			scenery_blend: map_core::SceneryBlend::default(),
+			scenery_cell: crate::scenery::DEFAULT_PREVIEW,
+			scenery_pack: None,
 			show_units: true,
+			clone_source: None,
 			unit_team: 0,
-			units_scroll: 0.0,
+			selected_object: None,
+			unitprops_advanced: false,
 			selection: Selection::new(project_w, project_h),
 			select_preview: None,
+			autofix_defects: Vec::new(),
+			autofix: None,
+			pconvert: None,
+			newimage: None,
+			genrun: None,
+			wrlimport: None,
+			tilepaint: None,
+			scenerypaint: None,
+			matchedit_stage: None,
 			clipboard: None,
 			stamp: None,
+			stamp_base: None,
+			stamp_xform: map_core::Transform::default(),
+			stamp_orients: std::array::from_fn(|_| None),
 			templates: TemplateLibrary { cell: 64.0, ..Default::default() },
 			recent: Vec::new(),
-			// (modal: None, set above - the 15 typed modal fields collapsed to one)
+
 			dev_mode: false,
 			tile_ops: TileOps::default(),
 			workspace,
+			saved_layouts: [default_layout.clone(), default_layout.clone(), default_layout],
 			picker: PickerState::default(),
 			minimap_mode: minimap::Mode::Overworld,
 			// one tab; the active live fields above are its state.
@@ -870,8 +1692,6 @@ impl EditorState {
 			active_pass: 1,
 			active_color: None,
 			palettes: PaletteManager::default(),
-			toolbox_scroll: 0.0,
-			brush_dropdown_open: false,
 			active_tile: None,
 			clock: 0.0,
 		};
@@ -884,10 +1704,10 @@ impl EditorState {
 	/// fixed shell shortcuts annotate rows too, not just exact-match bindings.
 	pub fn apply_shortcut_hints(&mut self, hints: Vec<(String, String)>) {
 		self.shortcut_hints = hints;
-		// Disjoint borrows: the resolver reads `shortcut_hints` while
-		// `apply_shortcuts` mutates `menu`.
-		let table = &self.shortcut_hints;
-		self.menu.apply_shortcuts(&|command| resolve_hint(table, command));
+		// Stamp the hints onto the model, then rebuild the widget from it.
+		let table = self.shortcut_hints.clone();
+		self.menu_tree.apply_shortcuts(&|command| resolve_hint(&table, command));
+		self.rebuild_menu();
 	}
 
 	/// The chord a menu / context-menu row advertises for `command`: its own
@@ -899,6 +1719,55 @@ impl EditorState {
 		resolve_hint(&self.shortcut_hints, command)
 	}
 
+	/// The main menu bar widget (mutable) — close / open-by-title / checkmarks.
+	pub fn menu(&mut self) -> &mut wgpu_ui::MenuBar {
+		self.menu_panel.ui.get_mut::<wgpu_ui::MenuBar>(self.menu_id).expect("menu widget")
+	}
+
+	/// The main menu bar widget (shared) — for the open-state gating reads.
+	pub fn menu_ref(&self) -> &wgpu_ui::MenuBar {
+		self.menu_panel.ui.get::<wgpu_ui::MenuBar>(self.menu_id).expect("menu widget")
+	}
+
+	/// Rebuild the menu widget from [`menu_tree`](Self::menu_tree) — after any
+	/// structure change (dev menu, Quick Load entries, shortcut hints).
+	fn rebuild_menu(&mut self) {
+		let (bar, acts, toggles) = self.menu_tree.build_bar();
+		self.menu_id = bar.id();
+		self.menu_panel = crate::panel_ui::PanelUi::new(bar);
+		self.menu_acts = acts;
+		self.menu_toggles = toggles;
+	}
+
+	/// Rebuild the Edit ▸ Undo History submenu from the project's undo stack,
+	/// but only when it changed since last time (cheap `undo_seq` check). The
+	/// render loop calls this each frame; edits happen with menus closed, so the
+	/// widget rebuild never disrupts an open menu.
+	pub fn sync_undo_history(&mut self) {
+		let seq = self.project.undo_seq();
+		if seq == self.last_undo_seq {
+			return;
+		}
+		// Never rebuild a live menu — the rebuild mints a fresh (closed) widget,
+		// so an open cascade would vanish mid-frame. Interactively edits close
+		// the menu first, but the script path can open one right after an edit
+		// (`open! …` then `menu file`). `last_undo_seq` stays stale, so the
+		// deferred rebuild lands on the first frame after the menu closes.
+		if self.menu_ref().is_open() {
+			return;
+		}
+		self.last_undo_seq = seq;
+		let labels = self.project.undo_labels(10);
+		self.menu_tree.set_undo_history(&labels);
+		self.rebuild_menu();
+	}
+
+	/// Unlock the DEV menu (a `--dev` launch) and rebuild the widget.
+	pub fn menu_set_dev(&mut self, dev: bool, packs: &[String]) {
+		self.menu_tree.set_dev(dev, packs);
+		self.rebuild_menu();
+	}
+
 	/// The right-click context menu for the current state. `cell` is the map
 	/// cell under the click (`None` over chrome / outside the map); cell-bound
 	/// entries bake it into their command line.
@@ -908,23 +1777,6 @@ impl EditorState {
 			hint: self.menu_hint(command),
 			command: command.into(),
 		};
-		// A focused text field in the open modal gets a text-edit menu (Cut/Copy/
-		// Delete only with a selection, Select All only when non-empty) instead of
-		// the map menu - the same conditional-inclusion idiom as below.
-		if let Some(ec) = self.active_modal_ref().and_then(|m| m.edit_context()) {
-			let mut items = Vec::new();
-			if ec.has_selection {
-				items.push(act("Cut", "edit-cut"));
-				items.push(act("Copy", "edit-copy"));
-				items.push(act("Delete", "edit-delete"));
-				items.push(menu::Item::Sep);
-			}
-			items.push(act("Paste", "edit-paste"));
-			if !ec.is_empty {
-				items.push(act("Select All", "edit-select-all"));
-			}
-			return items;
-		}
 		let mut items = Vec::new();
 		if self.stamp.is_some() {
 			if let Some((x, y)) = cell {
@@ -932,6 +1784,27 @@ impl EditorState {
 			}
 			items.push(act("Cancel Stamp", "stamp cancel"));
 			items.push(menu::Item::Sep);
+		}
+		// The unit place / erase tools stay armed until cancelled (they paint many
+		// via drag, like a stamp). Offer the cancel here — `tool default` disarms to
+		// the mode's select tool — mirroring Cancel Stamp above.
+		match self.tool {
+			Tool::Unit => {
+				items.push(act("Cancel Placement", "tool default"));
+				items.push(menu::Item::Sep);
+			}
+			Tool::UnitEraser => {
+				items.push(act("Cancel Erase", "tool default"));
+				items.push(menu::Item::Sep);
+			}
+			// The scenery tools are the Scenery *layer's* pencil, eraser and
+			// arrow, so cancelling them means leaving the layer - `tool default`
+			// alone would only hand back the same three, re-pointed.
+			Tool::Scenery | Tool::SceneryMove | Tool::SceneryEraser => {
+				items.push(act("Leave the Scenery Layer", "layer ground"));
+				items.push(menu::Item::Sep);
+			}
+			_ => {}
 		}
 		if !self.selection.is_empty() {
 			items.push(act("Cut", "cut"));
@@ -990,7 +1863,7 @@ impl EditorState {
 			return;
 		}
 		self.context_menu = Some(menu::ContextMenu::new(items, pos));
-		self.menu.close();
+		self.menu().close();
 	}
 
 	/// Re-seed the cycling palette after a project palette edit (or its
@@ -1061,50 +1934,6 @@ impl EditorState {
 		self.selected_palette().is_some_and(|p| p.starts_with(&dir))
 	}
 
-	/// The file stems of saved user palettes (for overwrite/duplicate checks).
-	fn user_palette_names(&self) -> Vec<String> {
-		let dir = self.user_palettes_dir();
-		self.palettes
-			.files
-			.iter()
-			.filter(|p| p.starts_with(&dir))
-			.filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
-			.collect()
-	}
-
-	/// Open the Save (`rename` false) or Rename (`rename` true) palette name
-	/// modal. Rename targets the selected user palette.
-	fn open_palette_name_modal(&mut self, rename: bool) {
-		let existing = self.user_palette_names();
-		if rename {
-			let Some(path) = self.selected_palette().filter(|_| self.selected_palette_is_user()).cloned() else {
-				self.console.push_line("select a saved palette to rename");
-				return;
-			};
-			let from = path.file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-			let others = existing.into_iter().filter(|n| n != &from).collect();
-			self.open(crate::palettename::PaletteName::rename(&from, path, others));
-		} else {
-			// Suggest the selected user palette's name, so Save overwrites it.
-			let suggested = self
-				.selected_palette()
-				.filter(|_| self.selected_palette_is_user())
-				.and_then(|p| p.file_stem())
-				.map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-			self.open(crate::palettename::PaletteName::save(existing, &suggested));
-		}
-	}
-
-	/// Open the Delete-palette confirm for the selected user palette.
-	fn open_palette_delete_modal(&mut self) {
-		let Some(path) = self.selected_palette().filter(|_| self.selected_palette_is_user()).cloned() else {
-			self.console.push_line("select a saved palette to delete");
-			return;
-		};
-		let name = path.file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-		self.open(crate::palettedelete::PaletteDelete::new(&name, path));
-	}
-
 	/// Display names for the saved-palette list: a tileset `palette.json` shows
 	/// its tileset (parent) name; a user palette shows its file stem.
 	pub fn palette_file_names(&self) -> Vec<String> {
@@ -1131,6 +1960,24 @@ impl EditorState {
 	fn fit_center(&self, map_tiles: (u16, u16)) -> View {
 		let l = self.workspace.layout(self.screen.0 as f32, self.screen.1 as f32);
 		View::fit_rect(map_tiles, (l.center.x, l.center.y, l.center.w, l.center.h))
+	}
+
+	/// Map a screen-px position to the **map pixel** under it - what a scenery
+	/// placement is positioned by. Unclamped and signed on purpose: an object
+	/// may legitimately hang off the map's left or top edge, and clamping here
+	/// would make a drag stick at the border.
+	pub fn world_at(&self, sx: f32, sy: f32) -> (i32, i32) {
+		(
+			(sx / self.view.zoom + self.view.pan[0]).floor() as i32,
+			(sy / self.view.zoom + self.view.pan[1]).floor() as i32,
+		)
+	}
+
+	/// The armed scenery piece as `(pack, id)`, or `None` when nothing is armed
+	/// or the index no longer resolves (the libraries changed under it).
+	pub fn armed_scenery(&self) -> Option<(String, String)> {
+		let i = self.active_scenery?;
+		crate::scenery::piece_at(&self.project, i).map(|(pack, piece)| (pack.to_string(), piece.id.clone()))
 	}
 
 	/// Map a screen-px position to the cell under it (`None` off-map).
@@ -1180,43 +2027,76 @@ impl EditorState {
 
 	/// Scroll the Tile Explorer so the active (just-picked) tile is in view. A
 	/// no-op when the explorer is closed; falls back to the All filter so a tile
-	/// the current filter would hide is still revealed.
+	/// the current filter would hide is still revealed. Since U2.4 the offset
+	/// lives in the panel widget, so this queues a [`picker::ScrollRequest`] the
+	/// widget drains at its next layout.
 	fn reveal_active_tile_in_explorer(&mut self) {
 		let (w, h) = self.ui_screen();
-		let Some(body) = self.panel_body("tiles", w, h) else { return };
+		let Some(_body) = self.panel_body("tiles", w, h) else { return };
 		let Some(spec) = self.active_tile.clone() else { return };
 		let base = spec.split(':').next().unwrap_or(&spec);
 		let cur = self.picker.filter;
-		let (filter, idx) = match picker::items(&self.project, cur).iter().position(|it| it.id == base) {
-			Some(i) => (cur, i),
-			None => match picker::items(&self.project, picker::Filter::All).iter().position(|it| it.id == base) {
-				Some(i) => (picker::Filter::All, i),
+		let cur_ts = picker::tileset_index(&self.project, self.picker.tileset.as_deref());
+		// Try the current view (pass filter + tileset); if that hides the tile,
+		// fall back to All / every pack so it's still revealed.
+		let (filter, tileset, idx) = match picker::items(&self.project, cur, cur_ts).iter().position(|it| it.id == base)
+		{
+			Some(i) => (cur, self.picker.tileset.clone(), i),
+			None => match picker::items(&self.project, picker::Filter::All, None).iter().position(|it| it.id == base) {
+				Some(i) => (picker::Filter::All, None, i),
 				None => return,
 			},
 		};
 		self.picker.filter = filter;
-		self.picker.filter_open = false;
-		let count = picker::items(&self.project, filter).len();
-		self.picker.scroll = picker::scroll_to_reveal(body, self.picker.tile_px, count, idx, self.picker.scroll);
+		self.picker.tileset = tileset;
+		self.picker.scroll_request = Some(picker::ScrollRequest::Reveal(idx));
 	}
 
-	/// Set the UI scale and mirror it into the font module's global (which label
-	/// layout/measurement read), so fonts scale with the rest of the chrome from
-	/// one source of truth.
+	/// Set the UI scale (label measurement is float and scale-free now - the
+	/// renderer rasterizes at the scaled size; layout stays in logical px).
 	pub fn set_ui_scale(&mut self, scale: f32) {
 		self.ui_scale = scale;
-		crate::font::set_ui_scale(scale);
 	}
 
-	/// The active edit layer's name (`"water"`/`"ground"`) - for the eraser
-	/// tool's `Erase` command and the toolbox highlight.
+	/// The active edit layer's name (`"water"`/`"ground"`/`"scenery"`) - for the
+	/// eraser tool's `Erase` command and the toolbox highlight.
 	pub fn active_layer_name(&self) -> &'static str {
-		if self.active_layer == LAYER_WATER { "water" } else { "ground" }
+		match self.active_layer {
+			LAYER_WATER => "water",
+			LAYER_SCENERY => "scenery",
+			_ => "ground",
+		}
+	}
+
+	/// The **tile** layer edits land on. Same as [`Self::active_layer`] for the
+	/// two real layers; the Scenery layer is not one, so a tile edit that runs
+	/// anyway (a script's `place`, a fill, the terrain brush) falls back to the
+	/// ground layer rather than addressing a layer index that does not exist.
+	pub fn tile_layer(&self) -> usize {
+		self.active_layer.min(LAYER_GROUND)
+	}
+
+	/// [`Self::tile_layer`]'s label - what a cell edit reports, so a console line
+	/// can never claim it cleared cells "on the scenery layer" (there are none)
+	/// and an `erase LAYER` it builds is always a layer `erase` will accept.
+	pub fn tile_layer_name(&self) -> &'static str {
+		if self.tile_layer() == LAYER_WATER { "water" } else { "ground" }
+	}
+
+	/// Whether the free-placed cut-outs are the active layer - so the pencil
+	/// drops one, the eraser removes one and the arrow drags one.
+	pub fn on_scenery_layer(&self) -> bool {
+		self.active_layer == LAYER_SCENERY
 	}
 
 	/// Which layers the map view composites, as a bitmask (bit `n` = layer `n`).
 	/// All layers normally; only the active layer when "show only selected" is
 	/// on. Consumed by the project shader.
+	///
+	/// The Scenery layer sets no tile bit at all, which is the honest reading of
+	/// "show only this layer" for it: the terrain drops out and the cut-outs -
+	/// drawn by their own pass, over the composed map - are left alone on the
+	/// canvas.
 	pub fn layer_mask(&self) -> u32 {
 		if self.show_only_layer { 1 << self.active_layer } else { (1 << map_core::MAX_LAYERS) - 1 }
 	}
@@ -1250,6 +2130,9 @@ impl EditorState {
 		match self.mode {
 			EditorMode::Pass => "Pass Table Editor: drag to set the tile's passability (retints every cell using it)",
 			EditorMode::LocalPass => "Local Pass Override: drag to set a per-cell override; the eraser tool clears it",
+			EditorMode::SaveEditor => {
+				"Save Editor (experimental): edit a loaded save's units & resources - open one via File > Experimental"
+			}
 			EditorMode::Map => match self.tool {
 				Tool::Pencil => "Pencil: drag to paint the active tile - pick one in the Tile Explorer",
 				Tool::Eraser => "Eraser: drag to clear cells on the active layer",
@@ -1260,8 +2143,21 @@ impl EditorState {
 				}
 				Tool::Select => "Select: drag to select cells (Shift adds, Ctrl subtracts); Del clears them",
 				Tool::SelectRect => "Rect Select: drag a rectangle (Shift adds, Ctrl subtracts)",
+				Tool::Scenery => "Scenery: click to drop the armed object - any pixel, no grid",
+				Tool::SceneryMove => "Scenery Move: drag a placed object to reposition it",
+				Tool::SceneryEraser => "Scenery Delete: click an object to remove it",
 				Tool::Unit => "Unit: click to stamp the active unit preview",
 				Tool::UnitEraser => "Unit Eraser: click a unit preview to remove it",
+				Tool::ObjSelect => "Select: click an object to select it (any cell of a multi-cell footprint)",
+				Tool::ObjPick => "Pick: click an object to arm its type + team for placing",
+				Tool::ObjMove => "Move: drag an object to a new cell (blocked if a building is in the way)",
+				Tool::ObjClone => match self.clone_source {
+					Some(_) => "Clone: click a bare cell to stamp the source, or another object to re-source",
+					None => "Clone: click an object to take it - type, team and all its properties - as the source",
+				},
+				Tool::ResourceBrush => {
+					"Resource Brush: drag to paint the material/amount into the cargo map (set/add/sub in the toolbox)"
+				}
 			},
 		}
 	}
@@ -1276,8 +2172,55 @@ impl EditorState {
 		self.view.pan[1] += (oh - nh as f32) / 2.0 / self.view.zoom;
 		self.screen = (nw, nh);
 		// Keep windows within sensible sizes + on-screen after a viewport change.
-		self.workspace.clamp_sizes(nw as f32, nh as f32);
-		self.workspace.clamp_floating(nw as f32, nh as f32);
+		self.reclamp_workspace();
+	}
+
+	/// Re-apply the workspace's size and on-screen bounds at the current
+	/// **logical** UI size.
+	///
+	/// Logical, not physical: the whole workspace - docks, floats, the reserved
+	/// top strip - is laid out in logical px (`layout(wf, hf)` is fed
+	/// [`ui_screen`](Self::ui_screen)), so clamping against the physical size let
+	/// a float at 125% UI scale sit a quarter of the window further out than the
+	/// rule allows.
+	///
+	/// Called after a resize and after every command that can *place* a panel
+	/// (`window`, `dock`, `layout reset`): a stored or typed position is
+	/// untrusted the same way a loaded one is, so a panel can never open with its
+	/// titlebar under the menu bar.
+	fn reclamp_workspace(&mut self) {
+		let (w, h) = self.ui_screen();
+		self.workspace.clamp_sizes(w, h);
+		self.workspace.clamp_floating(w, h);
+	}
+
+	/// Swap the live dock layout from `from`'s group to `to`'s: stash the live
+	/// layout into `from`'s slot, then restore `to`'s. A no-op when they're the
+	/// same group, so switching between the two pass editors leaves their one
+	/// shared layout untouched.
+	fn switch_layout_group(&mut self, from: LayoutGroup, to: LayoutGroup) {
+		if from == to {
+			return;
+		}
+		let (w, h) = (self.screen.0 as f32, self.screen.1 as f32);
+		self.saved_layouts[from as usize] = self.workspace.save_layout();
+		let target = self.saved_layouts[to as usize].clone();
+		self.workspace.load_layout(&target, w, h);
+	}
+
+	/// Populate every layout group's slot from a loaded settings INI. The live
+	/// workspace already holds the applied `[Workspace]` (main) layout, so
+	/// snapshot it as the Main slot; each other group loads its own
+	/// `[Workspace.<Group>]` section, or - when absent - seeds from that main
+	/// layout (its documented default). Call once at startup after `apply_ini`.
+	pub fn seed_mode_layouts(&mut self, ini: &ini::INI, w: f32, h: f32) {
+		self.saved_layouts[LayoutGroup::Main as usize] = self.workspace.save_layout();
+		for group in [LayoutGroup::Pass, LayoutGroup::Save] {
+			self.saved_layouts[group as usize] = match ini.get_section(group.ini_section()) {
+				Some(section) => Workspace::layout_from_ini(section, w, h),
+				None => self.saved_layouts[LayoutGroup::Main as usize].clone(),
+			};
+		}
 	}
 
 	/// Unsaved changes.
@@ -1295,74 +2238,6 @@ impl EditorState {
 	pub fn tick(&mut self, dt: f32) {
 		self.clock += dt;
 		self.cycler.tick(self.clock);
-	}
-
-	/// The open modal, if any - the shell routes input through it (see
-	/// `crate::modal`). They're mutually exclusive. Auto Fix Shore joins the
-	/// rest here, but its Start/Stop drive a live run, not a command line.
-	pub fn active_modal(&mut self) -> Option<&mut (dyn crate::modal::Modal + 'static)> {
-		self.modal.as_deref_mut()
-	}
-
-	/// Read-only twin of [`Self::active_modal`]: the open modal, if any (same
-	/// top-most-first order). Used by `&self` paths - the context-menu builder -
-	/// that can't take the `&mut`.
-	pub fn active_modal_ref(&self) -> Option<&dyn crate::modal::Modal> {
-		self.modal.as_deref()
-	}
-
-	/// Open `m` as the single active modal (replacing any currently open).
-	fn open(&mut self, m: impl crate::modal::Modal + 'static) {
-		self.modal = Some(Box::new(m));
-	}
-
-	/// The open modal as a concrete `&T`, when it is a `T`.
-	pub fn modal_as<T: crate::modal::Modal + 'static>(&self) -> Option<&T> {
-		self.modal.as_ref()?.as_any().downcast_ref::<T>()
-	}
-
-	/// The open modal as a concrete `&mut T`, when it is a `T`.
-	pub fn modal_as_mut<T: crate::modal::Modal + 'static>(&mut self) -> Option<&mut T> {
-		self.modal.as_mut()?.as_any_mut().downcast_mut::<T>()
-	}
-
-	/// Take the open modal out as an owned `Box<T>` when it is a `T` (else leave
-	/// it in place) - used by the stepped-run drivers, which park the modal
-	/// between frames.
-	fn take_modal_as<T: crate::modal::Modal + 'static>(&mut self) -> Option<Box<T>> {
-		if self.modal.as_ref().is_some_and(|m| m.as_any().is::<T>()) {
-			self.modal.take()?.into_any().downcast::<T>().ok()
-		} else {
-			None
-		}
-	}
-
-	/// Dismiss whichever modal is open. The Generate modal's per-generator
-	/// settings are stashed first, so reopening it restores them this session.
-	pub fn close_modal(&mut self) {
-		if let Some(mem) = self.modal_as::<crate::generator::Generator>().map(|g| g.to_memory()) {
-			self.gen_memory = mem;
-		}
-		// A running Fix Shore holds its undo stroke open across passes; closing
-		// mid-run commits what was already laid/fixed (one clean undo step).
-		if self.modal_as::<crate::autofix::AutoFix>().is_some_and(|a| a.running) {
-			self.project.end_stroke();
-		}
-		self.modal = None;
-	}
-
-	/// Commit the open Map Preferences modal to the document, then close it.
-	pub fn apply_preferences(&mut self) {
-		if let Some(prefs) = self.take_modal_as::<crate::preferences::Preferences>() {
-			let (name, players, description, date, version, author) = prefs.values();
-			self.project.set_info(name, players, description, date, version, author);
-		}
-	}
-
-	/// True while the Tile Painter wants live palette cycling - the shell keeps
-	/// ticking the cycler + redrawing so the preview (and swatches) shimmer.
-	pub fn painter_animating(&self) -> bool {
-		self.modal_as::<crate::tilepainter::TilePainter>().is_some_and(|p| p.animate)
 	}
 
 	/// A shipped (stock) pack: not user-owned, and its folder lives under
@@ -1403,6 +2278,66 @@ impl EditorState {
 		Ok((t.pack as usize, t.tile))
 	}
 
+	/// Arm `t` as the ghost stamp at identity orientation, recording it as the
+	/// base for the 8-orientation grid. The grid then shows every orientation
+	/// from this base and `Command::Orient` re-derives the stamp from it.
+	fn arm_stamp(&mut self, t: Template) {
+		// Cache the 8 orientations of the base once (the set doesn't change as the
+		// user re-orients; only the current index does).
+		self.stamp_orients =
+			std::array::from_fn(|i| t.oriented(&self.project, crate::toolbox::orient_transform(i)).ok());
+		self.stamp = Some(t.clone());
+		self.stamp_base = Some(t);
+		self.stamp_xform = map_core::Transform::default();
+	}
+
+	/// Whether the armed thing (stamp or single tile) may take orientation `t` -
+	/// the grid greys out the rest, and a click on a greyed cell is a no-op.
+	pub fn orient_allowed(&self, t: map_core::Transform) -> bool {
+		if self.stamp_base.is_some() {
+			return self.stamp_orients[crate::toolbox::orient_index(t)].is_some();
+		}
+		match self.active_tile_ref() {
+			Ok((pack, tile)) => self.project.tile_allows(pack as u8, tile, t),
+			Err(_) => false,
+		}
+	}
+
+	/// Set the armed thing - the stamp if one is armed, else the single active
+	/// tile - to absolute orientation `t` (the 8-orientation grid's action, and
+	/// the transform tool's). Refuses an orientation the tiles' families forbid.
+	fn orient_armed(&mut self, t: map_core::Transform) -> Outcome {
+		if let Some(base) = self.stamp_base.clone() {
+			return match base.oriented(&self.project, t) {
+				Ok(s) => {
+					self.stamp = Some(s);
+					self.stamp_xform = t;
+					Outcome::Redraw
+				}
+				Err(e) => Outcome::Failed(format!("orient: {e}")),
+			};
+		}
+		let Some(spec) = self.active_tile.clone() else {
+			return Outcome::Failed("orient: no active tile or stamp".into());
+		};
+		let id = spec.split(':').next().unwrap_or(&spec);
+		if let Ok((tref, _)) = self.project.resolve_ref(id) {
+			if !self.project.tile_allows(tref.pack, tref.tile, t) {
+				return Outcome::Failed(format!("orient: '{id}' can't take that orientation"));
+			}
+		}
+		self.active_tile = Some(format!("{id}{}", t.suffix()));
+		Outcome::Redraw
+	}
+
+	/// The bare id (no transform suffix) of the topmost tile at cell `(x, y)` -
+	/// the status bar's hover readout. `None` for an empty or off-map cell.
+	pub fn hovered_tile_id(&self, x: u16, y: u16) -> Option<&str> {
+		let stack = self.project.cell(x, y)?;
+		let top = stack[LAYER_GROUND].or(stack[LAYER_WATER])?;
+		Some(&self.project.packs[top.pack as usize].ids[top.tile as usize])
+	}
+
 	/// Open the Tile Painter to edit the selected tile in place. Stock tiles
 	/// need `--dev` (clone them otherwise).
 	fn open_tile_edit(&mut self) -> Outcome {
@@ -1413,22 +2348,27 @@ impl EditorState {
 		if self.is_stock_pack(pack_idx) && !self.dev_mode {
 			return Outcome::Failed("edit tile: shipped tiles are read-only (clone it instead)".into());
 		}
-		let has_clip = self.tile_ops.clipboard.is_some();
 		let pack = &self.project.packs[pack_idx];
-		self.open(crate::tilepainter::TilePainter::edit(
-			pack.ids[tile as usize].clone(),
-			pack.name.clone(),
-			pack.tile_mask(tile),
-			pack.tile_pixels(tile).to_vec(),
-			pack.pass.as_ref().map_or(0, |p| p[tile as usize]),
-			self.animate,
-			has_clip,
-		));
-		Outcome::Redraw
+		let tile_id = pack.ids[tile as usize].clone();
+		self.tilepaint = Some(crate::tilepaint::TilePaintRun {
+			mode: crate::tilepaint::Mode::Edit,
+			tile_id: tile_id.clone(),
+			pack_name: pack.name.clone(),
+			mask: pack.tile_mask(tile),
+			canvas: pack.tile_pixels(tile).to_vec(),
+			canvas_rev: 0,
+			pass: pack.pass.as_ref().map_or(0, |p| p[tile as usize]),
+			// The id field starts at the current id (a rename on Save).
+			id_text: tile_id,
+			packs: Vec::new(),
+		});
+		Outcome::OpenDialog(DialogRequest::TilePaint)
 	}
 
-	/// Open the visual Edit Tile Match Data modal (DEV only) over the active
-	/// map's packs, preferring the pack of the tile selected in the Tile Explorer.
+	/// Open the visual Edit Tile Match Data editor (DEV only) over the active
+	/// map's packs, preferring the pack of the tile selected in the Tile
+	/// Explorer. The staged model travels with the dialog request (the dialog
+	/// owns it; Save hands self-contained commits back).
 	fn open_match_editor(&mut self) -> Outcome {
 		if !self.dev_mode {
 			return Outcome::Failed("match editor: requires --dev".into());
@@ -1436,30 +2376,23 @@ impl EditorState {
 		let preferred = self.active_tile_ref().ok().map(|(pk, _)| pk);
 		match crate::matcheditor::MatchEditor::new(&self.project, preferred) {
 			Some(m) => {
-				self.open(m);
-				Outcome::Redraw
+				self.matchedit_stage = Some(Box::new(m));
+				Outcome::OpenDialog(DialogRequest::MatchEdit)
 			}
 			None => Outcome::Failed("match editor: no pack has match rules to edit".into()),
 		}
 	}
 
-	/// Apply the open Edit Match Data modal's edits to the project packs and write
-	/// the changed `tiles.match.json` / `tiles.variants.json` (DEV: stock packs
-	/// to `assets_root`, user packs to `user/tilepacks`). The modal stays open.
-	pub fn match_editor_save(&mut self) -> Outcome {
-		let Some(editor) = self.modal_as::<crate::matcheditor::MatchEditor>() else {
-			return Outcome::Redraw;
-		};
-		let commits = editor.commits();
-		if commits.is_empty() {
-			return Outcome::Redraw;
-		}
+	/// Apply the match editor's staged (symmetrized) commits to the project
+	/// packs and write the changed `tiles.match.json` / `tiles.variants.json`
+	/// (DEV: stock packs to `assets_root`, user packs to `user/tilepacks`).
+	pub fn match_editor_save(&mut self, commits: Vec<crate::matcheditor::PackCommit>) -> Result<(), String> {
 		let mut saved: Vec<String> = Vec::new();
 		for c in commits {
 			let name = self.project.packs[c.pack].name.clone();
 			let dir = if self.is_stock_pack(c.pack) {
 				if !self.dev_mode {
-					return Outcome::Failed("match editor: shipped packs need --dev".into());
+					return Err("match editor: shipped packs need --dev".into());
 				}
 				self.assets_root.join(&name)
 			} else {
@@ -1473,7 +2406,7 @@ impl EditorState {
 				}
 			}
 			if let Err(e) = self.cascade_renames(&dir, &c.renames) {
-				return Outcome::Failed(format!("match editor: {e}"));
+				return Err(format!("match editor: {e}"));
 			}
 			// 2. Pass (pack table only - maps keep their own tilepass).
 			if c.pass_changed {
@@ -1485,18 +2418,15 @@ impl EditorState {
 			self.project.packs[c.pack].set_match_data(c.groups, c.matches);
 			// 4. Persist the pack's own files.
 			if let Err(e) = self.project.packs[c.pack].save_match_data(&dir) {
-				return Outcome::Failed(format!("match editor: {e}"));
+				return Err(format!("match editor: {e}"));
 			}
 			if let Err(e) = self.project.packs[c.pack].save_ids_pass(&dir) {
-				return Outcome::Failed(format!("match editor: {e}"));
+				return Err(format!("match editor: {e}"));
 			}
 			saved.push(name);
 		}
-		if let Some(editor) = self.modal_as_mut::<crate::matcheditor::MatchEditor>() {
-			editor.mark_saved();
-		}
 		self.console.push_line(format!("match data saved: {}", saved.join(", ")));
-		Outcome::Redraw
+		Ok(())
 	}
 
 	/// Cascade tile-id renames (`old`→`new`) across every shipped map + template
@@ -1536,24 +2466,24 @@ impl EditorState {
 			Ok(v) => v,
 			Err(e) => return Outcome::Failed(format!("clone tile: {e}")),
 		};
-		let has_clip = self.tile_ops.clipboard.is_some();
 		let src_id = self.project.packs[pack_idx].ids[tile as usize].clone();
 		// Suggest a fresh id in the source family for the editable id field.
 		let family = map_core::family_of(&src_id).to_string();
 		let width = src_id.len().saturating_sub(family.len()).max(3);
 		let suggested = self.fresh_tile_id(&family, width);
 		let pack = &self.project.packs[pack_idx];
-		self.open(crate::tilepainter::TilePainter::clone_from(
-			src_id.clone(),
-			pack.name.clone(),
-			pack.tile_mask(tile),
-			pack.tile_pixels(tile).to_vec(),
-			pack.pass.as_ref().map_or(0, |p| p[tile as usize]),
-			self.animate,
-			suggested,
-			has_clip,
-		));
-		Outcome::Redraw
+		self.tilepaint = Some(crate::tilepaint::TilePaintRun {
+			mode: crate::tilepaint::Mode::Clone,
+			tile_id: src_id,
+			pack_name: pack.name.clone(),
+			mask: pack.tile_mask(tile),
+			canvas: pack.tile_pixels(tile).to_vec(),
+			canvas_rev: 0,
+			pass: pack.pass.as_ref().map_or(0, |p| p[tile as usize]),
+			id_text: suggested,
+			packs: Vec::new(),
+		});
+		Outcome::OpenDialog(DialogRequest::TilePaint)
 	}
 
 	/// Delete the selected tile from its pack. Stock tiles need `--dev`; user
@@ -1588,39 +2518,67 @@ impl EditorState {
 		}
 	}
 
+	/// The packs a newly authored asset may be filed under: the map's own
+	/// tilesets, in the order it declares them, minus WATER (which holds no
+	/// authorable art). The map's `uses` rather than its loaded packs, because
+	/// a user sidecar pack carries the *same* name as the tileset it extends -
+	/// listing `packs` offers "GREEN" twice for one destination. The first
+	/// entry is what both New dialogs prefill.
+	pub fn authoring_pack_names(&self) -> Vec<String> {
+		let mut out: Vec<String> = Vec::new();
+		for u in &self.project.uses {
+			if u.name != "WATER" && !out.contains(&u.name) {
+				out.push(u.name.clone());
+			}
+		}
+		out
+	}
+
 	/// Open the Tile Painter on a blank new tile (the target pack is chosen in
-	/// the modal).
+	/// the dialog). New tiles get no mask (fully opaque, as the map renders).
 	fn open_tile_new(&mut self) -> Outcome {
-		let packs: Vec<String> =
-			self.project.packs.iter().filter(|p| p.name != "WATER").map(|p| p.name.clone()).collect();
+		let packs = self.authoring_pack_names();
 		if packs.is_empty() {
 			return Outcome::Failed("new tile: no editable pack loaded".into());
 		}
-		self.open(crate::tilepainter::TilePainter::new_tile(packs, self.animate, self.tile_ops.clipboard.is_some()));
-		Outcome::Redraw
+		self.tilepaint = Some(crate::tilepaint::TilePaintRun {
+			mode: crate::tilepaint::Mode::New,
+			tile_id: String::new(),
+			pack_name: String::new(),
+			mask: None,
+			canvas: vec![0u8; crate::tilepaint::TILE * crate::tilepaint::TILE],
+			canvas_rev: 0,
+			pass: 0,
+			id_text: String::new(),
+			packs,
+		});
+		Outcome::OpenDialog(DialogRequest::TilePaint)
 	}
 
-	/// Commit the open Tile Painter. An Edit repaints the tile in its pack;
+	/// Commit the open Tile Painter with the dialog's values (`typed` id, `pass`,
+	/// target `pack` - the shell reads them from the widgets; the script path
+	/// passes the run's defaults). An Edit repaints the tile in its pack;
 	/// New/Clone append a fresh tile to the per-source-name user pack under
 	/// `resources/user/tilepacks/<NAME>/` (created on first use) and persist it.
-	/// On success the modal closes and the atlas rebuilds (DocReplaced).
-	pub fn tile_paint_commit(&mut self) -> Outcome {
-		use crate::tilepainter::Mode;
-		let Some(painter) = self.modal_as::<crate::tilepainter::TilePainter>() else { return Outcome::Ok };
-		let (mode, pixels, pass) = (painter.mode, painter.pixels().to_vec(), painter.pass);
-		let typed = painter.new_id().to_string();
+	/// On success the run clears and the atlas rebuilds (DocReplaced).
+	pub fn tile_paint_commit(&mut self, typed: String, pass: u8, pack: String) -> Outcome {
+		use crate::tilepaint::Mode;
+		let Some(run) = self.tilepaint.as_ref() else { return Outcome::Ok };
+		let (mode, pixels) = (run.mode, run.canvas.clone());
+		let typed = typed.trim().to_string();
 		match mode {
 			Mode::Edit => {
-				self.commit_tile_edit(painter.pack_name.clone(), painter.tile_id.clone(), typed, &pixels, pass)
+				let (pack_name, tile_id) = (run.pack_name.clone(), run.tile_id.clone());
+				self.commit_tile_edit(pack_name, tile_id, typed, &pixels, pass)
 			}
 			Mode::Clone => {
 				// A clone defaults to a fresh id in the source family; the user
 				// may have typed their own. Seed the new family's props from the
 				// source so the clone renders like its origin (mask/kind).
-				let src_family = map_core::family_of(&painter.tile_id).to_string();
-				let width = painter.tile_id.len().saturating_sub(src_family.len()).max(3);
+				let src_family = map_core::family_of(&run.tile_id).to_string();
+				let width = run.tile_id.len().saturating_sub(src_family.len()).max(3);
+				let pack_name = run.pack_name.clone();
 				let id = if typed.is_empty() { self.fresh_tile_id(&src_family, width) } else { typed };
-				let pack_name = painter.pack_name.clone();
 				let seed = self
 					.project
 					.packs
@@ -1630,7 +2588,6 @@ impl EditorState {
 				self.commit_tile_new(pack_name, id, seed, &pixels, pass)
 			}
 			Mode::New => {
-				let pack = painter.target_pack().to_string();
 				// A typed id keeps its family; an empty one parks under "NEW".
 				let id = if typed.is_empty() { self.fresh_tile_id("NEW", 3) } else { typed };
 				self.commit_tile_new(pack, id, None, &pixels, pass)
@@ -1640,19 +2597,20 @@ impl EditorState {
 
 	/// Export the open painter's tile as a 64×64 RGBA PNG (palette colors → RGB;
 	/// the family's mask color, if any, is written transparent so it round-trips).
+	/// Reads the run's canvas mirror (re-synced by the shell after every edit).
 	fn tile_export_png(&mut self, path: &Path) -> Outcome {
-		let Some(painter) = self.modal_as::<crate::tilepainter::TilePainter>() else {
+		let Some(run) = self.tilepaint.as_ref() else {
 			return Outcome::Failed("tile-export: open a tile in the painter first".into());
 		};
-		let mask = painter.mask();
+		let mask = run.mask;
 		let pal = &self.project.palette;
-		let mut rgba = Vec::with_capacity(painter.pixels().len() * 4);
-		for &i in painter.pixels() {
+		let mut rgba = Vec::with_capacity(run.canvas.len() * 4);
+		for &i in &run.canvas {
 			let o = i as usize * 3;
 			let a = if Some(i) == mask { 0 } else { 255 };
 			rgba.extend_from_slice(&[pal[o], pal[o + 1], pal[o + 2], a]);
 		}
-		let tile = crate::tilepainter::TILE as u32;
+		let tile = crate::tilepaint::TILE as u32;
 		match write_tile_png(path, &rgba, tile, tile) {
 			Ok(()) => {
 				let line = format!("exported tile to {}", path.display());
@@ -1711,7 +2669,7 @@ impl EditorState {
 		}
 		match write_tile_png(path, &rgba, out_w, out_h) {
 			Ok(()) => {
-				let line = format!("exported template to {} ({out_w}×{out_h})", path.display());
+				let line = format!("exported template to {} ({out_w}x{out_h})", path.display());
 				eprintln!("{line}");
 				self.console.push_line(line);
 				Outcome::Redraw
@@ -1722,11 +2680,13 @@ impl EditorState {
 
 	/// Load a PNG into the open painter, mapping each pixel to its visually
 	/// closest palette color (nearest RGB). Non-64×64 images are nearest-sampled
-	/// to the tile; transparent pixels become the family's mask color.
+	/// to the tile; transparent pixels become the family's mask color. Writes
+	/// the run's canvas and bumps its revision, so the dialog reloads its copy.
 	fn tile_import_png(&mut self, path: &Path) -> Outcome {
-		if self.modal_as::<crate::tilepainter::TilePainter>().is_none() {
+		let Some(run) = self.tilepaint.as_ref() else {
 			return Outcome::Failed("tile-import: open a tile in the painter first".into());
-		}
+		};
+		let mask = run.mask.unwrap_or(0);
 		let (rgba, w, h) = match decode_png_rgba(path) {
 			Ok(v) => v,
 			Err(e) => return Outcome::Failed(format!("tile-import: {e}")),
@@ -1734,8 +2694,7 @@ impl EditorState {
 		if w == 0 || h == 0 {
 			return Outcome::Failed("tile-import: empty image".into());
 		}
-		let tile = crate::tilepainter::TILE;
-		let mask = self.modal_as::<crate::tilepainter::TilePainter>().unwrap().mask().unwrap_or(0);
+		let tile = crate::tilepaint::TILE;
 		let pal = &self.project.palette;
 		let mut indices = vec![0u8; tile * tile];
 		for ty in 0..tile {
@@ -1749,8 +2708,10 @@ impl EditorState {
 					if a < 128 { mask } else { nearest_palette_index(pal, rgba[p], rgba[p + 1], rgba[p + 2]) };
 			}
 		}
-		self.modal_as_mut::<crate::tilepainter::TilePainter>().unwrap().set_pixels(&indices);
-		let line = format!("imported {} ({w}×{h}) into the tile painter", path.display());
+		let run = self.tilepaint.as_mut().unwrap();
+		run.canvas = indices;
+		run.canvas_rev += 1;
+		let line = format!("imported {} ({w}x{h}) into the tile painter", path.display());
 		eprintln!("{line}");
 		self.console.push_line(line);
 		Outcome::Redraw
@@ -1762,7 +2723,7 @@ impl EditorState {
 		if id.is_empty() {
 			return Err("id is empty".into());
 		}
-		if !id.chars().all(crate::tilepainter::is_id_char) {
+		if !id.chars().all(crate::tilepaint::is_id_char) {
 			return Err("id: only letters, digits and _".into());
 		}
 		if Some(id) != allow && self.project.packs.iter().any(|p| p.index_of.contains_key(id)) {
@@ -1818,7 +2779,7 @@ impl EditorState {
 		} else if stock {
 			self.tile_ops.dirty_packs.insert(pack_name.clone());
 		}
-		self.modal = None;
+		self.tilepaint = None;
 		self.console.push_line(format!("edited tile {new_id} in {pack_name}"));
 		Outcome::DocReplaced
 	}
@@ -1878,7 +2839,7 @@ impl EditorState {
 		}
 		// Make the new tile the active brush, ready to paint.
 		self.active_tile = Some(new_id.clone());
-		self.modal = None;
+		self.tilepaint = None;
 		let where_ = if pack_user { format!("user pack {pack_name}") } else { pack_name.clone() };
 		self.console.push_line(format!("added tile {new_id} to {where_}"));
 		Outcome::DocReplaced
@@ -1977,115 +2938,234 @@ impl EditorState {
 		}
 	}
 
-	/// Raise the error modal with `message` (the shell calls this on a failed
-	/// command). Also mirrored to the console for the scrollback.
+	/// Log a failed command to the console scrollback. Interactive runs also
+	/// raise the error dialog (a wgpu-ui overlay) — the shell does that in
+	/// `App::act_on`, since the overlay lives shell-side.
 	pub fn raise_error(&mut self, message: &str) {
 		self.console.push_line(format!("error: {message}"));
-		self.open(crate::errormodal::ErrorModal::new(message));
 	}
 
 	/// Whether the Auto Fix Shore run is live (the shell keeps redrawing +
 	/// ticking it while so).
 	pub fn autofix_running(&self) -> bool {
-		self.modal_as::<crate::autofix::AutoFix>().is_some_and(|a| a.running)
+		self.autofix.as_ref().is_some_and(|a| a.running)
 	}
 
-	/// Undo the Fix Shore dialog's just-applied result (its one undo unit) and
-	/// reset the dialog's stats to the reverted coast, so the user can revert a
-	/// fix without leaving the modal.
-	pub fn autofix_undo(&mut self) {
-		if self.modal_as::<crate::autofix::AutoFix>().is_none_or(|a| a.applied.is_none() || a.running) {
+	/// Whether the Fix Shore window is open (running or idle). The shell paints
+	/// the red defect outlines whenever it is.
+	pub fn autofix_open(&self) -> bool {
+		self.autofix.is_some()
+	}
+
+	/// Open the Fix Shore run state seeded with the live (match.json) defect
+	/// count, stashing the broken cells so the map outlines them in red the
+	/// moment the window appears - before the run even starts. The caller
+	/// returns [`DialogRequest::AutoFix`] so the shell shows the window.
+	/// Recompute the problem-overlay cell sets for whichever "Show ..." toggles
+	/// are on, but only when the map has changed since the last compute (the
+	/// render loop calls this each frame; the toggle handlers reset the stamp to
+	/// `u64::MAX` to force one). Clears the cache when a toggle is off.
+	pub fn refresh_problem_overlays(&mut self) {
+		let rev = self.project.revision();
+		if self.show_shore_bugs {
+			if self.shore_bug_rev != rev {
+				self.shore_bug_cells = self.project.shore_defect_cells(None);
+				self.shore_bug_rev = rev;
+			}
+		} else if !self.shore_bug_cells.is_empty() {
+			self.shore_bug_cells.clear();
+		}
+		if self.show_match_problems {
+			if self.match_problem_rev != rev {
+				self.match_problem_cells = self.project.match_defect_cells(None);
+				self.match_problem_rev = rev;
+			}
+		} else if !self.match_problem_cells.is_empty() {
+			self.match_problem_cells.clear();
+		}
+	}
+
+	pub fn open_autofix(&mut self) {
+		// Confine the whole run to the active selection (its bounding rect); with
+		// no selection the run covers the whole map.
+		let region = self.selection.bounds();
+		self.autofix_defects = self.project.shore_defect_cells(region);
+		let found = self.autofix_defects.len();
+		self.autofix = Some(FixRun::new(found, region));
+	}
+
+	/// Close the Fix Shore window: a running fix commits what's already laid
+	/// (its one undo unit); the defect outlines disappear with the run state.
+	pub fn autofix_close(&mut self) {
+		if self.autofix.as_ref().is_some_and(|a| a.running) {
+			self.project.end_stroke();
+		}
+		self.autofix = None;
+	}
+
+	/// Carve a freshly-created (all-water) map's coastline from a shape image,
+	/// then open the Fix Shore modal so the user picks a shoring method. The
+	/// image classifies each tile as land or water (see [`shape_land_mask`]);
+	/// land tiles are laid flat on the ground layer exactly as the terrain brush
+	/// does, leaving the boundary unshored - the user's chosen Fix Shore pass
+	/// grows the beach + animated coast over it (one undo unit, like a brush
+	/// stroke). Called right after the `new!` command, on the new map.
+	pub fn apply_shape_image(&mut self, image: &Path) -> Outcome {
+		let (rgba, iw, ih) = match decode_png_rgba(image) {
+			Ok(v) => v,
+			Err(e) => return Outcome::Failed(format!("new map shape: {e}")),
+		};
+		let (w, h) = (self.project.width, self.project.height);
+		let land = shape_land_mask(&rgba, iw, ih, w, h);
+
+		let Some((pack_idx, family)) = self.project.variant_family(TileKind::Land) else {
+			return Outcome::Failed("new map shape: no pack has a LAND variant group (tiles.props.json)".into());
+		};
+		let tiles = self.project.packs[pack_idx].group_tiles(&family);
+		if tiles.is_empty() {
+			return Outcome::Failed(format!("new map shape: '{family}' has no tiles"));
+		}
+
+		self.project.begin_stroke();
+		let mut edits = Vec::new();
+		for y in 0..h {
+			for x in 0..w {
+				if land[y as usize * w as usize + x as usize] {
+					let tile = tiles[self.paint_rng.below(tiles.len() as u32) as usize];
+					let tref = TileRef { pack: pack_idx as u8, tile, transform: Transform::default() };
+					edits.push((x, y, LAYER_GROUND, Some(tref)));
+				}
+			}
+		}
+		self.project.place_many(&edits);
+		self.project.end_stroke();
+
+		// Hand off to Fix Shore (the auto-shore window) on the raw land/water
+		// boundary; the user picks the method and Starts it from there.
+		self.open_autofix();
+		Outcome::OpenDialog(DialogRequest::AutoFix)
+	}
+
+	pub fn autofix_start(&mut self) {
+		if self.autofix.is_none() {
 			return;
 		}
+		use map_core::FixStrength;
+		let region = self.autofix.as_ref().and_then(|a| a.region);
+		self.project.begin_stroke();
+		// Placement: lay missing shore with the backtracking loop-walk.
+		let (placed, _) = self.project.auto_shore_alt(region);
+		// Clear shore tiles stranded in the land (a shore tile in the middle of
+		// the land is always a mistake): replace each with a random land tile.
+		let cleared = self.project.replace_orphan_shore(region);
+		self.autofix_defects = self.project.shore_defect_cells(region);
+		let defects = self.autofix_defects.len();
+		if defects > 0 {
+			// Resolve the residue across frames + passes, re-tiling shore-band
+			// cells ONLY (`Shore`): the tool never reshapes land or water, so a
+			// seam the tileset cannot close stays flagged rather than blasting
+			// the terrain to force it shut.
+			let session = self.project.fix_session(region, FixStrength::Shore);
+			if let Some(af) = self.autofix.as_mut() {
+				af.total_changed = placed + cleared;
+				af.found = defects;
+				af.fixed = 0;
+				af.remaining = defects;
+				af.best = defects;
+				af.passes = 0;
+				af.stall = 0;
+				af.elapsed = 0.0;
+				af.applied = None;
+				af.running = true;
+				af.session = Some(session);
+			}
+		} else {
+			// Already clean after placement + orphan cleanup: commit now.
+			self.project.end_stroke();
+			if let Some(af) = self.autofix.as_mut() {
+				af.total_changed = placed + cleared;
+				af.found = defects;
+				af.fixed = 0;
+				af.remaining = defects;
+				af.running = false;
+				af.session = None;
+				af.applied = Some(placed + cleared);
+			}
+		}
+	}
+
+	/// Abort a running fix: revert the whole run (its one undo unit) back to the
+	/// coast it started from, and reset the dialog to idle.
+	pub fn autofix_abort(&mut self) {
+		if self.autofix.as_ref().is_none_or(|a| !a.running) {
+			return;
+		}
+		self.project.end_stroke();
 		self.project.undo();
-		let defects = self.project.shore_defects(None);
-		if let Some(af) = self.modal_as_mut::<crate::autofix::AutoFix>() {
+		let region = self.autofix.as_ref().and_then(|a| a.region);
+		self.autofix_defects = self.project.shore_defect_cells(region);
+		let defects = self.autofix_defects.len();
+		if let Some(af) = self.autofix.as_mut() {
+			af.running = false;
+			af.session = None;
+			af.applied = None;
+			af.total_changed = 0;
 			af.found = defects;
 			af.fixed = 0;
 			af.remaining = defects;
-			af.total_changed = 0;
-			af.applied = None;
+			af.best = usize::MAX;
+			af.passes = 0;
+			af.stall = 0;
 			af.elapsed = 0.0;
 		}
 	}
 
-	/// Begin a Fix Shore run with the modal's chosen method (one undo unit, held
-	/// open until the run finishes). Lay the missing coast first (an auto-shore
-	/// placement pass) and count the faithful defects; the placement-only tiers
-	/// (Sweep / Loop-Walk) finish here, the accurate tiers spin up the first
-	/// resumable fix session and `autofix_tick` loops passes until clean.
-	pub fn autofix_start(&mut self) {
-		let Some(method) = self.modal_as::<crate::autofix::AutoFix>().map(|a| a.method) else { return };
-		self.project.begin_stroke();
-		// Placement: lay missing shore + greedily repair the boundary.
-		let (placed, _) =
-			if method.loop_walk() { self.project.auto_shore_alt(None) } else { self.project.auto_shore(None) };
-		let defects = self.project.shore_defects(None);
-		match method.fix_strength() {
-			Some(strength) if defects > 0 => {
-				// Accurate tier: resolve the residue across frames + passes.
-				let session = self.project.fix_session(None, strength);
-				if let Some(af) = self.modal_as_mut::<crate::autofix::AutoFix>() {
-					af.total_changed = placed;
-					af.found = defects;
-					af.fixed = 0;
-					af.remaining = defects;
-					af.cur_strength = strength;
-					af.best = defects;
-					af.passes = 0;
-					af.stall = 0;
-					af.elapsed = 0.0;
-					af.applied = None;
-					af.running = true;
-					af.session = Some(session);
-				}
-			}
-			_ => {
-				// Placement-only tier, or already clean: commit now.
-				self.project.end_stroke();
-				if let Some(af) = self.modal_as_mut::<crate::autofix::AutoFix>() {
-					af.total_changed = placed;
-					af.found = defects;
-					af.fixed = 0;
-					af.remaining = defects;
-					af.running = false;
-					af.session = None;
-					af.applied = Some(placed);
-				}
-			}
-		}
-	}
-
-	/// Step the live fix run a bounded slice per frame, looping passes until the
-	/// coast is clean. When a pass's branch-and-bound finishes it applies, re-lays
-	/// and re-detects via the faithful `shore_defects`, then starts a fresh pass
-	/// or finishes; a fresh session resets the Destructive blast budget, and
-	/// `stop` finalises early. Everything commits as one undo unit via
-	/// `begin_stroke` in `autofix_start` and `end_stroke` here or on close, and
-	/// the per-frame budget keeps the UI from ever blocking.
+	/// Step the live fix run a bounded slice per frame, looping place + fix
+	/// passes until the coast stops improving. Every tick steps the current pass
+	/// a small budget and **applies its in-progress tiles straight to the map**,
+	/// so the coast is seen resolving cell-by-cell (not only at pass
+	/// boundaries); when a pass finishes it re-lays any still-missing coast,
+	/// re-detects the defects (the red outlines update from `autofix_defects`),
+	/// then starts a fresh pass or finishes. The fix re-tiles **shore-band cells
+	/// only** (`FixStrength::Shore`) - it never reshapes land or water, so the
+	/// run converges to a clean coast where the tileset allows it and otherwise
+	/// settles, leaving the seams it cannot close flagged in red rather than
+	/// destroying terrain to force them shut. `stop` finalises early. Everything
+	/// commits as one undo unit via `begin_stroke` in `autofix_start` and
+	/// `end_stroke` here or on close. The small per-tick budget (the shell loops
+	/// it within a wall-clock slice) keeps the UI responsive and the map
+	/// updating while the run grinds.
 	pub fn autofix_tick(&mut self, elapsed: f32, stop: bool) -> Outcome {
-		let Some(mut af) = self.take_modal_as::<crate::autofix::AutoFix>() else { return Outcome::Ok };
+		// One window's worth of nodes per tick - small enough that a single tick
+		// never blocks; the shell runs several within its per-frame time budget.
+		const STEP_BUDGET: i64 = 60_000;
+		let Some(mut af) = self.autofix.take() else { return Outcome::Ok };
 		if af.running {
 			use map_core::FixStrength;
 			af.elapsed = elapsed;
-			let loop_walk = af.method.loop_walk();
 			let pass_over = if let Some(session) = af.session.as_mut() {
 				if !stop {
-					session.step(200_000);
+					session.step(STEP_BUDGET);
 				}
+				// Live: push the pass's in-progress tiles to the map every tick.
+				// `place_many` no-ops unchanged cells, so this records only the
+				// frame's delta into the run's single undo unit - the user
+				// watches the coast settle instead of waiting for the pass.
+				af.total_changed += session.apply(&mut self.project);
 				stop || session.is_done()
 			} else {
 				true
 			};
 			if pass_over {
-				// Commit this pass, then re-lay + faithfully re-detect.
-				if let Some(session) = af.session.take() {
-					af.total_changed += session.apply(&mut self.project);
-				}
-				let (placed, _) =
-					if loop_walk { self.project.auto_shore_alt(None) } else { self.project.auto_shore(None) };
-				af.total_changed += placed;
-				let defects = self.project.shore_defects(None);
+				// The pass's tiles are already on the map (applied live above);
+				// re-lay any still-missing coast, clear shore stranded in the land
+				// or floating on open water, then faithfully re-detect. Repeated
+				// each pass so stranded chunks resolve until nothing improves.
+				let region = af.region;
+				let (placed, _) = self.project.auto_shore_alt(region);
+				af.total_changed += placed + self.project.replace_orphan_shore(region);
+				self.autofix_defects = self.project.shore_defect_cells(region);
+				let defects = self.autofix_defects.len();
 				af.remaining = defects;
 				af.fixed = af.found.saturating_sub(defects);
 				if defects < af.best {
@@ -2095,33 +3175,41 @@ impl EditorState {
 					af.stall += 1;
 				}
 				af.passes += 1;
-				let cap = if af.cur_strength == FixStrength::Destructive { 6 } else { 2 };
-				let escalate = af.stall >= cap && af.cur_strength != FixStrength::Destructive;
-				let finish = stop || defects == 0 || af.passes >= 64 || (af.stall >= cap && !escalate);
+				// Shore-only fixing converges fast; stop once it stops improving
+				// (or is clean / hits the hard cap). What it cannot close stays
+				// flagged - the tool never reshapes terrain to force a seam shut.
+				let finish = stop || defects == 0 || af.passes >= 64 || af.stall >= 2;
 				if finish {
 					af.running = false;
+					af.session = None;
 					self.project.end_stroke();
 					af.applied = Some(af.total_changed);
 				} else {
-					if escalate {
-						// Re-tiling plateaued: reshape the un-tileable residue.
-						af.cur_strength = FixStrength::Destructive;
-						af.best = usize::MAX;
-						af.stall = 0;
-					}
-					// Next pass: a fresh session resets the per-cell blast cap.
-					af.session = Some(self.project.fix_session(None, af.cur_strength));
+					// Next pass on the freshly re-laid coast (band cells only).
+					af.session = Some(self.project.fix_session(region, FixStrength::Shore));
 				}
 			}
 		}
-		self.modal = Some(af);
+		self.autofix = Some(af);
 		Outcome::Redraw
 	}
 
 	/// Whether a terrain generation run is live (the shell keeps redrawing +
 	/// stepping it while so).
 	pub fn generate_running(&self) -> bool {
-		self.modal_as::<crate::generator::Generator>().is_some_and(|g| g.running)
+		self.genrun.as_ref().is_some_and(|g| g.running)
+	}
+
+	/// Open the Generate run state (the dialog stays open across runs). The
+	/// caller returns [`DialogRequest::Generate`] so the shell shows the window.
+	pub fn open_generate(&mut self) {
+		self.genrun = Some(GenerateRun::default());
+	}
+
+	/// Drop the Generate run state (the dialog closed; Close is disabled while
+	/// a run is live, so nothing needs rolling back here).
+	pub fn generate_close(&mut self) {
+		self.genrun = None;
 	}
 
 	/// The stock + user templates compatible with the current map - the feature
@@ -2136,33 +3224,22 @@ impl EditorState {
 			.collect()
 	}
 
-	/// Roll the generator modal's Surprise Me values. Done here (not in the modal)
-	/// so the body sizes (continents / central seas) can scale to the map.
-	pub fn generator_surprise(&mut self) -> Outcome {
-		let (w, h) = (self.project.width as usize, self.project.height as usize);
-		if let Some(g) = self.modal_as_mut::<crate::generator::Generator>() {
-			g.surprise(w, h);
+	/// Begin a generation run with the dialog's (validated) settings. A `None`
+	/// seed rolls a fresh one (reported, so the map can be re-made).
+	pub fn generate_start(&mut self, mut params: map_core::GenParams, seed: Option<u64>) -> Outcome {
+		if self.genrun.as_ref().is_none_or(|g| g.running) {
+			return Outcome::Ok;
 		}
-		Outcome::Redraw
-	}
-
-	/// Begin a generation run from the modal's settings. An empty
-	/// seed field rolls a fresh seed (reported, so the map can be re-made).
-	pub fn generate_start(&mut self) -> Outcome {
-		let Some(modal) = self.modal_as::<crate::generator::Generator>() else { return Outcome::Ok };
-		let (mut params, seed) = match modal.params() {
-			Ok(p) => p,
-			Err(e) => return Outcome::Failed(format!("generate: {e}")),
-		};
 		params.seed = seed.unwrap_or_else(roll_seed);
 		let feats = self.feature_templates();
 		match map_core::GenSession::new(&self.project, params, &feats) {
 			Ok(session) => {
-				let modal = self.modal_as_mut::<crate::generator::Generator>().expect("generator modal checked above");
-				modal.session = Some(session);
-				modal.started = Some(params);
-				modal.running = true;
-				modal.status = vec![format!("seed {}", params.seed)];
+				if let Some(g) = self.genrun.as_mut() {
+					g.session = Some(session);
+					g.started = Some(params);
+					g.running = true;
+					g.status = vec![format!("seed {}", params.seed)];
+				}
 				Outcome::Redraw
 			}
 			Err(e) => Outcome::Failed(format!("generate: {e}")),
@@ -2173,53 +3250,71 @@ impl EditorState {
 	/// frame within a time budget. Completion reports to the console; an
 	/// abort rolls the document back to before the run.
 	pub fn generate_tick(&mut self, abort: bool) -> Outcome {
-		let Some(mut modal) = self.take_modal_as::<crate::generator::Generator>() else { return Outcome::Ok };
-		if modal.running {
-			if let Some(mut session) = modal.session.take() {
+		let Some(mut run) = self.genrun.take() else { return Outcome::Ok };
+		if run.running {
+			if let Some(mut session) = run.session.take() {
 				if abort {
 					session.abort(&mut self.project);
-					modal.running = false;
-					modal.status = vec!["aborted".into()];
+					run.running = false;
+					run.status = vec!["aborted".into()];
 					self.console.push_line("generate: aborted, map rolled back");
 				} else if session.step(&mut self.project) {
 					let stats = session.stats().expect("stats set when done");
-					let started = modal.started.as_ref().expect("started set on start");
-					modal.status = generate_status_lines(started, stats);
+					let started = run.started.as_ref().expect("started set on start");
+					run.status = generate_status_lines(started, stats);
 					self.console.push_line(generate_report(started, stats));
-					modal.running = false;
+					run.running = false;
 				} else {
-					modal.session = Some(session);
+					run.session = Some(session);
 				}
 			} else {
-				modal.running = false;
+				run.running = false;
 			}
 		}
-		self.modal = Some(modal);
+		self.genrun = Some(run);
 		Outcome::Redraw
 	}
 
 	/// Whether the New-from-Image conversion is live (the shell keeps redrawing
 	/// + stepping it while so).
 	pub fn converting(&self) -> bool {
-		self.modal_as::<crate::newfromimage::NewFromImage>().is_some_and(|m| m.running)
+		self.newimage.as_ref().is_some_and(|m| m.running)
 	}
 
-	/// Begin the New-from-Image conversion. Validates the settings up front, but
-	/// defers loading the image pixels to the first `convert_tick` (shown as the
-	/// "Loading image" stage), so a click on Convert is instant.
-	pub fn convert_start(&mut self) -> Outcome {
-		let Some(m) = self.modal_as_mut::<crate::newfromimage::NewFromImage>() else { return Outcome::Ok };
+	/// Open the New-from-Image run (dialog settings; nothing decoded yet). `path`
+	/// pixels are read on the first `convert_tick`.
+	pub fn open_newimage(&mut self, path: PathBuf, name: String, opts: map_core::ConvertOpts) {
+		self.newimage = Some(NewImageRun {
+			path,
+			name,
+			opts,
+			session: None,
+			running: false,
+			progress: 0.0,
+			stage: String::new(),
+			elapsed: 0.0,
+		});
+	}
+
+	/// Drop the New-from-Image run (the dialog closed).
+	pub fn newimage_cancel(&mut self) {
+		self.newimage = None;
+	}
+
+	/// Begin the New-from-Image conversion with the dialog's (validated) `opts`;
+	/// the image pixels load on the first `convert_tick` (the "Loading image"
+	/// stage), so a click on Convert is instant.
+	pub fn convert_start(&mut self, opts: map_core::ConvertOpts) -> Outcome {
+		let Some(m) = self.newimage.as_mut() else { return Outcome::Ok };
 		if m.running {
 			return Outcome::Ok;
 		}
-		if let Err(e) = m.opts() {
-			return Outcome::Failed(format!("convert: {e}"));
-		}
+		m.opts = opts;
 		m.session = None;
 		m.running = true;
 		m.progress = 0.0;
 		m.elapsed = 0.0;
-		m.stage = "Loading image…".to_string();
+		m.stage = "Loading image...".to_string();
 		Outcome::Redraw
 	}
 
@@ -2227,7 +3322,7 @@ impl EditorState {
 	/// Convert (for the display + ETA). On completion, opens the result as a new
 	/// tab; `abort` stops the run and returns to the settings.
 	pub fn convert_tick(&mut self, elapsed: f32, abort: bool) -> Outcome {
-		let Some(mut m) = self.take_modal_as::<crate::newfromimage::NewFromImage>() else { return Outcome::Ok };
+		let Some(mut m) = self.newimage.take() else { return Outcome::Ok };
 		let mut outcome = Outcome::Redraw;
 		if m.running {
 			m.elapsed = elapsed;
@@ -2237,10 +3332,10 @@ impl EditorState {
 				m.stage = "Aborted".to_string();
 			} else if m.session.is_none() {
 				// First stage: load the image pixels and prepare the session.
-				match decode_and_build(&m) {
+				match build_convert_session(&m.path, m.opts) {
 					Ok(session) => {
 						m.session = Some(session);
-						m.stage = "Loading image…".to_string();
+						m.stage = "Loading image...".to_string();
 					}
 					Err(e) => {
 						m.running = false;
@@ -2262,7 +3357,7 @@ impl EditorState {
 							let name = m.name.clone();
 							let project = Project::from_wrl(&wrl, &name);
 							eprintln!(
-								"imported image: {}×{} cells, {} tiles",
+								"imported image: {}x{} cells, {} tiles",
 								project.width, project.height, wrl.tile_count
 							);
 							// Modal done - open the new tab (drops `m`).
@@ -2276,53 +3371,71 @@ impl EditorState {
 				}
 			}
 		}
-		self.modal = Some(m);
+		self.newimage = Some(m);
 		outcome
 	}
 
-	/// Run the open Import WRL modal's match against its selected packs. The
+	/// Run the parked WRL import's match against the dialog's chosen packs. The
 	/// match is fast (a hashmap over the packs), so it runs synchronously on the
 	/// Import press: a clean match opens the converted map at once, otherwise the
-	/// modal switches to its unmapped-review stage.
-	pub fn wrl_match(&mut self) -> Outcome {
-		let Some(m) = self.modal_as::<crate::importwrl::ImportWrl>() else { return Outcome::Ok };
-		if !m.has_owner() {
-			return Outcome::Failed("import-wrl: select at least one palette-owning tileset (e.g. GREEN)".into());
-		}
-		let path = m.path.clone();
-		let packs = m.selected_packs();
-		let owner = m.owner();
-		let name = m.map_name().to_string();
+	/// dialog switches to its unmapped-review stage. A failure drops the run
+	/// (the error dialog replaces the picker).
+	pub fn wrl_match(&mut self, packs: Vec<String>, owner: String) -> Outcome {
+		let Some(run) = self.wrlimport.as_ref() else { return Outcome::Ok };
+		let path = run.path.clone();
+		let name = run.name.clone();
 		let wrl = match read_wrl_file(&path) {
 			Ok(w) => w,
-			Err(e) => return Outcome::Failed(format!("import-wrl {}: {e}", path.display())),
+			Err(e) => {
+				self.wrlimport = None;
+				return Outcome::Failed(format!("import-wrl {}: {e}", path.display()));
+			}
 		};
 		// Deterministic seed: the water fill beneath matched/dropped cells (and
 		// thus the import) reproduces exactly for the same WRL + pack choice.
 		let import = match map_core::WrlImport::new(wrl, &name, &owner, &packs, &self.assets_root, 0) {
 			Ok(i) => i,
-			Err(e) => return Outcome::Failed(format!("import-wrl: {e}")),
+			Err(e) => {
+				self.wrlimport = None;
+				return Outcome::Failed(format!("import-wrl: {e}"));
+			}
 		};
-		// A clean match: close the picker and open the converted map straight
-		// away (the modal lives on the editor, not the tab, so close it first).
+		// A clean match: drop the run (the shell hides the dialog) and open the
+		// converted map straight away.
 		if import.unmapped().is_empty() {
-			self.close_modal();
+			self.wrlimport = None;
 			let (project, _) = import.finish(map_core::ExtrasDest::Ignore);
 			return self.add_doc(project, None, None);
 		}
-		let Some(m) = self.modal_as_mut::<crate::importwrl::ImportWrl>() else { return Outcome::Ok };
-		m.set_result(import);
+		if let Some(run) = self.wrlimport.as_mut() {
+			run.used = import.used_tiles();
+			run.matched = import.matched_tiles();
+			run.rows = import
+				.unmapped()
+				.iter()
+				.map(|u| {
+					format!(
+						"{}   {}   {} cell{}",
+						u.id,
+						class_name(u.pass),
+						u.cells,
+						if u.cells == 1 { "" } else { "s" }
+					)
+				})
+				.collect();
+			run.result = Some(import);
+		}
 		Outcome::Redraw
 	}
 
-	/// Commit the open Import WRL modal: place its unmapped tiles per the chosen
+	/// Commit the parked WRL import: place its unmapped tiles per the chosen
 	/// destination, open the converted map as a new tab, and persist the user
 	/// pack when the extras were folded into the user tileset.
-	pub fn wrl_finish(&mut self) -> Outcome {
-		let Some(mut m) = self.take_modal_as::<crate::importwrl::ImportWrl>() else { return Outcome::Ok };
-		let Some((import, dest)) = m.take_result() else {
-			// Finish only fires in the unmapped stage; keep the modal if not.
-			self.modal = Some(m);
+	pub fn wrl_finish(&mut self, dest: map_core::ExtrasDest) -> Outcome {
+		let Some(mut run) = self.wrlimport.take() else { return Outcome::Ok };
+		let Some(import) = run.result.take() else {
+			// Finish only fires in the unmapped stage; keep the run if not.
+			self.wrlimport = Some(run);
 			return Outcome::Ok;
 		};
 		let (project, persist) = import.finish(dest);
@@ -2335,29 +3448,51 @@ impl EditorState {
 		outcome
 	}
 
+	/// Step the Import WRL dialog back from the unmapped review to the pack
+	/// picker (discarding the match, which is cheap to redo).
+	pub fn wrl_back(&mut self) {
+		if let Some(run) = self.wrlimport.as_mut() {
+			run.result = None;
+			run.rows.clear();
+		}
+	}
+
+	/// Drop the parked WRL import (the dialog closed).
+	pub fn wrl_cancel(&mut self) {
+		self.wrlimport = None;
+	}
+
 	/// Whether the rasterize palette conversion is live (the shell keeps
 	/// redrawing + stepping it while so).
 	pub fn palette_converting(&self) -> bool {
-		self.modal_as::<crate::convertpalette::ConvertPalette>().is_some_and(|m| m.running)
+		self.pconvert.as_ref().is_some_and(|m| m.running)
 	}
 
-	/// Begin the rasterize palette conversion. Validates the options up
-	/// front; the session itself is built on the first `palette_convert_tick`
-	/// so a click on Convert paints the running state instantly.
-	pub fn palette_convert_start(&mut self) -> Outcome {
-		let Some(m) = self.modal_as_mut::<crate::convertpalette::ConvertPalette>() else { return Outcome::Ok };
-		if m.running {
+	/// Begin the rasterize palette conversion with the dialog's (validated)
+	/// options; the session itself is built on the first `palette_convert_tick`
+	/// so a click on Convert paints the running state instantly. `threshold` is
+	/// the relaxed similarity as a fraction (0..=1).
+	pub fn palette_convert_start(&mut self, water: bool, relaxed: bool, threshold: f32) -> Outcome {
+		if self.palette_converting() {
 			return Outcome::Ok;
 		}
-		if let Err(e) = m.dedupe_opts() {
-			return Outcome::Failed(format!("convert-palette: {e}"));
-		}
-		m.session = None;
-		m.running = true;
-		m.progress = 0.0;
-		m.elapsed = 0.0;
-		m.stage = "Rendering map".to_string();
+		self.pconvert = Some(PaletteConvertRun {
+			running: true,
+			session: None,
+			progress: 0.0,
+			stage: "Rendering map".to_string(),
+			elapsed: 0.0,
+			water,
+			relaxed,
+			threshold,
+		});
 		Outcome::Redraw
+	}
+
+	/// Drop the palette-conversion state (the dialog closed; a live session is
+	/// simply discarded — nothing was applied to the document yet).
+	pub fn palette_convert_cancel(&mut self) {
+		self.pconvert = None;
 	}
 
 	/// Step the live palette conversion a bounded slice; `elapsed` is wall-
@@ -2365,7 +3500,7 @@ impl EditorState {
 	/// content swaps in (one undo unit) and the modal closes; `abort` stops
 	/// the run and returns to the options.
 	pub fn palette_convert_tick(&mut self, elapsed: f32, abort: bool) -> Outcome {
-		let Some(mut m) = self.take_modal_as::<crate::convertpalette::ConvertPalette>() else { return Outcome::Ok };
+		let Some(mut m) = self.pconvert.take() else { return Outcome::Ok };
 		let mut outcome = Outcome::Redraw;
 		if m.running {
 			m.elapsed = elapsed;
@@ -2375,9 +3510,8 @@ impl EditorState {
 				m.stage = "Aborted".to_string();
 			} else {
 				if m.session.is_none() {
-					let (relaxed, threshold) = m.dedupe_opts().expect("validated at start");
-					let dedupe = if relaxed { map_core::Dedupe::Relaxed } else { map_core::Dedupe::Strict };
-					m.session = Some(map_core::PaletteReimport::new(&self.project, m.water, dedupe, threshold));
+					let dedupe = if m.relaxed { map_core::Dedupe::Relaxed } else { map_core::Dedupe::Strict };
+					m.session = Some(map_core::PaletteReimport::new(&self.project, m.water, dedupe, m.threshold));
 				}
 				if let Some(session) = m.session.as_mut() {
 					// ~300k pixel-units/frame keeps a frame responsive; the
@@ -2410,7 +3544,7 @@ impl EditorState {
 				}
 			}
 		}
-		self.modal = Some(m);
+		self.pconvert = Some(m);
 		outcome
 	}
 
@@ -2419,6 +3553,13 @@ impl EditorState {
 	/// overwrites them (Save → Save-As), same as an imported WRL.
 	fn is_template(&self, path: &Path) -> bool {
 		path.starts_with(self.resources_root.join("assets/maps"))
+	}
+
+	/// Is the open document a template-born map - opened from a shipped
+	/// template (path-less, origin under `assets/maps`) and never saved? The
+	/// first-save Map Metadata prompt then blanks date/version/author.
+	pub fn doc_from_template(&self) -> bool {
+		self.path.is_none() && self.origin.as_deref().is_some_and(|o| self.is_template(o))
 	}
 
 	/// Quick Load entries from the recent list (label = the file name).
@@ -2435,6 +3576,157 @@ impl EditorState {
 	/// Record `path` as a recently-opened map (most-recent first, deduped, ≤10)
 	/// and refresh the Quick Load submenu. Templates are excluded - they live in
 	/// the Template Maps submenu, not the user's history.
+	/// Persist the `[Preferences]` section immediately (like Quick Load):
+	/// small user options that shouldn't wait for the exit-time settings save.
+	pub fn save_preferences(&self) {
+		if let Some(path) = self.settings_path.as_deref() {
+			let mut prefs = ini::INISection::new();
+			let _ = prefs.set_entry("PalettePreview".to_string(), self.palette_preview);
+			let _ = crate::settings_io::save_preferences(path, prefs);
+		}
+	}
+
+	/// Apply Editor Preferences: set the M.A.X. / M.A.X. Port folder paths (blank
+	/// → unset) and the "don't ask again" flag, persist them to `[Paths]`, and -
+	/// if `MaxPath` changed - drop the unit/marker libraries so they reload from
+	/// the new folder on next use.
+	pub fn apply_preferences(&mut self, max_path: String, max_port_path: String, max_port_data: String, skip: bool) {
+		let to_opt = |s: String| {
+			let t = s.trim().to_string();
+			(!t.is_empty()).then_some(PathBuf::from(t))
+		};
+		let new_max = to_opt(max_path);
+		let max_changed = new_max != self.max_path;
+		self.max_path = new_max;
+		self.max_port_path = to_opt(max_port_path);
+		let new_data = to_opt(max_port_data);
+		let data_changed = new_data != self.max_port_data_path;
+		self.max_port_data_path = new_data;
+		self.skip_path_prompt = skip;
+		self.paths_prompt_reason = None; // the paths were just provided
+		if max_changed {
+			// Force a reload of the game-data libraries against the new folder.
+			self.units = None;
+			self.units_loaded = false;
+			self.markers = None;
+			self.markers_loaded = false;
+			// The armed unit is an index into the roster that is being dropped -
+			// disarm it rather than let it point into whatever the new folder loads.
+			self.active_unit = None;
+		}
+		if data_changed || (self.unit_stats.is_none() && max_changed) {
+			self.reload_unit_stats();
+		}
+		self.save_paths();
+	}
+
+	/// Edit > Experimental > Edit Save Data: extract the embedded save's
+	/// editable settings and the display context the dialog needs, refusing
+	/// up front when no save is open or a settings region isn't modeled
+	/// losslessly (editing it would corrupt unmodeled bytes on apply).
+	fn open_edit_save_data(&mut self) -> Outcome {
+		let Some(embedded) = self.project.save.as_ref() else {
+			return Outcome::Failed("edit-save-data: no save open (open a `.DTA` first)".into());
+		};
+		if !embedded.file.settings_regions_lossless() {
+			return Outcome::Failed(
+				"edit-save-data: a settings region of this save did not decode losslessly - editing is disabled to \
+				 protect it"
+					.into(),
+			);
+		}
+		let file = &embedded.file;
+		let mut clan_names = vec!["Random".to_string()];
+		match &self.unit_stats {
+			Some(db) => clan_names.extend(db.clans.iter().map(|c| c.name.clone())),
+			None => clan_names.extend(crate::savedata::CLAN_FALLBACK.iter().map(|s| s.to_string())),
+		}
+		let init = crate::savedata::SaveDataInit {
+			settings: max_assets::save::SaveSettings::extract(file),
+			world: file.header.world_file.map(str::to_string).unwrap_or_else(|| "custom world".into()),
+			category: file.header.category.label().to_string(),
+			game_state: file.game_state,
+			clan_names,
+			retype_supported: file.tail_follows_the_graph(),
+		};
+		Outcome::OpenDialog(DialogRequest::EditSaveData(Box::new(init)))
+	}
+
+	/// Apply the Edit Save Data dialog's settings block (shell-routed from
+	/// [`crate::uikit_overlay::Outcome::ApplySaveData`]). One undoable step,
+	/// labelled for the Undo History. Returns the console line to log.
+	pub fn apply_save_data(&mut self, settings: &max_assets::save::SaveSettings) -> Result<String, String> {
+		self.project.label_next_undo("Edit Save Data");
+		self.project.apply_save_settings(settings).map_err(|e| format!("edit-save-data: {e}"))?;
+		Ok("save data updated (undoable; File > Experimental > Export Save File writes it)".into())
+	}
+
+	/// (Re)loads the max-port unit database from `PATCHES.RES`, searching the
+	/// configured folders in preference order. Logs the outcome to the console
+	/// so a missing/misconfigured path is always explained, never silent.
+	/// The `D_*` frame table for the fresh-body export path
+	/// ([`max_assets::save::FreshBodyCtx`]) — `Some` only when both the unit
+	/// database and the user's MAX.RES are at hand. Loaded per export; the
+	/// table is a handful of 24-byte resources.
+	fn fresh_body_frames(&self) -> Option<[Option<max_assets::attribs::FrameInfo>; max_assets::save::UNIT_END]> {
+		let db = self.unit_stats.as_ref()?;
+		let max_res = crate::units::find_max_res(self.max_path.as_ref()?)?;
+		Some(max_assets::attribs::load_frame_infos(&max_res, &db.meta))
+	}
+
+	pub fn reload_unit_stats(&mut self) {
+		let candidates: Vec<PathBuf> = [
+			self.max_port_data_path.clone(),
+			self.max_port_path.clone(),
+			self.max_port_path.as_ref().map(|p| p.join("assets")),
+			self.max_path.clone(),
+		]
+		.into_iter()
+		.flatten()
+		.collect();
+		match max_assets::attribs::locate_patches_res(&candidates)
+			.and_then(|path| max_assets::attribs::UnitStatsDb::load(&path))
+		{
+			Ok(db) => {
+				self.console.push_line(format!("unit stats loaded: {}", db.source.display()));
+				self.unit_stats = Some(db);
+			}
+			Err(e) => {
+				self.unit_stats = None;
+				self.console.push_line(format!("unit stats unavailable - {e}"));
+				self.console
+					.push_line("set the M.A.X. Port data folder (Editor Preferences) to enable stock unit stats");
+			}
+		}
+	}
+
+	/// Persist the `[Paths]` section (MaxPath / MaxPortPath / SkipPathPrompt) to
+	/// the user settings file immediately (like [`save_preferences`](Self::save_preferences)).
+	fn save_paths(&self) {
+		let Some(path) = self.settings_path.as_deref() else { return };
+		let disp = |p: &Option<PathBuf>| p.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+		let mut section = ini::INISection::new();
+		let _ = section.set_entry("MaxPath".to_string(), disp(&self.max_path));
+		let _ = section.set_entry("MaxPortPath".to_string(), disp(&self.max_port_path));
+		let _ = section.set_entry("MaxPortDataPath".to_string(), disp(&self.max_port_data_path));
+		let _ = section.set_entry("SkipPathPrompt".to_string(), self.skip_path_prompt);
+		let _ = crate::settings_io::save_section(path, "Paths", section);
+	}
+
+	/// True when either game folder is unset — the trigger for the first-run
+	/// Preferences prompt (unless the user chose "don't ask again").
+	pub fn paths_incomplete(&self) -> bool {
+		self.max_path.is_none() || self.max_port_path.is_none()
+	}
+
+	/// Open Editor Preferences because an action needs a folder that isn't set
+	/// (`reason` explains which action). Marks the dialog "required" so a cancel
+	/// leads to the Attention notice.
+	pub fn prompt_paths(&mut self, reason: &str) -> Outcome {
+		self.paths_prompt_reason = Some(reason.to_string());
+		Outcome::OpenDialog(DialogRequest::EditorPreferences)
+	}
+
 	fn remember_recent(&mut self, path: &Path) {
 		if self.is_template(path) {
 			return;
@@ -2443,7 +3735,13 @@ impl EditorState {
 		self.recent.insert(0, path.to_path_buf());
 		self.recent.truncate(10);
 		let entries = self.recent_map_entries();
-		self.menu.set_recent(&entries);
+		self.menu_tree.set_recent(&entries);
+		self.rebuild_menu();
+		// Persist the [QuickLoad] section right away (as soon as a map opens), so
+		// the recent list survives even an unclean exit - not only `save-settings`.
+		if let Some(path) = self.settings_path.as_deref() {
+			let _ = crate::settings_io::save_quickload(path, &self.recent);
+		}
 	}
 
 	/// Seed the recent-maps list from settings at startup, then sync the menu.
@@ -2451,7 +3749,8 @@ impl EditorState {
 		self.recent = paths;
 		self.recent.truncate(10);
 		let entries = self.recent_map_entries();
-		self.menu.set_recent(&entries);
+		self.menu_tree.set_recent(&entries);
+		self.rebuild_menu();
 	}
 
 	/// Window title: `<map name>[*] - M.A.X. Map Editor`.
@@ -2466,167 +3765,9 @@ impl EditorState {
 			.or_else(|| (!self.project.name.is_empty()).then(|| self.project.name.clone()))
 			.unwrap_or_else(|| "untitled".into());
 		let star = if self.dirty() { "*" } else { "" };
-		format!("{name}{star} - M.A.X. Map Editor")
-	}
-
-	// ----- multi-project tabs --------------------------------------
-
-	/// The active tab index.
-	pub fn active_tab(&self) -> usize {
-		self.tabs.active
-	}
-
-	/// `(label, dirty)` for each open project, in tab order - the tab strip.
-	pub fn tab_infos(&self) -> Vec<(String, bool)> {
-		(0..self.tabs.slots.len()).map(|i| (self.name_at(i), self.dirty_at(i))).collect()
-	}
-
-	/// Whether tabs show a close `x`: false for the lone blank scratch (the
-	/// "no project open" state - nothing to close).
-	pub fn tabs_closable(&self) -> bool {
-		!(self.tabs.replace_scratch && self.tabs.slots.len() == 1)
-	}
-
-	/// Any open project has unsaved changes - the quit guard.
-	fn any_dirty(&self) -> bool {
-		self.project.dirty() || self.tabs.slots.iter().flatten().any(|d| d.project.dirty())
-	}
-
-	/// A prompt summarizing the unsaved work for the quit confirm: names the one
-	/// dirty map, or counts them when several tabs are unsaved.
-	fn dirty_summary(&self) -> String {
-		let dirty: Vec<usize> = (0..self.tabs.slots.len()).filter(|&i| self.dirty_at(i)).collect();
-		match dirty.as_slice() {
-			[i] => format!("\"{}\" has unsaved changes.", self.name_at(*i)),
-			many => format!("{} maps have unsaved changes.", many.len()),
-		}
-	}
-
-	/// The save path of tab `i` (the active tab reads the live field).
-	fn path_at(&self, i: usize) -> Option<&Path> {
-		if i == self.tabs.active { self.path.as_deref() } else { self.tabs.slots[i].as_ref()?.path.as_deref() }
-	}
-
-	/// The dirty flag of tab `i`.
-	fn dirty_at(&self, i: usize) -> bool {
-		if i == self.tabs.active {
-			self.project.dirty()
-		} else {
-			self.tabs.slots[i].as_ref().is_some_and(|d| d.project.dirty())
-		}
-	}
-
-	/// Tab `i`'s label: the save file name, else the project's own name.
-	fn name_at(&self, i: usize) -> String {
-		let (path, project_name) = if i == self.tabs.active {
-			(self.path.as_deref(), self.project.name.as_str())
-		} else {
-			let d = self.tabs.slots[i].as_ref();
-			(d.and_then(|d| d.path.as_deref()), d.map(|d| d.project.name.as_str()).unwrap_or(""))
-		};
-		path.and_then(|p| p.file_name())
-			.map(|n| n.to_string_lossy().into_owned())
-			.or_else(|| (!project_name.is_empty()).then(|| project_name.to_string()))
-			.unwrap_or_else(|| "untitled".into())
-	}
-
-	/// The tab already showing `path`, if any (re-opening switches, not stacks).
-	fn tab_index_of(&self, path: &Path) -> Option<usize> {
-		(0..self.tabs.slots.len()).find(|&i| self.path_at(i) == Some(path))
-	}
-
-	/// Snapshot the live (active) fields into a parked [`Document`].
-	fn capture_doc(&mut self) -> Document {
-		Document {
-			project: std::mem::replace(&mut self.project, Project::empty()),
-			path: self.path.take(),
-			origin: self.origin.take(),
-			view: std::mem::replace(&mut self.view, View { pan: [0.0, 0.0], zoom: 1.0 }),
-			active_tile: self.active_tile.take(),
-			active_color: self.active_color.take(),
-		}
-	}
-
-	/// Load a parked [`Document`] into the live fields; re-derives the cycler.
-	fn restore_doc(&mut self, d: Document) {
-		self.project = d.project;
-		self.path = d.path;
-		self.origin = d.origin;
-		self.view = d.view;
-		self.active_tile = d.active_tile;
-		self.active_color = d.active_color;
-		self.palettes.sel_end = None;
-		self.refresh_palette();
-	}
-
-	/// Switch the active tab. `Ok` (no redraw) when already active / out of range.
-	fn switch_to(&mut self, i: usize) -> Outcome {
-		if i == self.tabs.active || i >= self.tabs.slots.len() {
-			return Outcome::Ok;
-		}
-		let parked = self.capture_doc();
-		self.tabs.slots[self.tabs.active] = Some(parked);
-		let d = self.tabs.slots[i].take().expect("an inactive tab is parked");
-		self.tabs.active = i;
-		self.restore_doc(d);
-		Outcome::DocReplaced
-	}
-
-	/// Open `project` (loaded from `path`) and make it active: switch to an
-	/// already-open tab with the same path, replace the bootstrap scratch tab,
-	/// or push a new tab.
-	fn add_doc(&mut self, project: Project, path: Option<PathBuf>, origin: Option<PathBuf>) -> Outcome {
-		if let Some(p) = path.as_deref() {
-			if let Some(i) = self.tab_index_of(p) {
-				return self.switch_to(i);
-			}
-		}
-		let view = self.fit_center((project.width, project.height));
-		let doc = Document { project, path, origin, view, active_tile: None, active_color: None };
-		if self.tabs.replace_scratch {
-			self.tabs.replace_scratch = false;
-			self.restore_doc(doc);
-		} else {
-			let parked = self.capture_doc();
-			self.tabs.slots[self.tabs.active] = Some(parked);
-			self.tabs.slots.push(None);
-			self.tabs.active = self.tabs.slots.len() - 1;
-			self.restore_doc(doc);
-		}
-		Outcome::DocReplaced
-	}
-
-	/// Close the active tab. A dirty tab needs `force` (the confirm modal - see
-	/// the `CloseProject` handler - gates this). Closing the **last** project
-	/// is allowed: it resets to a blank scratch (the app stays open), which the
-	/// next `open`/`new` replaces.
-	fn close_active(&mut self, force: bool) -> Outcome {
-		if self.project.dirty() && !force {
-			return Outcome::Failed("close-project: unsaved changes - `save` first or use `close-project!`".into());
-		}
-		if self.tabs.slots.len() <= 1 {
-			let view = self.fit_center((1, 1));
-			let blank = Document {
-				project: Project::empty(),
-				path: None,
-				origin: None,
-				view,
-				active_tile: None,
-				active_color: None,
-			};
-			self.tabs.slots = vec![None];
-			self.tabs.active = 0;
-			self.tabs.replace_scratch = true;
-			self.restore_doc(blank);
-			return Outcome::DocReplaced;
-		}
-		// Drop the active doc (its `None` slot), then activate a neighbour.
-		self.tabs.slots.remove(self.tabs.active);
-		let i = self.tabs.active.min(self.tabs.slots.len() - 1);
-		let d = self.tabs.slots[i].take().expect("a neighbour tab is parked");
-		self.tabs.active = i;
-		self.restore_doc(d);
-		Outcome::DocReplaced
+		// A save-editor session names its world so the window title is unambiguous.
+		let world = Self::save_world(&self.project).map(|w| format!(" - {w}")).unwrap_or_default();
+		format!("{name}{world}{star} - M.A.X. Map Editor")
 	}
 
 	pub fn uniforms(&self, tiles_per_row: u32) -> Uniforms {
@@ -2667,11 +3808,23 @@ impl EditorState {
 		// The selection mask tracks the document's dimensions; any command can
 		// follow a resize/open/tab switch, so re-sync (cheap) before dispatch.
 		self.sync_selection();
+		// Label the undo patch this command commits (if any) for the Undo History
+		// submenu; unlabelled patches derive a label from their contents.
+		if let Some(label) = crate::command::undo_label(&command) {
+			self.project.label_next_undo(label);
+		}
 		match command {
 			c @ (Pan { .. } | PanTo { .. } | Zoom { .. } | ZoomAt { .. } | ZoomTo { .. } | Fit) => self.exec_nav(c),
 			c @ (SetTile { .. }
 			| SetPass { .. }
 			| Place { .. }
+			| SceneryList { .. }
+			| SceneryPlace { .. }
+			| SceneryPick { .. }
+			| SceneryBlendMode { .. }
+			| SceneryMove { .. }
+			| SceneryRemove { .. }
+			| SceneryClear
 			| Erase { .. }
 			| AssertCell { .. }
 			| New { .. }
@@ -2692,6 +3845,7 @@ impl EditorState {
 			| PassClear { .. }
 			| ResetTilePass
 			| TransformTile { .. }
+			| Orient { .. }
 			| Pick { .. }
 			| Shore { .. }
 			| Generate { .. }
@@ -2718,7 +3872,7 @@ impl EditorState {
 			| PaletteScroll { .. }
 			| MenuOpen { .. }
 			| ContextMenu { .. }
-			| NewMapModal { .. }
+			| NewMapModal
 			| Window { .. }
 			| DockTo { .. }
 			| ResetLayout
@@ -2727,11 +3881,25 @@ impl EditorState {
 			| UnitPlace { .. }
 			| UnitErase { .. }
 			| UnitClear
+			| AutoConnect
+			| ObjectSelect { .. }
+			| ObjectPick { .. }
+			| ObjectClone { .. }
+			| ObjectEdit { .. }
+			| ObjectValues { .. }
+			| ResourceSet { .. }
+			| ResourceBrush { .. }
+			| ResourcePaint { .. }
+			| ResourceAmountDialog
 			| UnitsVisible { .. }
 			| SaveSettings) => self.exec_panels(c),
 			c @ (Undo
 			| Redo
+			| UndoTo { .. }
 			| Open { .. }
+			| OpenSave { .. }
+			| OpenSaveWarn
+			| OpenSaveAnyway
 			| NewFromImage { .. }
 			| ImportWrl { .. }
 			| Convert
@@ -2749,8 +3917,13 @@ impl EditorState {
 			| AutoFixModal { .. }
 			| GenerateModal
 			| Export { .. }
+			| ExportSave { .. }
+			| NewSave { .. }
+			| ExportSaveOnBase { .. }
+			| EditSaveData
 			| ConvertPalette { .. }
 			| ConvertPaletteModal
+			| MetadataModal
 			| PreferencesModal
 			| TilePaintNew
 			| TilePaintClone
@@ -2759,15 +3932,30 @@ impl EditorState {
 			| TileCommit
 			| TileExportPng { .. }
 			| TileImportPng { .. }
+			| SceneryNew
+			| SceneryClone
+			| SceneryEdit
+			| SceneryImport { .. }
+			| SceneryExport { .. }
+			| SceneryHeightImport { .. }
+			| SceneryHeightExport { .. }
+			| SceneryCommit
+			| SceneryDelete { .. }
+			| SceneryRename { .. }
 			| Bake
 			| UpdateMap
 			| MatchEditor
+			| UiTests
+			| MatchCombos { .. }
 			| OpenUrl { .. }
 			| HelpManual
 			| About) => self.exec_io(c),
 			c @ (Grid { .. }
 			| StatusBar { .. }
 			| PassOverlay { .. }
+			| Resources { .. }
+			| ShoreBugs { .. }
+			| MatchProblems { .. }
 			| ShowOnlyLayer { .. }
 			| Animate { .. }
 			| InGame { .. }
@@ -2803,22 +3991,6 @@ impl EditorState {
 			| TemplateExplore) => self.exec_select(c),
 			c @ (Hash | AssertTile { .. } | AssertHash { .. } | AssertDirty { .. } | Quit { .. }) => {
 				self.exec_assert(c)
-			}
-			// A text-field right-click edit, routed to the open modal's focused field.
-			Edit(op) => {
-				use crate::command::EditOp::*;
-				use crate::modal::ModalKey;
-				let key = match op {
-					Cut => ModalKey::Cut,
-					Copy => ModalKey::Copy,
-					Paste => ModalKey::Paste,
-					Delete => ModalKey::Delete,
-					SelectAll => ModalKey::SelectAll,
-				};
-				if let Some(m) = self.active_modal() {
-					m.on_key(key);
-				}
-				Outcome::Redraw
 			}
 		}
 	}
@@ -2885,6 +4057,95 @@ impl EditorState {
 				"set-pass: per-tile pass editing is retired - edit per cell in the Pass Table Editor (pass-paint)"
 					.into(),
 			),
+			Command::SceneryList { pack } => {
+				let libs: Vec<&map_core::SceneryPack> = self
+					.project
+					.scenery_packs
+					.iter()
+					.filter(|l| pack.as_deref().is_none_or(|want| want == l.pack))
+					.collect();
+				if libs.is_empty() {
+					return Outcome::Failed(match pack {
+						Some(name) => format!("scenery-list: no scenery library for '{name}'"),
+						None => "scenery-list: this project loaded no scenery libraries".into(),
+					});
+				}
+				for lib in libs {
+					self.console.push_line(format!("{} ({} objects)", lib.pack, lib.pieces.len()));
+					for piece in &lib.pieces {
+						self.console.push_line(format!(
+							"  {:<16} {:>3}x{:<3} cells  {}",
+							piece.id, piece.cells_w, piece.cells_h, piece.name
+						));
+					}
+				}
+				Outcome::Redraw
+			}
+			Command::SceneryPlace { pack, piece, x, y } => {
+				let mut spot = map_core::ScenerySpot { pack, piece, x, y, blend: self.scenery_blend };
+				let Some(piece) = self.project.scenery_piece(&spot) else {
+					return Outcome::Failed(format!(
+						"scenery-place: no piece '{}' in '{}' (try scenery-list)",
+						spot.piece, spot.pack
+					));
+				};
+				// The click point is the piece's centre of mass; the document
+				// stores the footprint origin.
+				(spot.x, spot.y) = piece.centered_at(x, y);
+				let index = self.project.place_scenery(spot);
+				self.console.push_line(format!("placed scenery {index} at ({x},{y})"));
+				Outcome::Redraw
+			}
+			Command::SceneryPick { index } => {
+				match index {
+					Some(i) if i >= crate::scenery::piece_count(&self.project) => {
+						return Outcome::Failed(format!("scenery-pick: no piece {i}"));
+					}
+					_ => {}
+				}
+				self.active_scenery = index;
+				// Arming a piece arms the layer and the tool, the way picking a tile
+				// arms the pencil - one click in the panel should be enough to place.
+				if index.is_some() && self.mode == EditorMode::Map {
+					self.active_layer = LAYER_SCENERY;
+					self.tool = Tool::Scenery;
+				}
+				Outcome::Redraw
+			}
+			Command::SceneryBlendMode { index, mode } => {
+				let Some(index) = index else {
+					self.scenery_blend = mode;
+					self.console.push_line(format!("new scenery blends {}", mode.name()));
+					return Outcome::Redraw;
+				};
+				if index >= self.project.scenery.len() {
+					return Outcome::Failed(format!("scenery-blend: no placement {index}"));
+				}
+				self.project.set_scenery_blend(index, mode);
+				Outcome::Redraw
+			}
+			Command::SceneryMove { index, x, y } => {
+				if self.project.move_scenery_to(index, x, y) {
+					Outcome::Redraw
+				} else {
+					Outcome::Ok
+				}
+			}
+			Command::SceneryRemove { index } => {
+				if self.project.remove_scenery(index) {
+					Outcome::Redraw
+				} else {
+					Outcome::Failed(format!("scenery-remove: no placement {index}"))
+				}
+			}
+			Command::SceneryClear => {
+				let mut removed = 0;
+				while self.project.remove_scenery(self.project.scenery.len().saturating_sub(1)) {
+					removed += 1;
+				}
+				self.console.push_line(format!("removed {removed} scenery placement(s)"));
+				Outcome::Redraw
+			}
 			Command::Place { x, y, spec } => {
 				let project = &mut self.project;
 				match project.resolve_ref(&spec) {
@@ -2940,7 +4201,7 @@ impl EditorState {
 				match Project::new(width, height, &packs, &self.assets_root, seed) {
 					Ok(project) => {
 						let line = format!(
-							"new map {width}×{height}, packs: {}, seed {seed}",
+							"new map {width}x{height}, packs: {}, seed {seed}",
 							project.uses.iter().map(|u| u.name.as_str()).collect::<Vec<_>>().join("+"),
 						);
 						eprintln!("{line}");
@@ -2998,7 +4259,7 @@ impl EditorState {
 							} else {
 								tile
 							};
-							edits.push((cx, cy, self.active_layer, Some(t)));
+							edits.push((cx, cy, self.tile_layer(), Some(t)));
 						}
 						if self.project.place_many(&edits) { Outcome::Redraw } else { Outcome::Ok }
 					}
@@ -3011,7 +4272,7 @@ impl EditorState {
 				};
 				match self.project.resolve_ref(&spec) {
 					Ok((tile, _)) => {
-						let (layer, randomize) = (self.active_layer, self.randomize);
+						let (layer, randomize) = (self.tile_layer(), self.randomize);
 						// An active selection confines the fill: every selected cell
 						// gets the active tile as one undo unit (connectivity is
 						// ignored). With no selection, it's the usual flood fill.
@@ -3047,7 +4308,9 @@ impl EditorState {
 				// and the whole stroke is one undo unit.
 				let water = self.mask_water;
 				let kind = if water { TileKind::Water } else { TileKind::Land };
-				let Some((pack_idx, family)) = self.project.variant_family(kind) else {
+				// Land follows the active tile's tileset; water stays universal.
+				let preferred = if water { None } else { self.active_tile_ref().ok().map(|(pk, _)| pk) };
+				let Some((pack_idx, family)) = self.project.variant_family_in(kind, preferred) else {
 					let g = if water { "WATER" } else { "LAND" };
 					return Outcome::Failed(format!(
 						"terrain brush: no pack has a {g} variant group (tiles.props.json)"
@@ -3112,13 +4375,26 @@ impl EditorState {
 				self.active_layer = match name.as_str() {
 					"water" => LAYER_WATER,
 					"ground" => LAYER_GROUND,
-					other => return Outcome::Failed(format!("layer: unknown '{other}' (water|ground)")),
+					"scenery" => LAYER_SCENERY,
+					other => return Outcome::Failed(format!("layer: unknown '{other}' (water|ground|scenery)")),
 				};
+				// Switching layers re-points the tool rather than dropping it: the
+				// pencil is still the pencil, it just draws on what is selected. Only
+				// in Map mode - the pass editors own their own tool set.
+				if self.mode == EditorMode::Map {
+					self.tool = if self.on_scenery_layer() { scenery_twin(self.tool) } else { terrain_twin(self.tool) };
+				}
 				self.console.push_line(format!("layer: {name}"));
 				Outcome::Redraw
 			}
 			Command::ToolSelect { name } => {
+				// Set by the arms that need the resource overlay up; applied after
+				// the tool lands, so the console reads "tool: ..." then the reveal.
+				let mut reveal = false;
 				self.tool = match name.as_str() {
+					// The mode's own select tool - what a cancelled gesture reverts to,
+					// so no call site has to know whether that is cells or objects.
+					"default" => self.mode.default_tool(),
 					"pencil" => Tool::Pencil,
 					"picker" | "pick" => Tool::Picker,
 					"eraser" | "erase" => Tool::Eraser,
@@ -3133,31 +4409,77 @@ impl EditorState {
 						self.mask_water = true;
 						Tool::PaintMask
 					}
-					"unit" => Tool::Unit,
-					"unit-eraser" | "unit-erase" => Tool::UnitEraser,
+					"unit" | "obj-place" => Tool::Unit,
+					"unit-eraser" | "unit-erase" | "obj-delete" => Tool::UnitEraser,
+					"obj-select" | "object-select" => Tool::ObjSelect,
+					"obj-pick" | "object-pick" => Tool::ObjPick,
+					"obj-move" | "object-move" => Tool::ObjMove,
+					"obj-clone" | "object-clone" => Tool::ObjClone,
+					"scenery" | "scenery-place" => Tool::Scenery,
+					"scenery-move" => Tool::SceneryMove,
+					"scenery-eraser" | "scenery-erase" | "scenery-delete" => Tool::SceneryEraser,
 					"select" => Tool::Select,
 					"select-rect" | "rect" => Tool::SelectRect,
+					"resource-brush" | "resource" => {
+						reveal = true;
+						Tool::ResourceBrush
+					}
 					other => {
 						return Outcome::Failed(format!(
-							"tool: unknown '{other}' (pencil|picker|eraser|fill|paint-land|paint-water|unit|unit-eraser|select|select-rect)"
+							"tool: unknown '{other}' (default|pencil|picker|eraser|fill|paint-land|paint-water|unit|unit-eraser|obj-select|obj-pick|obj-move|scenery|scenery-move|scenery-eraser|select|select-rect|resource-brush)"
 						));
 					}
 				};
-				self.console.push_line(format!("tool: {name}"));
+				// The layer says what the three shared keys draw on: on the Scenery
+				// layer the pencil drops a cut-out, the eraser removes one and the
+				// arrow drags one (`scenery_twin`). Naming a scenery tool outright
+				// implies the layer, so the menu tick, the toolbox key and the armed
+				// tool can never disagree about which one is live.
+				if self.mode == EditorMode::Map && self.on_scenery_layer() {
+					self.tool = scenery_twin(self.tool);
+				} else if matches!(self.tool, Tool::Scenery | Tool::SceneryMove | Tool::SceneryEraser) {
+					self.active_layer = LAYER_SCENERY;
+				}
+				// Echo the tool, not the word: `tool default` resolves per mode, and the
+				// console line has to say which tool that turned out to be.
+				self.console.push_line(format!("tool: {}", self.tool.slug()));
+				if reveal {
+					self.reveal_resources();
+				}
 				Outcome::Redraw
 			}
 			Command::Mode { name } => {
-				self.mode = match name.as_str() {
+				let new_mode = match name.as_str() {
 					"map" => EditorMode::Map,
 					"pass" => EditorMode::Pass,
 					"localpass" => EditorMode::LocalPass,
+					"save" => EditorMode::SaveEditor,
 					other => {
-						return Outcome::Failed(format!("mode: unknown '{other}' (map|pass|localpass)"));
+						return Outcome::Failed(format!("mode: unknown '{other}' (map|pass|localpass|save)"));
 					}
 				};
+				// Each mode carries its own dock layout (the two pass editors share
+				// one): stash the outgoing layout and restore the incoming one.
+				let (from, to) = (self.mode.layout_group(), new_mode.layout_group());
+				self.switch_layout_group(from, to);
+				self.mode = new_mode;
 				// The pass overlay rides with either pass editor: it turns on so
 				// painting is visible, and off again on returning to Map.
 				self.show_pass_overlay = matches!(self.mode, EditorMode::Pass | EditorMode::LocalPass);
+				// A tool the incoming mode does not offer would leave *no* tool
+				// selected - nothing lit in any toolbox, and a map click doing
+				// something this mode's UI never put on screen. Fall back to the
+				// mode's own select tool.
+				if !self.mode.owns_tool(self.tool) {
+					self.tool = self.mode.default_tool();
+				}
+				// The pass swatches and the cell tally are the Pass Types Palette's, so
+				// *arriving* in the pass group brings it up. Only on arrival: flipping
+				// between the two pass editors is one layout group, and re-showing a
+				// panel the user just closed would be the shell arguing with them.
+				if to == LayoutGroup::Pass && from != to {
+					let _ = self.workspace.show("passtools", Some(true));
+				}
 				self.console.push_line(format!("mode: {name}"));
 				Outcome::Redraw
 			}
@@ -3204,22 +4526,22 @@ impl EditorState {
 				}
 			}
 			Command::ResetTilePass => self.reset_tile_pass(),
+			Command::Orient { rot, mirror } => self.orient_armed(map_core::Transform { rot, mirror }),
 			Command::TransformTile { op } => {
-				// An armed template stamp takes the transform tool: rotate/flip the
-				// whole stamp (constrained by what its tiles allow) instead of the
-				// brush. The ghost preview re-resolves the new template automatically.
-				if let Some(stamp) = self.stamp.clone() {
+				// An armed template stamp takes the transform tool: compose the op
+				// onto its current orientation and re-derive from the base (the
+				// single source of truth the 8-orientation grid shares).
+				if self.stamp_base.is_some() {
 					let Some(stamp_op) = map_core::StampOp::parse(&op) else {
 						return Outcome::Failed(format!("transform: unknown '{op}' (flip-h|flip-v|cw|ccw)"));
 					};
-					return match stamp.transformed(&self.project, stamp_op) {
-						Ok(t) => {
-							self.console.push_line(format!("stamp {op} ({}x{})", t.width, t.height));
-							self.stamp = Some(t);
-							Outcome::Redraw
-						}
-						Err(e) => Outcome::Failed(format!("transform: {e}")),
+					let next = match stamp_op {
+						map_core::StampOp::Cw => self.stamp_xform.rotated_cw(),
+						map_core::StampOp::Ccw => self.stamp_xform.rotated_ccw(),
+						map_core::StampOp::FlipH => self.stamp_xform.flipped_h(),
+						map_core::StampOp::FlipV => self.stamp_xform.flipped_v(),
 					};
+					return self.orient_armed(next);
 				}
 				let Some(spec) = self.active_tile.clone() else {
 					return Outcome::Failed("transform: no active tile (use `tile SPEC`)".into());
@@ -3265,6 +4587,9 @@ impl EditorState {
 				Outcome::Redraw
 			}
 			Command::Shore { region, mode } => {
+				// With no explicit region, confine to the active selection (its
+				// bounding rect); still whole-map when nothing is selected.
+				let region = region.or_else(|| self.selection.bounds());
 				let project = &mut self.project;
 				if let Some((x0, y0, x1, y1)) = region {
 					if x0.max(x1) >= project.width || y0.max(y1) >= project.height {
@@ -3411,7 +4736,7 @@ impl EditorState {
 				let json = map_core::write_palette(&self.project.palette, &name);
 				match std::fs::write(&path, json) {
 					Ok(()) => {
-						self.console.push_line(format!("palette saved → {}", path.display()));
+						self.console.push_line(format!("palette saved -> {}", path.display()));
 						Outcome::Redraw
 					}
 					Err(e) => Outcome::Failed(format!("palette-save: {e}")),
@@ -3427,7 +4752,7 @@ impl EditorState {
 						if n > 0 {
 							self.refresh_palette();
 						}
-						self.console.push_line(format!("palette loaded ({n} slots) ← {}", path.display()));
+						self.console.push_line(format!("palette loaded ({n} slots) <- {}", path.display()));
 						Outcome::Redraw
 					}
 					Err(e) => Outcome::Failed(format!("palette-load: {e}")),
@@ -3436,14 +4761,14 @@ impl EditorState {
 			Command::PaletteSaveAs { name } => {
 				let path = self.user_palettes_dir().join(format!("{}.json", name.trim()));
 				match crate::palette_io::save(&path, &self.project.palette, name.trim()) {
-					Ok(()) => self.palette_saved(format!("palette saved → {}", path.display()), Some(path)),
+					Ok(()) => self.palette_saved(format!("palette saved -> {}", path.display()), Some(path)),
 					Err(e) => Outcome::Failed(format!("palette-save-as: {e}")),
 				}
 			}
 			Command::PaletteRename { from, to } => {
 				let target = self.user_palettes_dir().join(format!("{}.json", to.trim()));
 				match crate::palette_io::rename(&from, &target) {
-					Ok(()) => self.palette_saved(format!("palette renamed → {}", target.display()), Some(target)),
+					Ok(()) => self.palette_saved(format!("palette renamed -> {}", target.display()), Some(target)),
 					Err(e) => Outcome::Failed(format!("palette-rename: {e}")),
 				}
 			}
@@ -3454,22 +4779,15 @@ impl EditorState {
 			Command::PaletteImport { path } => {
 				let dir = self.user_palettes_dir();
 				match crate::palette_io::import(&path, &dir) {
-					Ok(dest) => self.palette_saved(format!("palette imported → {}", dest.display()), Some(dest)),
+					Ok(dest) => self.palette_saved(format!("palette imported -> {}", dest.display()), Some(dest)),
 					Err(e) => Outcome::Failed(format!("palette-import: {e}")),
 				}
 			}
-			Command::PaletteSaveModal => {
-				self.open_palette_name_modal(false);
-				Outcome::Redraw
-			}
-			Command::PaletteRenameModal => {
-				self.open_palette_name_modal(true);
-				Outcome::Redraw
-			}
-			Command::PaletteDeleteModal => {
-				self.open_palette_delete_modal();
-				Outcome::Redraw
-			}
+			// These open wgpu-ui overlay dialogs - the shell routes the request
+			// (`App::act_on`); headless/script runs have no overlay and drop it.
+			Command::PaletteSaveModal => Outcome::OpenDialog(DialogRequest::PaletteSave),
+			Command::PaletteRenameModal => Outcome::OpenDialog(DialogRequest::PaletteRename),
+			Command::PaletteDeleteModal => Outcome::OpenDialog(DialogRequest::PaletteDelete),
 			Command::HslBlock { slot, dh, ds, dl } => {
 				let project = &mut self.project;
 				// Percent points in the command, fractions in the core.
@@ -3513,7 +4831,7 @@ impl EditorState {
 					}
 				};
 				self.picker.filter = filter;
-				self.picker.scroll = 0.0;
+				self.picker.scroll_request = Some(picker::ScrollRequest::To(0.0));
 				self.console.push_line(format!("picker filter: {}", filter.name()));
 				Outcome::Redraw
 			}
@@ -3532,17 +4850,31 @@ impl EditorState {
 				Outcome::Redraw
 			}
 			Command::PickerScroll { to } => {
-				self.picker.scroll = to.max(0.0);
+				self.picker.scroll_request = Some(picker::ScrollRequest::To(to.max(0.0)));
 				Outcome::Redraw
 			}
 			Command::PaletteScroll { to } => {
-				self.palettes.scroll = to.max(0.0);
+				self.palettes.scroll_request = Some(to.max(0.0));
 				Outcome::Redraw
 			}
-			Command::MenuOpen { name } => match self.menu.open_by_name(&name) {
-				Ok(()) => Outcome::Redraw,
-				Err(e) => Outcome::Failed(format!("menu: {e}")),
-			},
+			Command::MenuOpen { name } => {
+				if name == "off" {
+					self.menu().close();
+					return Outcome::Redraw;
+				}
+				// Case-insensitive against the model's titles, exact on the widget.
+				match self.menu_tree.menus.iter().find(|m| m.title.eq_ignore_ascii_case(&name)) {
+					Some(m) => {
+						let title = m.title;
+						self.menu().open_by_title(title);
+						Outcome::Redraw
+					}
+					None => Outcome::Failed(format!(
+						"menu: unknown menu '{name}' (have: {})",
+						self.menu_tree.menus.iter().map(|m| m.title).collect::<Vec<_>>().join(" ").to_lowercase(),
+					)),
+				}
+			}
 			Command::ContextMenu { at } => {
 				// `at` is a **physical** cursor point: the cell under it is read in
 				// physical screen space (the map renders native), but the menu itself
@@ -3553,25 +4885,33 @@ impl EditorState {
 					let pos = (x / self.ui_scale, y / self.ui_scale);
 					menu::ContextMenu::new(self.context_menu_items(cell), pos)
 				});
-				self.menu.close();
+				self.menu().close();
 				Outcome::Redraw
 			}
-			Command::NewMapModal { picking } => {
-				let mut modal = NewMap::new(&self.assets_root);
-				modal.picking = picking;
-				self.open(modal);
-				self.menu.close();
-				Outcome::Redraw
-			}
-			Command::Window { id, on } => match self.workspace.show(&id, on) {
+			// Opens the wgpu-ui New Map overlay - the shell routes the request
+			// (`App::act_on`); headless/script runs have no overlay and drop it.
+			Command::NewMapModal => Outcome::OpenDialog(DialogRequest::NewMap { shape: None }),
+			Command::Window { id, on } => match self.workspace.show_cmd(&id, on) {
 				Ok(line) => {
+					// A panel restores the place it was hidden from, which may predate
+					// the current window size or UI scale - correct it before it draws.
+					self.reclamp_workspace();
+					// Opening the Units dock needs the M.A.X. folder (unit sprites live
+					// in MAX.RES) — prompt for it if it isn't set yet.
+					let prompt = id == "units" && line.ends_with("shown") && self.max_path.is_none();
 					self.console.push_line(line);
+					if prompt {
+						return self.prompt_paths("The Units panel loads unit sprites from your M.A.X. folder.");
+					}
 					Outcome::Redraw
 				}
 				Err(e) => Outcome::Failed(format!("window: {e}")),
 			},
-			Command::DockTo { id, place, at } => match self.workspace.dock_to(&id, &place, at) {
+			Command::DockTo { id, place, at } => match self.workspace.dock_cmd(&id, &place, at) {
 				Ok(line) => {
+					// `dock <id> float <x> <y>` names an arbitrary position - clamp it
+					// like any other, so a typed y cannot hide the titlebar either.
+					self.reclamp_workspace();
 					self.console.push_line(line);
 					Outcome::Redraw
 				}
@@ -3579,6 +4919,7 @@ impl EditorState {
 			},
 			Command::ResetLayout => {
 				self.workspace.reset();
+				self.reclamp_workspace();
 				self.console.push_line("layout reset to defaults");
 				Outcome::Redraw
 			}
@@ -3628,17 +4969,391 @@ impl EditorState {
 				self.place_unit_preview(unit, x, y)
 			}
 			Command::UnitErase { x, y } => {
-				if self.project.erase_unit_at(x, y) {
+				if self.project.remove_object_at(x, y) {
+					// Removal shifts the list, so a stored index would go stale.
+					self.selected_object = None;
 					Outcome::Redraw
 				} else {
 					Outcome::Ok
 				}
 			}
 			Command::UnitClear => {
-				let n = self.project.clear_units();
+				let n = self.project.clear_objects();
+				self.selected_object = None;
 				self.console.push_line(format!("unit previews cleared ({n})"));
 				Outcome::Redraw
 			}
+			Command::AutoConnect => {
+				if self.project.auto_connect_buildings() {
+					self.console.push_line("auto-connected adjacent same-team buildings");
+					Outcome::Redraw
+				} else {
+					self.console.push_line("auto-connect: nothing to connect");
+					Outcome::Ok
+				}
+			}
+			Command::ObjectSelect { x, y } => {
+				// Cycle through stacked objects when the same overlapped cell is
+				// clicked again (item 7); a fresh cell picks its top-most.
+				self.selected_object = self.object_at_cycling(x, y, self.selected_object);
+				match self.selected_object {
+					Some(i) => {
+						let o = &self.project.objects[i];
+						let name = max_assets::save::unit_type_name(o.unit_type).unwrap_or("object");
+						self.console.push_line(format!("selected {name} at ({}, {})", o.x, o.y));
+						// A Select-tool pick routes straight to editing: reveal the Unit
+						// Properties panel (S4.3). A bare scripted `object-select` (the
+						// tool not armed) leaves the layout alone.
+						if self.tool == Tool::ObjSelect {
+							let _ = self.workspace.show("unitprops", Some(true));
+						}
+					}
+					None => self.console.push_line(format!("no object at ({x}, {y})")),
+				}
+				Outcome::Redraw
+			}
+			Command::ObjectPick { x, y } => {
+				// Eyedropper: arm the object's type + team, then switch to Place.
+				let Some(i) = self.object_at(x, y) else {
+					return Outcome::Ok;
+				};
+				let o = &self.project.objects[i];
+				let (unit_type, team) = (o.unit_type, o.team);
+				let Some(tag) = max_assets::save::unit_type_name(unit_type) else {
+					return Outcome::Failed(format!("object-pick: type {unit_type} has no sprite"));
+				};
+				if let Err(e) = self.ensure_units() {
+					return Outcome::Failed(e);
+				}
+				let lib = self.units.as_ref().expect("ensure_units");
+				let Some(idx) = lib.find(tag) else {
+					return Outcome::Failed(format!("object-pick: '{tag}' not in the sprite roster"));
+				};
+				self.active_unit = Some(idx);
+				self.unit_team = team;
+				self.tool = Tool::Unit;
+				self.show_units = true;
+				let team_name = crate::units::TEAM_NAMES.get(team as usize).copied().unwrap_or("?");
+				self.console.push_line(format!("picked {tag} (team {team_name})"));
+				Outcome::Redraw
+			}
+			Command::ObjectClone { x, y } => {
+				// Clone stamp. A cell holding an object re-sources; a bare cell
+				// takes a copy of the source - every property included, which is
+				// what separates this from the eyedropper.
+				if let Some(i) = self.object_at(x, y) {
+					let source = self.project.objects[i].clone();
+					let tag = max_assets::save::unit_type_name(source.unit_type).unwrap_or("?");
+					let team = crate::units::TEAM_NAMES.get(source.team as usize).copied().unwrap_or("?");
+					self.console.push_line(format!("cloning {tag} (team {team}) - click a bare cell to stamp it"));
+					self.clone_source = Some(source);
+					self.show_units = true;
+					return Outcome::Redraw;
+				}
+				let Some(source) = self.clone_source.clone() else {
+					return Outcome::Failed("object-clone: click an object first to take it as the source".into());
+				};
+				let (w, h) = self.map_size();
+				if x >= w || y >= h {
+					return Outcome::Failed(format!("object-clone: ({x},{y}) is outside the {w}x{h} map"));
+				}
+				self.project.label_next_undo("Clone object");
+				// The copy carries the source's properties; only where it stands
+				// changes. A building lays its own slab here too. One exception:
+				// a runtime order the source was caught in (moving, building, or
+				// STORED - ORDER_IDLE, which the renderer culls on-map) is not a
+				// property a fresh copy can hold; those reset to the type's
+				// deploy order.
+				let mut obj = map_core::MapObject { x, y, ..source };
+				let valid = max_assets::save::resting_orders(obj.unit_type);
+				if !valid.is_empty() && !valid.contains(&obj.props.orders) {
+					obj.props.orders = max_assets::save::deploy_orders(obj.unit_type);
+				}
+				let slab = max_assets::save::slab_for_type(obj.unit_type).map(|slab_type| map_core::MapObject {
+					unit_type: slab_type,
+					x,
+					y,
+					team: obj.team,
+					props: map_core::ObjectProps::default(),
+				});
+				if let Some(slab) = slab {
+					self.project.place_object(slab);
+				}
+				self.project.place_object(obj);
+				// A connector mask describes *neighbours*, so the copy's is
+				// re-derived where it landed rather than carried over.
+				if max_assets::save::is_connector_host_type(source.unit_type) {
+					self.project.auto_connect_buildings();
+				}
+				self.selected_object = None;
+				self.show_units = true;
+				Outcome::Redraw
+			}
+			Command::ObjectEdit { field, value } => {
+				let Some(index) = self.selected_object else {
+					return Outcome::Failed("object-edit: no object selected".into());
+				};
+				let Some(obj) = self.project.objects.get(index) else {
+					self.selected_object = None;
+					return Outcome::Failed("object-edit: the selection is stale".into());
+				};
+				let mut team = obj.team;
+				let mut props = obj.props.clone();
+				let field = field.to_ascii_lowercase();
+				// Parse the value into the target field. `angle` accepts the full
+				// u8 range: for a mobile unit it is a 0-7 heading, but for ground
+				// cover it indexes a decorative variant (the panel guards per type,
+				// S4.5). `orders` takes a slug (`sentry`) or a raw byte.
+				match field.as_str() {
+					"team" => match crate::units::parse_team(&value) {
+						Some(t) => team = t,
+						None => return Outcome::Failed(format!("object-edit team: unknown team '{value}'")),
+					},
+					"name" => props.name = value.clone(),
+					"angle" | "facing" => match value.parse::<u8>() {
+						Ok(a) => props.angle = a,
+						Err(_) => return Outcome::Failed("object-edit angle: expected a number 0-255".into()),
+					},
+					// Turret heading (0-7), independent of the body `angle` (S4.4); the
+					// map overlay uses it for turret units and ignores it otherwise.
+					"turret" => match value.parse::<u8>() {
+						Ok(t) => props.turret_angle = t,
+						Err(_) => return Outcome::Failed("object-edit turret: expected a number 0-255".into()),
+					},
+					"hits" => match value.parse::<u16>() {
+						Ok(h) => props.hits = h,
+						Err(_) => return Outcome::Failed("object-edit hits: expected a number 0-65535".into()),
+					},
+					"ammo" => match value.parse::<u8>() {
+						Ok(a) => props.ammo = a,
+						Err(_) => return Outcome::Failed("object-edit ammo: expected a number 0-255".into()),
+					},
+					// Cargo carried / experience accrued — signed (S4.4). Clamped to
+					// per-type capacity later.
+					"storage" => match value.parse::<i16>() {
+						Ok(s) => props.storage = s,
+						Err(_) => {
+							return Outcome::Failed("object-edit storage: expected a number -32768..32767".into());
+						}
+					},
+					// Connector adjacency bitmask, 8 half-edge bits (S4.4). The panel
+					// XORs a single bit; a script may set the whole mask.
+					"connectors" => match value.parse::<u16>() {
+						Ok(c) => props.connectors = c,
+						Err(_) => return Outcome::Failed("object-edit connectors: expected a number 0-65535".into()),
+					},
+					// Only an order this type can legitimately hold at rest is
+					// accepted (`resting_orders`) - move/build orders carry runtime
+					// state a placed unit does not have, and ORDER_IDLE marks a unit
+					// stored in a container (the renderer culls an on-map IDLE unit).
+					// Re-stating the unit's current order is always allowed.
+					"orders" => match max_assets::save::order_id(&value).or_else(|| value.parse::<u8>().ok()) {
+						Some(o) => {
+							let cur = &self.project.objects[index];
+							let valid = max_assets::save::resting_orders(cur.unit_type);
+							if o != cur.props.orders && !valid.contains(&o) {
+								let names: Vec<&str> =
+									valid.iter().filter_map(|&v| max_assets::save::order_name(v)).collect();
+								return Outcome::Failed(format!(
+									"object-edit orders: '{value}' is not a resting order for this unit \
+									 (valid: {})",
+									names.join("|"),
+								));
+							}
+							props.orders = o;
+						}
+						None => return Outcome::Failed(format!("object-edit orders: unknown order '{value}'")),
+					},
+					// Disable the unit for N turns (0 = not disabled). Setting turns > 0
+					// also puts it on ORDER_DISABLE so the game treats it as disabled;
+					// clearing to 0 lifts a disable back to await. Clamped to 0..=127
+					// (the V70 disable byte is signed, so ≥128 would read back as 0).
+					"disabled" => match value.parse::<u16>() {
+						Ok(n) => {
+							props.disabled_turns = n.min(127) as u8;
+							if props.disabled_turns > 0 {
+								props.orders = max_assets::save::ORDER_DISABLE;
+							} else if props.orders == max_assets::save::ORDER_DISABLE {
+								props.orders = 0; // ORDER_AWAIT
+							}
+						}
+						Err(_) => return Outcome::Failed("object-edit disabled: expected a number 0-127".into()),
+					},
+					other => {
+						return Outcome::Failed(format!(
+							"object-edit: unknown field '{other}' \
+							 (team|name|angle|turret|hits|ammo|storage|connectors|orders|disabled)"
+						));
+					}
+				}
+				// Nothing to do (and no label to leak) when the value is unchanged.
+				let cur = &self.project.objects[index];
+				if team == cur.team && props == cur.props {
+					return Outcome::Ok;
+				}
+				// Per-field Undo History label (this edit definitely commits a patch).
+				self.project.label_next_undo(format!("Set {field}"));
+				self.project.set_object_state(index, team, props);
+				self.console.push_line(format!("set {field} = {value}"));
+				Outcome::Redraw
+			}
+			Command::ObjectValues { attr, value } => {
+				let Some(index) = self.selected_object else {
+					return Outcome::Failed("object-values: no object selected".into());
+				};
+				if self.project.objects.get(index).is_none() {
+					self.selected_object = None;
+					return Outcome::Failed("object-values: the selection is stale".into());
+				}
+				// The stats to edit: this unit's override if it has one, else the
+				// save's shared seed, else the stock database seed — cloned here so
+				// the first edit forks a per-unit copy (the engine's own
+				// clone-on-edit, S4.5). No stats block anywhere → fail.
+				let Some(mut values) = self.object_effective_values(index) else {
+					return Outcome::Failed("object-values: this object has no unit-values block to edit".into());
+				};
+				let original = values.clone();
+				let attr = attr.to_ascii_lowercase();
+				let u16v = value.min(u16::MAX as u32) as u16;
+				use max_assets::attribs::StatKind;
+				let kind = match attr.as_str() {
+					"hits" => StatKind::Hits,
+					"attack" => StatKind::Attack,
+					"armor" => StatKind::Armor,
+					"range" => StatKind::Range,
+					"speed" => StatKind::Speed,
+					"scan" => StatKind::Scan,
+					"rounds" | "shots" => StatKind::Rounds,
+					"ammo" => StatKind::Ammo,
+					"storage" => StatKind::Storage,
+					"turns" => StatKind::Turns,
+					"attack-radius" | "attack_radius" => StatKind::AttackRadius,
+					"move-and-fire" | "move_and_fire" => StatKind::MoveAndFire,
+					"agent-adjust" | "agent_adjust" => StatKind::AgentAdjust,
+					"version" => StatKind::Version,
+					other => {
+						return Outcome::Failed(format!(
+							"object-values: unknown attribute '{other}' (hits|attack|armor|range|speed|scan|rounds|ammo|storage|turns|attack-radius|move-and-fire|agent-adjust|version)"
+						));
+					}
+				};
+				// A stat the game ignores for this unit type is not editable (S7.5) —
+				// e.g. attack on a radar, cargo capacity on a tank.
+				if !self.object_stat_applicable(index, kind) {
+					let type_name = self
+						.project
+						.objects
+						.get(index)
+						.and_then(|o| max_assets::save::unit_type_name(o.unit_type))
+						.unwrap_or("this unit type");
+					return Outcome::Failed(format!("object-values: '{attr}' is not applicable to {type_name}"));
+				}
+				match kind {
+					StatKind::Hits => values.hits = u16v,
+					StatKind::Attack => values.attack = u16v,
+					StatKind::Armor => values.armor = u16v,
+					StatKind::Range => values.range = u16v,
+					StatKind::Speed => values.speed = u16v,
+					StatKind::Scan => values.scan = u16v,
+					StatKind::Rounds => values.rounds = u16v,
+					StatKind::Ammo => values.ammo = u16v,
+					StatKind::Storage => values.storage = u16v,
+					StatKind::Turns => values.turns = u16v,
+					StatKind::AttackRadius => values.attack_radius = u16v,
+					StatKind::MoveAndFire => values.move_and_fire = value.min(u8::MAX as u32) as u8,
+					StatKind::AgentAdjust => values.agent_adjust = u16v,
+					StatKind::Version => values.version = u16v,
+				}
+				// Setting a stat to its current effective value changes nothing — don't
+				// materialize a redundant override (and leak an undo label).
+				if values == original {
+					return Outcome::Ok;
+				}
+				let team = self.project.objects[index].team;
+				let mut props = self.project.objects[index].props.clone();
+				props.base_values = Some(values);
+				self.project.label_next_undo(format!("Set max {attr}"));
+				self.project.set_object_state(index, team, props);
+				self.console.push_line(format!("set max {attr} = {value}"));
+				Outcome::Redraw
+			}
+			Command::ResourceSet { x, y, material, amount } => {
+				// Stage D: resources are placeable on ANY project — a save-less
+				// map materializes its cargo map on first paint, and save
+				// synthesis (`new-save`) carries it into a real `.DTA`.
+				let material = material.to_ascii_lowercase();
+				let mat = match material.as_str() {
+					"none" | "clear" | "empty" => None,
+					other => match max_assets::save::CargoMaterial::from_slug(other) {
+						Some(m) => Some(m),
+						None => {
+							return Outcome::Failed(format!(
+								"resource-set: unknown material '{other}' (raw|fuel|gold|none)"
+							));
+						}
+					},
+				};
+				if x >= self.project.width || y >= self.project.height {
+					return Outcome::Failed(format!("resource-set: ({x}, {y}) is outside the map"));
+				}
+				// A save-less project reads 0 until the first paint sizes the map.
+				let cur = self.project.cargo_at(x, y).unwrap_or(0);
+				// Painted resources are marked surveyed by all players (usable in-game,
+				// S5.5); erasing (mat None) clears without adding survey bits.
+				let value = max_assets::save::cargo_surveyed(max_assets::save::cargo_compose(cur, mat, amount as u16));
+				let label = mat.map_or("Clear resource".to_string(), |m| format!("Paint {}", m.slug()));
+				self.project.label_next_undo(label);
+				if self.project.set_cargo(x, y, value) {
+					self.console.push_line(format!("resource ({x}, {y}) = {material} {}", amount.min(31)));
+					Outcome::Redraw
+				} else {
+					Outcome::Ok
+				}
+			}
+			Command::ResourceBrush { field, value } => {
+				match field.to_ascii_lowercase().as_str() {
+					"material" | "mat" => {
+						self.resource_material = match value.to_ascii_lowercase().as_str() {
+							"none" | "clear" | "erase" | "empty" => None,
+							other => match max_assets::save::CargoMaterial::from_slug(other) {
+								Some(m) => Some(m),
+								None => return Outcome::Failed(format!("resource-brush material: unknown '{other}'")),
+							},
+						};
+					}
+					"amount" | "amt" => match value.parse::<u8>() {
+						Ok(a) => self.resource_amount = a.min(31),
+						Err(_) => return Outcome::Failed("resource-brush amount: expected a number 0-31".into()),
+					},
+					"mode" => match ResourceMode::from_slug(&value.to_ascii_lowercase()) {
+						Some(m) => self.resource_mode = m,
+						None => {
+							return Outcome::Failed(format!("resource-brush mode: unknown '{value}' (set|add|sub)"));
+						}
+					},
+					other => {
+						return Outcome::Failed(format!(
+							"resource-brush: unknown field '{other}' (material|amount|mode)"
+						));
+					}
+				}
+				Outcome::Redraw
+			}
+			Command::ResourcePaint { x, y } => {
+				// Per-cell brush apply during a Resource Brush drag; joins the open
+				// stroke so the whole drag is one undo unit. Quiet (no console line).
+				if x >= self.project.width || y >= self.project.height {
+					return Outcome::Ok;
+				}
+				// A save-less project reads 0 until the first paint sizes the map.
+				let cur = self.project.cargo_at(x, y).unwrap_or(0);
+				let value = self.resource_mode.apply(cur, self.resource_material, self.resource_amount as u16);
+				// Painting something you cannot see is never what was meant.
+				self.reveal_resources();
+				self.project.label_next_undo("Resource brush".to_string());
+				if self.project.set_cargo(x, y, value) { Outcome::Redraw } else { Outcome::Ok }
+			}
+			Command::ResourceAmountDialog => Outcome::OpenDialog(DialogRequest::ResourceAmount),
 			Command::UnitsVisible { on } => {
 				self.show_units = on.unwrap_or(!self.show_units);
 				self.console.push_line(format!("units: {}", if self.show_units { "shown" } else { "hidden" }));
@@ -3650,19 +5365,31 @@ impl EditorState {
 					Outcome::Redraw
 				}
 				Some(path) => {
-					let mut section = self.workspace.to_ini();
-					let _ = section.set_entry("UiScale".to_string(), self.ui_scale.to_string());
+					// Flush the live layout into its group's slot, then emit every
+					// group's section. Only the main [Workspace] carries the global
+					// extras (UI scale + explorer preview sizes).
+					self.saved_layouts[self.mode.layout_group() as usize] = self.workspace.save_layout();
+					let mut main = Workspace::layout_to_ini(&self.saved_layouts[LayoutGroup::Main as usize]);
+					let _ = main.set_entry("UiScale".to_string(), self.ui_scale.to_string());
 					// Explorer thumbnail sizes (Tile Explorer + Templates Explorer) persist
 					// alongside the layout, so the chosen preview size survives a restart.
-					let _ = section.set_entry("TilesPreview".to_string(), self.picker.tile_px.to_string());
-					let _ = section.set_entry("TemplatesPreview".to_string(), self.templates.cell.to_string());
-					// Recent maps (File ▸ Quick Load), most-recent first.
-					for (i, recent) in self.recent.iter().enumerate() {
-						let _ = section.set_entry(format!("Recent{i}"), recent.display().to_string());
-					}
-					match crate::settings_io::save_workspace(path, section) {
+					let _ = main.set_entry("TilesPreview".to_string(), self.picker.tile_px.to_string());
+					let _ = main.set_entry("TemplatesPreview".to_string(), self.templates.cell.to_string());
+					let _ = main.set_entry("SceneryPreview".to_string(), self.scenery_cell.to_string());
+					let pass = Workspace::layout_to_ini(&self.saved_layouts[LayoutGroup::Pass as usize]);
+					let save = Workspace::layout_to_ini(&self.saved_layouts[LayoutGroup::Save as usize]);
+					// Recent maps live in their own [QuickLoad] section, persisted
+					// immediately on every open (see `remember_recent`);
+					// [Preferences] likewise persists on change and rides along here.
+					self.save_preferences();
+					let sections = vec![
+						(LayoutGroup::Main.ini_section(), main),
+						(LayoutGroup::Pass.ini_section(), pass),
+						(LayoutGroup::Save.ini_section(), save),
+					];
+					match crate::settings_io::save_sections(path, sections) {
 						Ok(()) => {
-							self.console.push_line(format!("settings saved → {}", path.display()));
+							self.console.push_line(format!("settings saved -> {}", path.display()));
 							Outcome::Redraw
 						}
 						Err(e) => Outcome::Failed(format!("save-settings: {e}")),
@@ -3699,16 +5426,276 @@ impl EditorState {
 		}
 	}
 
-	/// Stamp (or restamp) a unit preview on a cell. The note persists with
-	/// the project (dirties it) but records no undo patch - annotations are
-	/// metadata, not map edits.
+	/// Load the resource-marker sprite library once (needs `MaxPath` → MAX.RES),
+	/// mirroring [`ensure_units`](Self::ensure_units). A failed attempt doesn't
+	/// retry - the resource overlay then falls back to the flat material tint.
+	pub fn ensure_markers(&mut self) -> Result<(), String> {
+		if self.markers.is_some() {
+			return Ok(());
+		}
+		if self.markers_loaded {
+			return Err("markers: not available (see console)".into());
+		}
+		self.markers_loaded = true;
+		let Some(max_path) = self.max_path.clone() else {
+			return Err("markers: set MaxPath in resources/user/config/mme.ini first".into());
+		};
+		match crate::markers::MarkerLibrary::load(&max_path) {
+			Ok(lib) => {
+				self.markers = Some(lib);
+				Ok(())
+			}
+			Err(e) => {
+				self.console.push_line(format!("resource markers: {e} (overlay uses flat tint)"));
+				Err(format!("markers: {e}"))
+			}
+		}
+	}
+
+	/// Turn the resource overlay on if it is off - what the Resource Brush works
+	/// on is invisible otherwise, so arming it or painting with it reveals the
+	/// cargo it is about to change. A view setting, so it is not undoable and it
+	/// says so in the console like any other overlay flip.
+	fn reveal_resources(&mut self) {
+		if self.show_resources {
+			return;
+		}
+		self.show_resources = true;
+		self.console.push_line("resource overlay: on (the Resource Brush needs it)");
+		// Load the marker sprites so the overlay draws them like the game; a
+		// failure (no MaxPath) is non-fatal - the overlay falls back to tint.
+		let _ = self.ensure_markers();
+	}
+
+	/// A compact readout of the resource at cell `(x, y)` for the status bar (S5.4)
+	/// — `raw 15` / `fuel 8` / `empty`, or `None` unless the resource overlay is on
+	/// or the Resource Brush is armed (so it never clutters ordinary map editing).
+	/// A save-less project (no cargo map yet, Stage D) reads `empty` in-bounds.
+	pub fn resource_readout(&self, x: u16, y: u16) -> Option<String> {
+		if !(self.show_resources || self.tool == Tool::ResourceBrush) {
+			return None;
+		}
+		if x >= self.project.width || y >= self.project.height {
+			return None;
+		}
+		let value = self.project.cargo_at(x, y).unwrap_or(0);
+		Some(match max_assets::save::cargo_material(value) {
+			Some(m) => format!("{} {}", m.slug(), max_assets::save::cargo_amount(value)),
+			None => "empty".to_string(),
+		})
+	}
+
+	/// The maximum HP of object `index` — the cap the Unit Properties hits editor
+	/// clamps to (S4.5). Reads the object's *effective* `base_values` (its per-unit
+	/// override when edited, else the save's shared seed), so raising the max HP
+	/// via `object-values` lifts the current-hits cap live. `None` for a fresh
+	/// placement with no save (then current hits is unbounded).
+	pub fn object_max_hits(&self, index: usize) -> Option<u16> {
+		self.object_effective_values(index).map(|v| v.hits)
+	}
+
+	/// The maximum stats governing object `index`: its per-unit override, else
+	/// the attached save's shared seed ([`Project::object_base_values`]), else —
+	/// new to Stage B — the **stock base values** from the max-port unit
+	/// database, so the stats editor works on save-less maps too. `None` only
+	/// when the database is absent as well.
+	pub fn object_effective_values(&self, index: usize) -> Option<max_assets::save::UnitValues> {
+		self.project.object_base_values(index).or_else(|| {
+			let unit_type = self.project.objects.get(index)?.unit_type;
+			self.unit_stats.as_ref()?.base_for(unit_type).cloned()
+		})
+	}
+
+	/// Whether a max-stat is *applicable* to object `index`'s unit type (S7.5):
+	/// judged from the stock database (`attribs::stat_applicable` — no attack
+	/// editor on a radar, no cargo editor on a tank). Permissive by design:
+	/// without the database there is no basis to restrict, and a stat already
+	/// carrying a nonzero value (edited/modded data) stays editable so nothing
+	/// is ever trapped.
+	pub fn object_stat_applicable(&self, index: usize, kind: max_assets::attribs::StatKind) -> bool {
+		let Some(obj) = self.project.objects.get(index) else { return true };
+		let Some(db) = &self.unit_stats else { return true };
+		let (Some(meta), Some(base)) = (db.meta_for(obj.unit_type), db.base_for(obj.unit_type)) else {
+			return true;
+		};
+		if max_assets::attribs::stat_applicable(kind, obj.unit_type, meta, base) {
+			return true;
+		}
+		self.object_effective_values(index).is_some_and(|v| kind.get(&v) != 0)
+	}
+
+	/// The footprint (cells per side) of an object of `unit_type`, from its
+	/// sprite (the single source of truth). `1` when the sprite library isn't
+	/// loaded or the type has no sprite - hit-testing then treats it as 1×1.
+	fn object_footprint(&self, unit_type: u16) -> u16 {
+		self.units.as_ref().and_then(|lib| lib.find_type(unit_type).map(|i| lib.units[i].footprint)).unwrap_or(1) as u16
+	}
+
+	/// The footprint (cells per side) of object `index`; `1` when the index is
+	/// out of range or the type has no sprite.
+	pub fn object_footprint_of(&self, index: usize) -> u16 {
+		self.project.objects.get(index).map(|o| self.object_footprint(o.unit_type)).unwrap_or(1)
+	}
+
+	/// Whether an object of `unit_type` has an independent turret — its sprite
+	/// carries turret frames (`turret_count() > 0`). Gates the Unit Properties
+	/// Turret dropdown (S4.4). `false` when the sprite library isn't loaded or the
+	/// type has no turret.
+	fn type_has_turret(&self, unit_type: u16) -> bool {
+		self.units
+			.as_ref()
+			.and_then(|lib| lib.find_type(unit_type).map(|i| lib.units[i].turret_count() > 0))
+			.unwrap_or(false)
+	}
+
+	/// Whether object `index` has an independent turret heading to edit; `false`
+	/// when the index is out of range or the type has no turret sprite.
+	pub fn object_has_turret(&self, index: usize) -> bool {
+		self.project.objects.get(index).map(|o| self.type_has_turret(o.unit_type)).unwrap_or(false)
+	}
+
+	/// The topmost object whose footprint covers cell `(x, y)`, as an index into
+	/// `project.objects` - `None` when the cell is empty. A 2×2 object at
+	/// `(ox, oy)` covers `[ox, ox+2) × [oy, oy+2)`, so any of its four cells
+	/// selects it.
+	pub fn object_at(&self, x: u16, y: u16) -> Option<usize> {
+		self.objects_at(x, y).first().copied()
+	}
+
+	/// Every object whose footprint covers cell `(x, y)`, **top-most first** —
+	/// the reverse of the paint order ([`crate::units::draw_order`]), so a
+	/// building always wins over the slab under it, and the stack a click cycles
+	/// through (see [`Self::object_at_cycling`]) runs downwards from what is
+	/// visibly on top. Empty when the cell is bare.
+	pub fn objects_at(&self, x: u16, y: u16) -> Vec<usize> {
+		crate::units::draw_order(&self.project.objects)
+			.rev()
+			.filter_map(|(i, o)| {
+				let f = self.object_footprint(o.unit_type);
+				(x >= o.x && x < o.x + f && y >= o.y && y < o.y + f).then_some(i)
+			})
+			.collect()
+	}
+
+	/// The object a click at `(x, y)` should select: the top-most, unless `current`
+	/// already covers the cell — then the next object below it, wrapping. Repeated
+	/// clicks on the same overlapped cell thus loop through every stacked object
+	/// (item 7). `None` when the cell is bare.
+	pub fn object_at_cycling(&self, x: u16, y: u16, current: Option<usize>) -> Option<usize> {
+		let stack = self.objects_at(x, y);
+		if let Some(cur) = current {
+			if let Some(pos) = stack.iter().position(|&i| i == cur) {
+				return Some(stack[(pos + 1) % stack.len()]);
+			}
+		}
+		stack.first().copied()
+	}
+
+	/// Whether object `moving`, placed at `(x, y)`, would overlap another object
+	/// that blocks it. Buildings (footprint ≥ 2) can't overlap anything and
+	/// nothing can overlap them; footprint-1 objects (units, ground cover) stack
+	/// freely (a tank on a slab), so an overlap only blocks when a 2×2 is on
+	/// either side. Used by the Move tool to refuse a drop.
+	pub fn object_collides(&self, moving: usize, x: u16, y: u16) -> bool {
+		let Some(mo) = self.project.objects.get(moving) else { return false };
+		let mf = self.object_footprint(mo.unit_type);
+		self.project.objects.iter().enumerate().any(|(i, o)| {
+			if i == moving {
+				return false;
+			}
+			let f = self.object_footprint(o.unit_type);
+			// AABB overlap of the two footprints, and at least one is a building.
+			let overlap = x < o.x + f && o.x < x + mf && y < o.y + f && o.y < y + mf;
+			overlap && (mf >= 2 || f >= 2)
+		})
+	}
+
+	/// Stamp (or restamp) a unit preview on a cell as a first-class, undoable
+	/// object (S2.1). Persists with the project and dirties it.
 	fn place_unit_preview(&mut self, unit: usize, x: u16, y: u16) -> Outcome {
 		let (w, h) = self.map_size();
 		if x >= w || y >= h {
-			return Outcome::Failed(format!("unit-place: ({x},{y}) is outside the {w}×{h} map"));
+			return Outcome::Failed(format!("unit-place: ({x},{y}) is outside the {w}x{h} map"));
 		}
-		let tag = self.units.as_ref().expect("units loaded before placing").units[unit].tag.clone();
-		self.project.stamp_unit(map_core::UnitNote { tag, x, y, team: self.unit_team });
+		// `unit` indexes the unit library's roster, so the library has to be loaded
+		// AND the index still in range. Both can lapse between arming a unit and
+		// clicking: changing MaxPath drops the library for a reload against the new
+		// folder, and the roster it comes back with need not be the same length.
+		// The scripted `unit-place` calls `ensure_units` for us; the interactive
+		// `Command::Paint` path does not, so ask here rather than trust the caller.
+		if let Err(e) = self.ensure_units() {
+			return Outcome::Failed(e);
+		}
+		let Some(entry) = self.units.as_ref().and_then(|lib| lib.units.get(unit)) else {
+			return Outcome::Failed(format!("unit-place: no unit #{unit} in the library"));
+		};
+		let tag = entry.tag.clone();
+		let Some(unit_type) = max_assets::save::unit_type_id(&tag) else {
+			return Outcome::Failed(format!("unit-place: '{tag}' is not a placeable unit type"));
+		};
+		// A drag lays a stroke of units, and a continuation cell must not
+		// overpaint: once the stroke has placed its first object, any cell whose
+		// footprint would overlap an existing object's is skipped. The press
+		// itself (nothing object-shaped in the stroke yet) keeps the
+		// restamp-on-click semantics, so a deliberate click still replaces.
+		if self.project.stroke_touched_objects() {
+			let f = self.object_footprint(unit_type);
+			let overlaps = self.project.objects.iter().any(|o| {
+				let of = self.object_footprint(o.unit_type);
+				x < o.x + of && o.x < x + f && y < o.y + of && o.y < y + f
+			});
+			if overlaps {
+				return Outcome::Ok;
+			}
+		}
+		// The unit tool reaches here via `Command::Paint` (labelled "Paint");
+		// relabel so the Undo History reads meaningfully.
+		self.project.label_next_undo("Place unit");
+		// A building lays its foundation the way the game does - the slab first,
+		// so it is under the structure in the draw order too. Same cell, same
+		// owner; `place_object` keeps the two because they are different layers.
+		let slab = max_assets::save::slab_for_type(unit_type).map(|slab_type| map_core::MapObject {
+			unit_type: slab_type,
+			x,
+			y,
+			team: self.unit_team,
+			props: map_core::ObjectProps::default(),
+		});
+		// A fresh placement starts on its type's deploy order (a mining station
+		// powers on and produces, a turret watches, a power plant idles off) —
+		// the engine's own construction defaults; the Unit Properties panel
+		// shows it and any user edit overrides it on export.
+		let obj = map_core::MapObject {
+			unit_type,
+			x,
+			y,
+			team: self.unit_team,
+			props: map_core::ObjectProps { orders: max_assets::save::deploy_orders(unit_type), ..Default::default() },
+		};
+		// Placing a building/connector auto-connects it to same-team neighbours —
+		// place + connect commit as ONE undo step. During a drag the shell already
+		// opened the stroke (the whole drag = one undo unit), so don't nest a fresh
+		// begin/end here — that would split the drag; just place + connect inside it.
+		let host = max_assets::save::is_connector_host_type(unit_type);
+		let lay = |p: &mut map_core::Project| {
+			if let Some(slab) = slab {
+				p.place_object(slab);
+			}
+			p.place_object(obj);
+		};
+		if host && !self.project.in_stroke() {
+			self.project.begin_stroke();
+			lay(&mut self.project);
+			self.project.auto_connect_buildings();
+			self.project.end_stroke();
+		} else {
+			lay(&mut self.project);
+			if host {
+				self.project.auto_connect_buildings();
+			}
+		}
+		// Replacing an object on a cell shifts the list, staling any selection.
+		self.selected_object = None;
 		self.show_units = true;
 		Outcome::Redraw
 	}
@@ -3779,8 +5766,9 @@ impl EditorState {
 				let n = self.selection.count();
 				// Clear the active layer - deleting on the water layer drops water
 				// exactly as deleting on ground drops ground (no land/water split).
-				clear_selection_layer(&mut self.project, &self.selection, self.active_layer);
-				self.console.push_line(format!("deleted {n} cells ({})", self.active_layer_name()));
+				let layer = self.tile_layer();
+				clear_selection_layer(&mut self.project, &self.selection, layer);
+				self.console.push_line(format!("deleted {n} cells ({})", self.tile_layer_name()));
 				Outcome::Redraw
 			}
 			Command::DeleteAll => {
@@ -3792,19 +5780,21 @@ impl EditorState {
 				self.console.push_line(format!("deleted {n} cells (all layers)"));
 				Outcome::Redraw
 			}
-			Command::Paste => match &self.clipboard {
-				Some(t) => {
-					self.stamp = Some(t.clone());
-					self.console.push_line("paste: click the map to place (Esc cancels)".to_string());
-					Outcome::Redraw
-				}
-				None => Outcome::Failed("paste: the clipboard is empty (copy or cut first)".into()),
-			},
+			Command::Paste => {
+				let Some(t) = self.clipboard.clone() else {
+					return Outcome::Failed("paste: the clipboard is empty (copy or cut first)".into());
+				};
+				self.arm_stamp(t);
+				self.console.push_line("paste: click the map to place (Esc cancels)".to_string());
+				Outcome::Redraw
+			}
 			Command::Stamp { x, y } => {
 				let Some(stamp) = self.stamp.clone() else {
 					return Outcome::Failed("stamp: nothing armed (paste or pick a template first)".into());
 				};
-				match stamp.apply(&mut self.project, x, y) {
+				// Multi-cell chunks centre on the cursor cell, not top-left it.
+				let (ox, oy) = stamp_origin(&stamp, x, y);
+				match stamp.apply(&mut self.project, ox, oy) {
 					// The stamp stays armed for repeat placing (forests!).
 					Ok(_) => Outcome::Redraw,
 					Err(e) => Outcome::Failed(format!("stamp: {e}")),
@@ -3812,6 +5802,9 @@ impl EditorState {
 			}
 			Command::StampCancel => {
 				self.stamp = None;
+				self.stamp_base = None;
+				self.stamp_xform = map_core::Transform::default();
+				self.stamp_orients = std::array::from_fn(|_| None);
 				Outcome::Redraw
 			}
 			Command::TemplateSave { name } => {
@@ -3867,13 +5860,13 @@ impl EditorState {
 				let Some(i) = i else {
 					return Outcome::Failed(format!("template-pick: no template named '{name}'"));
 				};
-				let entry = &self.templates.entries[i];
-				if let Some(id) = entry.template.missing_id(&self.project) {
+				let t = self.templates.entries[i].template.clone();
+				if let Some(id) = t.missing_id(&self.project) {
 					return Outcome::Failed(format!(
 						"template-pick: '{name}' needs tile '{id}' - its pack isn't in this map"
 					));
 				}
-				self.stamp = Some(entry.template.clone());
+				self.arm_stamp(t);
 				self.templates.sel = Some(i);
 				self.console.push_line(format!("template armed: {name} (click the map to place, Esc cancels)"));
 				Outcome::Redraw
@@ -3960,8 +5953,10 @@ impl EditorState {
 					.map(|(_, t)| t.name.clone())
 					.collect();
 				let entry = &self.templates.entries[i];
-				self.open(crate::renametemplate::RenameTemplate::new(&entry.name, entry.template.clone(), existing));
-				Outcome::Redraw
+				let from = entry.name.clone();
+				let footprint = (entry.template.width, entry.template.height);
+				let preview = crate::template_preview::compose(&self.project, &entry.template, self.cycler.rgba());
+				Outcome::OpenDialog(DialogRequest::RenameTemplate { from, footprint, existing, preview })
 			}
 			Command::TemplateDeleteModal => {
 				let Some(i) = self.templates.sel else {
@@ -3974,8 +5969,10 @@ impl EditorState {
 					));
 				}
 				let entry = &self.templates.entries[i];
-				self.open(crate::deletetemplate::DeleteTemplate::new(&entry.name, entry.template.clone()));
-				Outcome::Redraw
+				let name = entry.name.clone();
+				let footprint = (entry.template.width, entry.template.height);
+				let preview = crate::template_preview::compose(&self.project, &entry.template, self.cycler.rgba());
+				Outcome::OpenDialog(DialogRequest::DeleteTemplate { name, footprint, preview })
 			}
 			Command::TemplateRename { from, to } => {
 				// Prefer the selected template - the GUI always renames the selection,
@@ -4033,8 +6030,7 @@ impl EditorState {
 			Command::TemplateDedupeModal => {
 				let dups = self.duplicate_template_indices();
 				let names = dups.iter().map(|&i| self.templates.entries[i].name.clone()).collect();
-				self.open(crate::dedupetemplates::DedupeTemplates::new(names));
-				Outcome::Redraw
+				Outcome::OpenDialog(DialogRequest::DedupeTemplates { names })
 			}
 			Command::TemplateDedupe => {
 				let dups = self.duplicate_template_indices();
@@ -4144,18 +6140,40 @@ impl EditorState {
 				}
 			}
 		}
-		self.templates.entries = entries;
+		self.templates.set_entries(entries);
 		if self.templates.sel.is_some_and(|i| i >= self.templates.entries.len()) {
 			self.templates.sel = None;
 		}
 	}
 
 	/// Indices into `templates` that resolve against the open map - what the
-	/// explorer shows (incompatible ones would only stamp errors).
+	/// explorer shows (incompatible ones would only stamp errors), further
+	/// narrowed to the selected tileset (by `template_pack` label) when one is
+	/// chosen in the panel's tileset filter.
 	pub fn visible_templates(&self) -> Vec<usize> {
+		let ts = self.templates.tileset.as_deref();
 		(0..self.templates.entries.len())
-			.filter(|&i| self.templates.entries[i].template.compatible(&self.project))
+			.filter(|&i| {
+				let e = &self.templates.entries[i];
+				e.template.compatible(&self.project) && ts.is_none_or(|name| template_pack(&e.template) == name)
+			})
 			.collect()
+	}
+
+	/// The distinct tileset labels (`template_pack`) among the map-compatible
+	/// templates, sorted - the option list for the explorer's tileset filter.
+	/// Independent of the current selection so picking one never hides the rest.
+	pub fn template_tilesets(&self) -> Vec<String> {
+		let mut names: Vec<String> = self
+			.templates
+			.entries
+			.iter()
+			.filter(|e| e.template.compatible(&self.project))
+			.map(|e| template_pack(&e.template))
+			.collect();
+		names.sort_unstable();
+		names.dedup();
+		names
 	}
 
 	/// Resolve a delete/clone target: an explicit name, else the explorer's
@@ -4182,6 +6200,15 @@ impl EditorState {
 					Outcome::Ok
 				}
 			}
+			Command::UndoTo { steps } => {
+				let structure = self.project.structure_revision();
+				if self.project.undo_steps(steps) > 0 {
+					self.refresh_palette();
+					if self.project.structure_revision() != structure { Outcome::DocReplaced } else { Outcome::Redraw }
+				} else {
+					Outcome::Ok
+				}
+			}
 			Command::Redo => {
 				let structure = self.project.structure_revision();
 				if self.project.redo() {
@@ -4200,7 +6227,7 @@ impl EditorState {
 					match Project::load(&path, &self.assets_root) {
 						Ok(project) => {
 							eprintln!(
-								"opened {}: \"{}\" {}×{} cells, packs: {}",
+								"opened {}: \"{}\" {}x{} cells, packs: {}",
 								path.display(),
 								project.name,
 								project.width,
@@ -4224,7 +6251,7 @@ impl EditorState {
 								.unwrap_or_else(|| "map".into());
 							let project = Project::from_wrl(&wrl, &name);
 							eprintln!(
-								"imported {}: {}×{} cells, {} tiles",
+								"imported {}: {}x{} cells, {} tiles",
 								path.display(),
 								project.width,
 								project.height,
@@ -4239,6 +6266,127 @@ impl EditorState {
 					}
 				}
 			}
+			// Open Save File: open a M.A.X. saved game (`.DTA`) into a new tab -
+			// resolve the world it references, load that pristine bundled stock
+			// map, and embed the save's bytes (the byte-exact export anchor).
+			// See SAVE-EDITOR.md S1.3. No `.DTA` is written here; Save writes a
+			// project `.json` (Export Save File, a later stage, writes `.DTA`).
+			Command::OpenSave { path } => {
+				let bytes = match std::fs::read(&path) {
+					Ok(b) => b,
+					Err(e) => return Outcome::Failed(format!("open-save {}: {e}", path.display())),
+				};
+				// The header names the world by index (V70) or by content hash
+				// resolved to a stock index (V71). The stored hash is the *slot's*
+				// stock hash (max-port writes `TranslateWorldIndexToHashKey`), so it
+				// identifies the slot but not swapped/custom content; a hash matching
+				// no stock slot yields `None`.
+				let header = match max_assets::save::read_save_header(&path) {
+					Ok(h) => h,
+					// A version we don't recognize at all (an old save, or not a save
+					// file) → the same "incompatible file" dialog, not a bare fail.
+					Err(max_assets::save::SaveError::UnsupportedVersion(_)) => {
+						return Outcome::OpenDialog(DialogRequest::OpenSaveError {
+							message: Self::incompatible_save_message(&path),
+						});
+					}
+					Err(e) => return Outcome::Failed(format!("open-save {}: {e}", path.display())),
+				};
+				// The editor can only safely round-trip V71 (the format M.A.X. Port
+				// v0.7.X writes). A V70 stock DOS save decodes, but editing it here
+				// would not round-trip — refuse it with an explanation.
+				if header.format != max_assets::save::SaveFormat::V71 {
+					return Outcome::OpenDialog(DialogRequest::OpenSaveError {
+						message: Self::incompatible_save_message(&path),
+					});
+				}
+				let Some(world_index) = header.world_index else {
+					// No resolvable slot → no map to load it onto. Abort-only notice.
+					return Outcome::OpenDialog(DialogRequest::OpenSaveError {
+						message: format!(
+							"Can't open {}:\nit references a world with no matching stock slot (a fully custom map), \
+							 so the editor can't tell which map slot it used.",
+							path.display()
+						),
+					});
+				};
+				let world_file = max_assets::save::world_file_name(world_index)
+					.expect("a header world_index is a valid stock index");
+				let world_name = world_file.strip_suffix(".WRL").unwrap_or(world_file).to_string();
+				// Preferred source: the map **installed at this slot** (`MaxPath/<file>`)
+				// — the actual map the save references, which may have been swapped for a
+				// custom map of different dimensions. It carries the save's true size, so
+				// the body decodes. Fall back to the bundled pristine stock world.
+				let installed = self.max_path.as_ref().map(|mp| mp.join(world_file)).filter(|p| p.is_file());
+				if let Some(inst) = &installed {
+					match Self::open_save_on_wrl(inst, &world_name, &bytes) {
+						// The installed map decoded the save → open it directly.
+						Ok(project) => self.commit_save_open(project, &header, &world_name),
+						Err(installed_err) => {
+							// The installed map didn't fit (usually its dimensions differ
+							// from the save's). Try the pristine stock world: if that fits,
+							// offer to open on it (dims match → Open Anyway); else the save
+							// fits neither map → a real dimension mismatch (Abort only).
+							match self.open_save_on_stock(&world_name, &bytes) {
+								Ok(mut project) => {
+									let stock_dims = (project.width, project.height);
+									let inst_dims =
+										read_wrl_header(inst).map(|h| (h.width, h.height)).unwrap_or((0, 0));
+									let summary = Self::name_save_project(&mut project, &header, &world_name);
+									self.pending_save_open = Some(PendingSaveOpen { project, summary });
+									Outcome::OpenDialog(DialogRequest::ConfirmOpenSave {
+										message: format!(
+											"The {world_name} map installed in your M.A.X. folder is {}x{}, which \
+											 doesn't fit this save.\nThe original {world_name} ({}x{}) does - its \
+											 dimensions match.\n\nOpen the save on the original {world_name}?",
+											inst_dims.0, inst_dims.1, stock_dims.0, stock_dims.1,
+										),
+									})
+								}
+								Err(_stock_err) => Outcome::OpenDialog(DialogRequest::OpenSaveError {
+									message: format!(
+										"Can't open {}:\nit was made on a {world_name} map whose dimensions match \
+											 neither the installed map nor the original {world_name}.\n\n({installed_err})",
+										path.display()
+									),
+								}),
+							}
+						}
+					}
+				} else {
+					// No installed map (MaxPath unset, or the slot's file is missing).
+					// A normal save on the unmodified stock world still opens with no
+					// MaxPath. If even the stock world doesn't fit, the save is on a
+					// swapped map we can't reach without MaxPath.
+					match self.open_save_on_stock(&world_name, &bytes) {
+						Ok(project) => self.commit_save_open(project, &header, &world_name),
+						// The save doesn't fit the stock world. If MaxPath is unset we
+						// can't reach the installed (swapped) map — prompt for it. If it
+						// IS set, the slot's file is just missing/wrong → a plain notice.
+						Err(_stock_err) if self.max_path.is_none() => self.prompt_paths(&format!(
+							"This save was made on a modified {world_name}, which the editor loads from your \
+							 M.A.X. folder."
+						)),
+						Err(_stock_err) => Outcome::OpenDialog(DialogRequest::OpenSaveError {
+							message: format!(
+								"Can't open {}:\nit was made on a modified {world_name}, but the editor couldn't \
+								 load {world_file} from your M.A.X. folder.",
+								path.display()
+							),
+						}),
+					}
+				}
+			}
+			// "Open Anyway" from the save-open confirm dialog: commit the project we
+			// already built on the fallback (stock) world.
+			Command::OpenSaveAnyway => {
+				let Some(pending) = self.pending_save_open.take() else {
+					return Outcome::Ok;
+				};
+				eprintln!("{}", pending.summary);
+				self.console.push_line(pending.summary);
+				self.add_doc(pending.project, None, None)
+			}
 			// New from Image: read only the PNG header (dimensions)
 			// and open the settings modal - pixels are decoded later, at Convert.
 			Command::NewFromImage { path } => {
@@ -4247,9 +6395,12 @@ impl EditorState {
 					Err(e) => return Outcome::Failed(format!("new-from-image {}: {e}", path.display())),
 				};
 				let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "image".into());
-				self.open(crate::newfromimage::NewFromImage::new(path, w, h, name));
-				self.menu.close();
-				Outcome::Redraw
+				// Seed the settings from the source dimensions (fit); the dialog
+				// composes the widgets, the run's opts are set from them on Convert.
+				let opts = map_core::ConvertOpts::fit_source(w, h);
+				self.open_newimage(path, name, opts);
+				self.menu().close();
+				Outcome::OpenDialog(DialogRequest::NewFromImage)
 			}
 			// Import WRL: read the header and open the pack picker that matches
 			// the WRL's tiles against existing tilesets (the heavy match runs on
@@ -4260,21 +6411,21 @@ impl EditorState {
 					Err(e) => return Outcome::Failed(format!("import-wrl {}: {e}", path.display())),
 				};
 				let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into());
-				let modal = crate::importwrl::ImportWrl::new(
+				self.wrlimport = Some(WrlImportRun {
 					path,
 					name,
-					header.width,
-					header.height,
-					header.tile_count,
-					&self.assets_root,
-				);
-				self.open(modal);
-				self.menu.close();
-				Outcome::Redraw
+					info: (header.width, header.height, header.tile_count),
+					result: None,
+					rows: Vec::new(),
+					matched: 0,
+					used: 0,
+				});
+				self.menu().close();
+				Outcome::OpenDialog(DialogRequest::ImportWrl)
 			}
 			// Help ▸ Go to Website / Project GitHub - hand the URL to the OS browser.
 			Command::OpenUrl { url } => {
-				self.menu.close();
+				self.menu().close();
 				match crate::browser::open(&url) {
 					Ok(()) => Outcome::Ok,
 					Err(e) => Outcome::Failed(e),
@@ -4282,7 +6433,7 @@ impl EditorState {
 			}
 			// Help ▸ User Manual - open the bundled HTML manual in the browser.
 			Command::HelpManual => {
-				self.menu.close();
+				self.menu().close();
 				let manual = self.resources_root.join("manual/index.html");
 				if !manual.is_file() {
 					return Outcome::Failed(format!(
@@ -4295,20 +6446,17 @@ impl EditorState {
 					Err(e) => Outcome::Failed(e),
 				}
 			}
-			// Help ▸ About - the credits / version dialog.
-			Command::About => {
-				self.open(crate::about::About::new());
-				self.menu.close();
-				Outcome::Redraw
-			}
+			// Help ▸ About - the credits / version dialog (wgpu-ui overlay,
+			// shell-routed via `App::act_on`; dropped in headless runs).
+			Command::About => Outcome::OpenDialog(DialogRequest::About),
 			// Run the open image modal's conversion to completion synchronously
 			// (scripts / headless). The interactive button uses the stepped path.
 			Command::Convert => {
-				let Some(m) = self.modal_as::<crate::newfromimage::NewFromImage>() else {
-					return Outcome::Failed("convert: no image to convert (open File ▸ New from Image)".into());
+				let Some(m) = self.newimage.as_ref() else {
+					return Outcome::Failed("convert: no image to convert (open File > New from Image)".into());
 				};
-				let name = m.name.clone();
-				let result = decode_and_build(m).and_then(|mut s| {
+				let (name, path, opts) = (m.name.clone(), m.path.clone(), m.opts);
+				let result = build_convert_session(&path, opts).and_then(|mut s| {
 					while !s.is_done() {
 						s.step(usize::MAX);
 					}
@@ -4318,10 +6466,10 @@ impl EditorState {
 					Ok(wrl) => {
 						let project = Project::from_wrl(&wrl, &name);
 						eprintln!(
-							"imported image: {}×{} cells, {} tiles",
+							"imported image: {}x{} cells, {} tiles",
 							project.width, project.height, wrl.tile_count
 						);
-						self.modal = None;
+						self.newimage = None;
 						self.add_doc(project, None, None)
 					}
 					Err(e) => Outcome::Failed(format!("convert: {e}")),
@@ -4361,8 +6509,10 @@ impl EditorState {
 				// a clean tab closes outright. Closing the last
 				// project is allowed - it resets to a blank scratch.
 				if !force && self.project.dirty() {
-					self.open(crate::confirm::ConfirmClose::new(self.name_at(self.tabs.active)));
-					Outcome::Redraw
+					Outcome::OpenDialog(DialogRequest::ConfirmClose {
+						quit: false,
+						prompt: format!("\"{}\" has unsaved changes.", self.name_at(self.tabs.active)),
+					})
 				} else {
 					self.close_active(force)
 				}
@@ -4384,8 +6534,7 @@ impl EditorState {
 				// GUI quit: clean exits straight away; unsaved work raises the
 				// Save/Discard/Cancel guard instead of losing it.
 				if self.any_dirty() {
-					self.open(crate::confirm::ConfirmClose::new_quit(self.dirty_summary()));
-					Outcome::Redraw
+					Outcome::OpenDialog(DialogRequest::ConfirmClose { quit: true, prompt: self.dirty_summary() })
 				} else {
 					Outcome::Quit
 				}
@@ -4410,8 +6559,10 @@ impl EditorState {
 					Outcome::Ok | Outcome::Redraw => {
 						if self.any_dirty() {
 							// More unsaved tabs - show the guard again for the next.
-							self.open(crate::confirm::ConfirmClose::new_quit(self.dirty_summary()));
-							Outcome::Redraw
+							Outcome::OpenDialog(DialogRequest::ConfirmClose {
+								quit: true,
+								prompt: self.dirty_summary(),
+							})
 						} else {
 							Outcome::Quit
 						}
@@ -4441,13 +6592,68 @@ impl EditorState {
 					&self.resources_root,
 					self.path.as_deref(),
 					self.max_path.as_deref(),
+					self.max_port_path.as_deref(),
 					Some(user_templates.as_path()),
 				);
 				let suggested = dialog_suggested_name(purpose, self.path.as_deref(), &self.project.name);
-				self.menu.close();
+				self.menu().close();
 
 				if self.headless {
 					return Outcome::Failed("file-dialog: not available in headless runs".into());
+				}
+
+				// Export to WRL and Save File (experimental combo): pick the WRL output and
+				// export it, then run the Export Save File flow — both game files from one
+				// menu click. The save half reuses ExportSave (which prompts for a base on a
+				// normal map). Cancelling the WRL pick aborts before anything is written.
+				if matches!(purpose, FilePurpose::ExportWrlAndSave) {
+					let mut d = rfd::FileDialog::new()
+						.set_directory(&start)
+						.set_title("Export to WRL and Save File: choose the .WRL output")
+						.add_filter("M.A.X. WRL maps", &["wrl", "WRL"]);
+					if let Some(name) =
+						dialog_suggested_name(FilePurpose::ExportWrl, self.path.as_deref(), &self.project.name)
+					{
+						d = d.set_file_name(name);
+					}
+					let Some(wrl_path) = d.save_file() else { return Outcome::Redraw };
+					let wrl_outcome = self.execute(Command::Export { path: Some(wrl_export_path(wrl_path)) });
+					if matches!(wrl_outcome, Outcome::Failed(_)) {
+						return wrl_outcome;
+					}
+					// The save half reuses the full Export Save File dialog flow.
+					return self.execute(Command::FileDialog { purpose: FilePurpose::ExportSave });
+				}
+				// Export Save File on a normal map (no save attached): there is nothing to
+				// reconstitute, so build a `.DTA` from a user-picked base save plus the
+				// placed units (`export-save-onto`). Two dialogs — the base to build on,
+				// then the output. With a save open it falls through to the Save-As below.
+				if matches!(purpose, FilePurpose::ExportSave) && self.project.save.is_none() {
+					let base = rfd::FileDialog::new()
+						.set_directory(&start)
+						.set_title("Export as save: choose a base save to build on")
+						.add_filter("M.A.X. saves", &["dta", "DTA"])
+						.add_filter("all files", &["*"])
+						.pick_file();
+					let Some(base) = base else { return Outcome::Redraw };
+					let mut save = rfd::FileDialog::new()
+						.set_directory(&start)
+						.set_title("Export as save: choose where to write the .DTA")
+						.add_filter("M.A.X. saves", &["dta", "DTA"]);
+					if let Some(name) = &suggested {
+						save = save.set_file_name(name);
+					}
+					let Some(out) = save.save_file() else { return Outcome::Redraw };
+					return self.execute(Command::ExportSaveOnBase { base, out });
+				}
+				// A never-saved map prompts Map Metadata before its first save;
+				// the dialog's Save resumes this Save-As (via `first_save_meta`),
+				// its Cancel abandons the save.
+				if matches!(purpose, FilePurpose::SaveAs)
+					&& self.path.is_none()
+					&& !std::mem::take(&mut self.first_save_meta)
+				{
+					return Outcome::OpenDialog(DialogRequest::Metadata { save_after: true });
 				}
 				// Tile Painter PNG export/import: a `.png` dialog whose result a
 				// command line *can* carry (just a path), so handle it up front -
@@ -4455,8 +6661,9 @@ impl EditorState {
 				match purpose {
 					FilePurpose::ExportTilePng => {
 						let name = self
-							.modal_as::<crate::tilepainter::TilePainter>()
-							.map(|p| p.new_id())
+							.tilepaint
+							.as_ref()
+							.map(|r| r.id_text.trim())
 							.filter(|s| !s.is_empty())
 							.unwrap_or("tile");
 						let picked = rfd::FileDialog::new()
@@ -4495,6 +6702,61 @@ impl EditorState {
 							Some(path) => self.execute(Command::TemplateExportPng { path: Some(path) }),
 						};
 					}
+					// Scenery in and out. Import offers both a finished piece and
+					// an image to author one from in the same picker: the user
+					// thinks "bring in that thing", not "which of my two import
+					// verbs is this one".
+					FilePurpose::ImportScenery | FilePurpose::ImportSceneryPng => {
+						let d = rfd::FileDialog::new().set_directory(&start);
+						let d = if purpose == FilePurpose::ImportSceneryPng {
+							d.add_filter("PNG images", &["png"])
+						} else {
+							d.add_filter("scenery", &[map_core::SCN_EXT, "png"]).add_filter("PNG images", &["png"])
+						};
+						return match d.add_filter("all files", &["*"]).pick_file() {
+							None => Outcome::Redraw,
+							Some(path) => self.execute(Command::SceneryImport { path: Some(path) }),
+						};
+					}
+					FilePurpose::ExportScenery => {
+						let name = self.armed_scenery().map_or_else(|| "scenery".to_string(), |(_, id)| id);
+						let picked = rfd::FileDialog::new()
+							.set_directory(&start)
+							.add_filter("scenery", &[map_core::SCN_EXT])
+							.set_file_name(format!("{name}.{}", map_core::SCN_EXT))
+							.save_file();
+						return match picked {
+							None => Outcome::Redraw,
+							Some(path) => self.execute(Command::SceneryExport { path: Some(path) }),
+						};
+					}
+					// A height map goes out and comes back as a plain greyscale
+					// picture - the one thing every paint program can open.
+					FilePurpose::ImportSceneryHeightPng => {
+						let picked =
+							rfd::FileDialog::new().set_directory(&start).add_filter("PNG images", &["png"]).pick_file();
+						return match picked {
+							None => Outcome::Redraw,
+							Some(path) => self.execute(Command::SceneryHeightImport { path: Some(path) }),
+						};
+					}
+					FilePurpose::ExportSceneryHeightPng => {
+						let name = self
+							.scenerypaint
+							.as_ref()
+							.map(|r| r.id_text.clone())
+							.filter(|id| !id.is_empty())
+							.unwrap_or_else(|| "scenery".to_string());
+						let picked = rfd::FileDialog::new()
+							.set_directory(&start)
+							.add_filter("PNG images", &["png"])
+							.set_file_name(format!("{name}.height.png"))
+							.save_file();
+						return match picked {
+							None => Outcome::Redraw,
+							Some(path) => self.execute(Command::SceneryHeightExport { path: Some(path) }),
+						};
+					}
 					_ => {}
 				}
 				// Native dialog (rfd): blocks the event loop, which is fine -
@@ -4505,15 +6767,29 @@ impl EditorState {
 						.add_filter("M.A.X. maps", &["json", "wrl", "WRL"])
 						.add_filter("all files", &["*"])
 						.pick_file(),
-					FilePurpose::NewFromImage => {
+					FilePurpose::NewFromImage | FilePurpose::NewMapShape => {
 						dialog.add_filter("PNG images", &["png"]).add_filter("all files", &["*"]).pick_file()
 					}
 					FilePurpose::ImportWrl => dialog
 						.add_filter("M.A.X. WRL maps", &["wrl", "WRL"])
 						.add_filter("all files", &["*"])
 						.pick_file(),
+					FilePurpose::OpenSave => dialog
+						.add_filter(
+							"M.A.X. saves",
+							&["dta", "DTA", "cam", "CAM", "sce", "SCE", "tra", "TRA", "mps", "MPS", "dmo", "DMO"],
+						)
+						.add_filter("all files", &["*"])
+						.pick_file(),
 					FilePurpose::ExportWrl => {
 						let mut d = dialog.add_filter("M.A.X. WRL maps", &["wrl", "WRL"]);
+						if let Some(name) = &suggested {
+							d = d.set_file_name(name);
+						}
+						d.save_file()
+					}
+					FilePurpose::ExportSave => {
+						let mut d = dialog.add_filter("M.A.X. saves", &["dta", "DTA"]).add_filter("all files", &["*"]);
 						if let Some(name) = &suggested {
 							d = d.set_file_name(name);
 						}
@@ -4549,9 +6825,17 @@ impl EditorState {
 					FilePurpose::ExportTemplate => {
 						dialog.add_filter("templates", &["json"]).set_file_name("template.json").save_file()
 					}
-					FilePurpose::ExportTilePng | FilePurpose::ImportTilePng | FilePurpose::ExportTemplatePng => {
+					FilePurpose::ExportTilePng
+					| FilePurpose::ImportTilePng
+					| FilePurpose::ExportTemplatePng
+					| FilePurpose::ImportScenery
+					| FilePurpose::ExportScenery
+					| FilePurpose::ImportSceneryPng
+					| FilePurpose::ImportSceneryHeightPng
+					| FilePurpose::ExportSceneryHeightPng => {
 						unreachable!("handled before the json dialog")
 					}
+					FilePurpose::ExportWrlAndSave => unreachable!("handled before the json dialog"),
 				};
 				match picked {
 					None => Outcome::Redraw, // canceled
@@ -4565,13 +6849,26 @@ impl EditorState {
 						}
 						FilePurpose::ImportPalette => self.execute(Command::PaletteImport { path }),
 						FilePurpose::NewFromImage => self.execute(Command::NewFromImage { path }),
+						// File → New Terrain from Image: the picked PNG opens the
+						// New Map form with the shape armed for the Create carve.
+						FilePurpose::NewMapShape => Outcome::OpenDialog(DialogRequest::NewMap { shape: Some(path) }),
 						FilePurpose::ImportWrl => self.execute(Command::ImportWrl { path }),
-						FilePurpose::ExportWrl => self.execute(Command::Export { path: Some(path) }),
+						FilePurpose::OpenSave => self.execute(Command::OpenSave { path }),
+						FilePurpose::ExportSave => self.execute(Command::ExportSave { path }),
+						FilePurpose::ExportWrl => self.execute(Command::Export { path: Some(wrl_export_path(path)) }),
 						FilePurpose::ImportTemplate => self.execute(Command::TemplateImport { path }),
 						FilePurpose::ExportTemplate => self.execute(Command::TemplateExport { path }),
-						FilePurpose::ExportTilePng | FilePurpose::ImportTilePng | FilePurpose::ExportTemplatePng => {
+						FilePurpose::ExportTilePng
+						| FilePurpose::ImportTilePng
+						| FilePurpose::ExportTemplatePng
+						| FilePurpose::ImportScenery
+						| FilePurpose::ExportScenery
+						| FilePurpose::ImportSceneryPng
+						| FilePurpose::ImportSceneryHeightPng
+						| FilePurpose::ExportSceneryHeightPng => {
 							unreachable!("handled before the json dialog")
 						}
+						FilePurpose::ExportWrlAndSave => unreachable!("handled before the json dialog"),
 					},
 				}
 			}
@@ -4580,7 +6877,7 @@ impl EditorState {
 				match project.resize(width, height, off_x, off_y) {
 					Ok(()) => {
 						self.view = self.fit_center((width, height));
-						let line = format!("resized to {width}×{height} (offset {off_x},{off_y})");
+						let line = format!("resized to {width}x{height} (offset {off_x},{off_y})");
 						eprintln!("{line}");
 						self.console.push_line(line);
 						// Dimensions changed - the renderer's textures rebuild.
@@ -4589,35 +6886,25 @@ impl EditorState {
 					Err(e) => Outcome::Failed(format!("resize: {e}")),
 				}
 			}
-			Command::ResizeModal => {
-				let project = &self.project;
-				self.open(crate::resize::Resize::new(project.width, project.height));
-				self.menu.close();
-				Outcome::Redraw
-			}
-			Command::AutoFixModal { method } => {
-				// The faithful (match.json) count of broken/misplaced/missing shore.
-				let found = self.project.shore_defects(None);
-				self.open(crate::autofix::AutoFix::new(found));
-				self.menu.close();
-				// A preset method (the menu's one-click "+ Fix") pre-selects it and
-				// auto-starts the run, so it shows live progress + a Stop button and
-				// steps across frames instead of freezing.
-				if let Some(word) = method {
-					let Some(m) = crate::autofix::Method::parse(&word) else {
-						return Outcome::Failed(format!("fix-shore-modal: unknown method '{word}'"));
-					};
-					if let Some(af) = self.modal_as_mut::<crate::autofix::AutoFix>() {
-						af.method = m;
-					}
+			// Opens the wgpu-ui Resize overlay, routed by the shell (`App::run`);
+			// a no-op in headless/script runs (no overlay to show).
+			Command::ResizeModal => Outcome::OpenDialog(DialogRequest::Resize),
+			Command::AutoFixModal { autostart } => {
+				// Seed the run with the faithful (match.json) defect count and
+				// stash the broken cells so they outline in red right away.
+				self.open_autofix();
+				self.menu().close();
+				// `fix-shore-modal go` opens the window and starts the run right away
+				// (live progress, Stop/Abort), stepping across frames.
+				if autostart {
 					self.autofix_start();
 				}
-				Outcome::Redraw
+				Outcome::OpenDialog(DialogRequest::AutoFix)
 			}
 			Command::GenerateModal => {
-				self.open(crate::generator::Generator::from_memory(&self.gen_memory));
-				self.menu.close();
-				Outcome::Redraw
+				self.open_generate();
+				self.menu().close();
+				Outcome::OpenDialog(DialogRequest::Generate)
 			}
 			Command::Export { path } => {
 				let project = &self.project;
@@ -4627,6 +6914,17 @@ impl EditorState {
 				};
 				match map_core::bake(project).and_then(|wrl| {
 					write_wrl_file(&wrl, &target).map_err(|e| e.to_string())?;
+					// The Map Metadata rides along as a JSON tail after the
+					// binary payload - the game (and `read_wrl_file`) reads the
+					// WRL by its structured field sizes and ignores it.
+					if let Some(meta) = project.info_json() {
+						use std::io::Write;
+						std::fs::OpenOptions::new()
+							.append(true)
+							.open(&target)
+							.and_then(|mut f| writeln!(f, "\n{meta}"))
+							.map_err(|e| format!("metadata tail: {e}"))?;
+					}
 					Ok(wrl.tile_count)
 				}) {
 					Ok(tile_count) => {
@@ -4637,10 +6935,224 @@ impl EditorState {
 						);
 						eprintln!("{line}");
 						self.console.push_line(line);
+						// Free-placed scenery mints a unique composed tile per cell it
+						// touches, so a heavily dressed map can walk into the u16 tile
+						// ceiling - where the *next* export fails outright, with no
+						// warning that it was close. Say so while there is still room
+						// to act (SCENERY.md stage E).
+						if tile_count as usize * 100 >= map_core::MAX_BAKED_TILES * BUDGET_WARN_PERCENT {
+							let warn = format!(
+								"warning: {}% of the {}-tile budget is used - scenery mints a tile per cell it covers",
+								tile_count as usize * 100 / map_core::MAX_BAKED_TILES,
+								map_core::MAX_BAKED_TILES,
+							);
+							eprintln!("{warn}");
+							self.console.push_line(warn);
+						}
 						Outcome::Redraw
 					}
 					Err(e) => Outcome::Failed(format!("export {}: {e}", target.display())),
 				}
+			}
+			// Export Save File (S6.1): reconstitute the opened `.DTA` with the
+			// editor's scalar edits + resource map and write it to `path`, rotating a
+			// backup first when overwriting (S6.5). The guided slot/overwrite modal is
+			// deferred; scriptable via `export-save PATH`.
+			Command::NewSave { name, world } => {
+				// The menu form passes no name — default to the project's.
+				let name = if name.is_empty() { self.project.name.clone() } else { name };
+				let Some(db) = self.unit_stats.clone() else {
+					return Outcome::Failed(
+						"new-save: unit stats unavailable - set the M.A.X. Port data folder (Editor Preferences)"
+							.into(),
+					);
+				};
+				let Some(max_path) = self.max_path.clone() else {
+					return Outcome::Failed("new-save: MaxPath not set (MAX.RES supplies unit frame data)".into());
+				};
+				let Some(max_res) = crate::units::find_max_res(&max_path) else {
+					return Outcome::Failed(format!("new-save: MAX.RES not found in {}", max_path.display()));
+				};
+				// Stock slot the save claims (swapped-WRL workflow): explicit
+				// world arg (SNOW_1…DESERT_6), else GREEN_1.
+				let world_index = match &world {
+					Some(w) => {
+						let file = format!("{}.WRL", w.to_ascii_uppercase());
+						match max_assets::save::WORLD_FILE_NAMES.iter().position(|&f| f == file) {
+							Some(i) => i as u8,
+							None => {
+								return Outcome::Failed(format!(
+									"new-save: unknown world '{w}' (use SNOW_1..DESERT_6)"
+								));
+							}
+						}
+					}
+					None => 12, // GREEN_1
+				};
+				// Loadability check (swapped-WRL workflow): on load the game opens
+				// the slot's INSTALLED map file and sizes the whole save stream by
+				// its dimensions - the stored hash is a fixed per-slot string and
+				// verifies nothing. If the installed map's dims differ from this
+				// project's, the exported save desyncs mid-parse in the game; warn
+				// now, at the moment the slot is chosen.
+				let slot_warning = max_assets::save::world_file_name(world_index).and_then(|world_file| {
+					let installed = max_path.join(world_file);
+					match max_assets::wrl::read_wrl_header(&installed) {
+						Ok(h) if (h.width, h.height) == (self.project.width, self.project.height) => None,
+						Ok(h) => Some(format!(
+							"warning: the game will size this save by the installed {world_file} ({}x{}), \
+							 but this map is {}x{} - the save will NOT load until you install this map as {}",
+							h.width,
+							h.height,
+							self.project.width,
+							self.project.height,
+							installed.display(),
+						)),
+						Err(_) => Some(format!(
+							"warning: no readable map installed at {} - the game sizes the save by that \
+							 file; install this map there (slot {}) before loading the save",
+							installed.display(),
+							world_file.trim_end_matches(".WRL"),
+						)),
+					}
+				});
+				let frames = max_assets::attribs::load_frame_infos(&max_res, &db.meta);
+				let seed = std::time::SystemTime::now()
+					.duration_since(std::time::UNIX_EPOCH)
+					.map(|d| d.subsec_nanos() ^ d.as_secs() as u32)
+					.unwrap_or(0x4d41585f); // "MAX_"
+				let opts = map_core::SynthesizeSaveOptions {
+					save_name: name.clone(),
+					world_index,
+					team_clans: [1, 2, 3, 4, 0],
+					start_gold: 150,
+					rng_seed: seed,
+				};
+				match self.project.synthesize_save(&opts, &db, &frames) {
+					Ok(summary) => {
+						let world_name = max_assets::save::world_file_name(world_index)
+							.unwrap_or("?")
+							.trim_end_matches(".WRL")
+							.to_string();
+						self.console.push_line(format!(
+							"synthesized save \"{name}\" ({} units, {} player team{}, slot {world_name}, {} bytes) - attached; File \u{25b8} Export Save File writes the .DTA",
+							summary.units,
+							summary.teams,
+							if summary.teams == 1 { "" } else { "s" },
+							summary.bytes,
+						));
+						if let Some(warn) = slot_warning {
+							eprintln!("{warn}");
+							self.console.push_line(warn);
+						}
+						Outcome::Redraw
+					}
+					Err(e) => Outcome::Failed(format!("new-save: {e}")),
+				}
+			}
+			Command::ExportSave { path } => {
+				if self.project.save.is_none() {
+					return Outcome::Failed("export-save: no save open (open a `.DTA` first)".into());
+				}
+				// Count corrupt-runtime-state units before export; `export_save` repairs
+				// them (`save-editor-bug.md`), and we note how many below.
+				let repaired = self.project.save_integrity_issues().len();
+				// With the unit database + MAX.RES at hand, a placement whose type
+				// the save lacks exports as a fresh from-scratch body instead of
+				// being dropped (V71 saves).
+				let frames = self.fresh_body_frames();
+				let ctx = self
+					.unit_stats
+					.as_ref()
+					.zip(frames.as_ref())
+					.map(|(db, frames)| max_assets::save::FreshBodyCtx { db, frames });
+				let (bytes, dropped) = match self.project.export_save_with(ctx.as_ref()) {
+					Ok(v) => v,
+					Err(e) => return Outcome::Failed(format!("export-save {}: {e}", path.display())),
+				};
+				// Never overwrite without a backup (S6.5): rotate the prior file to
+				// `NAME.bak1`, shifting older backups up and dropping the 6th.
+				let backed_up = match rotate_backups(&path, SAVE_BACKUP_KEEP) {
+					Ok(b) => b,
+					Err(e) => return Outcome::Failed(format!("export-save {}: backup failed: {e}", path.display())),
+				};
+				if let Err(e) = std::fs::write(&path, &bytes) {
+					return Outcome::Failed(format!("export-save {}: {e}", path.display()));
+				}
+				// Surface any edits the export could not reflect so they aren't
+				// silently dropped (house rule: no silent caps).
+				let mut line = format!("exported save {} ({} bytes)", path.display(), bytes.len());
+				if backed_up {
+					line.push_str(&format!(" - prior version kept as {}.bak1", path.display()));
+				}
+				if !dropped.is_empty() {
+					line.push_str(&format!(
+						" - WARNING: {} placed unit(s) NOT exported (no same-type template in the save, and \
+						 no unit database / MAX.RES to synthesize a body): {}",
+						dropped.len(),
+						dropped.join(", "),
+					));
+				}
+				if repaired > 0 {
+					line.push_str(&format!(" - repaired {repaired} unit(s) with corrupt runtime state"));
+				}
+				eprintln!("{line}");
+				self.console.push_line(line);
+				Outcome::Redraw
+			}
+			// Save a normal map (no attached save) as a `.DTA` by adding its placed
+			// units onto a user-picked base save. The base carries the game-state
+			// skeleton + terrain; placed types with no template in it are skipped.
+			Command::ExportSaveOnBase { base, out } => {
+				let base_raw = match std::fs::read(&base) {
+					Ok(b) => b,
+					Err(e) => {
+						return Outcome::Failed(format!("export-save-onto: reading base {}: {e}", base.display()));
+					}
+				};
+				// Same fresh-body context as `export-save`: a type absent from the
+				// base synthesizes a from-scratch body when the runtime data exists.
+				let frames = self.fresh_body_frames();
+				let ctx = self
+					.unit_stats
+					.as_ref()
+					.zip(frames.as_ref())
+					.map(|(db, frames)| max_assets::save::FreshBodyCtx { db, frames });
+				let (bytes, skipped) = match self.project.export_onto_base(&base_raw, ctx.as_ref()) {
+					Ok(r) => r,
+					Err(e) => return Outcome::Failed(format!("export-save-onto {}: {e}", out.display())),
+				};
+				// Never overwrite without a backup (S6.5), same as `export-save`.
+				let backed_up = match rotate_backups(&out, SAVE_BACKUP_KEEP) {
+					Ok(b) => b,
+					Err(e) => {
+						return Outcome::Failed(format!("export-save-onto {}: backup failed: {e}", out.display()));
+					}
+				};
+				if let Err(e) = std::fs::write(&out, &bytes) {
+					return Outcome::Failed(format!("export-save-onto {}: {e}", out.display()));
+				}
+				let added = self.project.objects.len().saturating_sub(skipped.len());
+				let mut line = format!(
+					"exported save {} ({} bytes) - {added} unit(s) added onto {}",
+					out.display(),
+					bytes.len(),
+					base.display(),
+				);
+				if backed_up {
+					line.push_str(&format!(" - prior version kept as {}.bak1", out.display()));
+				}
+				if !skipped.is_empty() {
+					line.push_str(&format!(
+						" - WARNING: {} placed unit(s) NOT exported (no same-type template in the base, and \
+						 no unit database / MAX.RES to synthesize a body): {}",
+						skipped.len(),
+						skipped.join(", "),
+					));
+				}
+				eprintln!("{line}");
+				self.console.push_line(line);
+				Outcome::Redraw
 			}
 			Command::ConvertPaletteModal => {
 				if !self.project.is_wrl_import() {
@@ -4648,41 +7160,146 @@ impl EditorState {
 						"convert-palette: only an opened WRL has an internal palette to convert".into(),
 					);
 				}
-				self.open(crate::convertpalette::ConvertPalette::new());
-				self.menu.close();
-				Outcome::Redraw
+				self.menu().close();
+				Outcome::OpenDialog(DialogRequest::ConvertPalette)
 			}
+			// Opens the wgpu-ui Map Metadata overlay, routed by the shell
+			// (`App::run`); a no-op in headless/script runs (no overlay to show).
+			Command::MetadataModal => Outcome::OpenDialog(DialogRequest::Metadata { save_after: false }),
 			Command::PreferencesModal => {
-				self.open(crate::preferences::Preferences::from_project(&self.project));
-				self.menu.close();
-				Outcome::Redraw
+				// A manual open (menu / Attention ▸ Continue) is never "required".
+				self.paths_prompt_reason = None;
+				Outcome::OpenDialog(DialogRequest::EditorPreferences)
+			}
+			// The Open Save File menu item / keybinding land here first: warn that
+			// the save editor is experimental before the file picker. Confirming
+			// the dialog runs `file-dialog open-save` (see the shell's dialog map).
+			Command::OpenSaveWarn => {
+				self.menu().close();
+				Outcome::OpenDialog(DialogRequest::ConfirmExperimentalOpenSave)
+			}
+			Command::EditSaveData => {
+				self.menu().close();
+				self.open_edit_save_data()
 			}
 			Command::TilePaintNew => {
-				self.menu.close();
+				self.menu().close();
 				self.open_tile_new()
 			}
 			Command::TilePaintClone => {
-				self.menu.close();
+				self.menu().close();
 				self.open_tile_clone()
 			}
 			Command::TilePaintEdit => {
-				self.menu.close();
+				self.menu().close();
 				self.open_tile_edit()
 			}
-			Command::TileCommit => self.tile_paint_commit(),
+			// The script path commits with the run's defaults (a script can't
+			// type into the dialog); the interactive path passes the widgets'
+			// values through the shell instead.
+			Command::TileCommit => match self.tilepaint.as_ref() {
+				Some(run) => {
+					let (typed, pass, pack) = (run.id_text.clone(), run.pass, run.target_pack().to_string());
+					self.tile_paint_commit(typed, pass, pack)
+				}
+				None => Outcome::Ok,
+			},
 			Command::TileDelete => self.delete_active_tile(),
 			Command::TileExportPng { path } => self.tile_export_png(&path),
 			Command::TileImportPng { path } => self.tile_import_png(&path),
+			Command::SceneryNew => {
+				self.menu().close();
+				self.open_scenery_new()
+			}
+			Command::SceneryClone => {
+				self.menu().close();
+				self.open_scenery_from_armed(crate::scenerypaint::Mode::Clone)
+			}
+			Command::SceneryEdit => {
+				self.menu().close();
+				self.open_scenery_from_armed(crate::scenerypaint::Mode::Edit)
+			}
+			Command::SceneryImport { path } => match path {
+				Some(path) => self.scenery_import(&path),
+				None => self.execute(Command::FileDialog { purpose: FilePurpose::ImportScenery }),
+			},
+			Command::SceneryExport { path } => match path {
+				Some(path) => self.scenery_export(&path),
+				None => self.execute(Command::FileDialog { purpose: FilePurpose::ExportScenery }),
+			},
+			// The script path commits with the run's defaults (a script cannot
+			// type into the dialog); the interactive path passes the widgets'
+			// values through the shell instead - the Tile Painter's split.
+			Command::SceneryCommit => match self.scenerypaint.as_ref() {
+				Some(run) => {
+					let (pack, id, name) = (run.target_pack().to_string(), run.id_text.clone(), run.name_text.clone());
+					// The art is whatever the run holds: a rasterized image, or the
+					// piece a Clone/Edit opened on.
+					let carried = run.piece.as_ref().and_then(|p| p.height.clone());
+					let derived = match (run.uses_image(), run.piece.clone()) {
+						(false, Some(p)) => Some((p.sprite, p.pass, p.cells_w, p.cells_h)),
+						_ => self.rasterize_scenery_run(None),
+					};
+					match derived {
+						Some((sprite, pass, w, h)) => {
+							// A height map imported by script wins over one the source
+							// piece carried, exactly as an imported image wins over its
+							// art; `scenery_commit` drops either if it does not fit.
+							let height = self.fit_scenery_height(&sprite, (w, h), None).or(carried);
+							self.scenery_commit(pack, id, name, sprite, pass, (w, h), None, height)
+						}
+						None => Outcome::Failed("scenery-commit: nothing to commit - import an image first".into()),
+					}
+				}
+				None => Outcome::Ok,
+			},
+			Command::SceneryHeightImport { path } => match path {
+				Some(path) => self.scenery_height_import(&path),
+				None => self.execute(Command::FileDialog { purpose: FilePurpose::ImportSceneryHeightPng }),
+			},
+			Command::SceneryHeightExport { path } => match path {
+				Some(path) => self.scenery_height_export(&path),
+				None => self.execute(Command::FileDialog { purpose: FilePurpose::ExportSceneryHeightPng }),
+			},
+			Command::SceneryDelete { force } => self.scenery_delete(force),
+			Command::SceneryRename { name } => self.scenery_rename(name),
 			Command::Bake => {
-				self.menu.close();
+				self.menu().close();
 				self.bake()
 			}
 			Command::MatchEditor => {
-				self.menu.close();
+				self.menu().close();
 				self.open_match_editor()
 			}
+			Command::UiTests => {
+				self.menu().close();
+				if !self.dev_mode {
+					return Outcome::Failed("ui-tests: requires --dev".into());
+				}
+				Outcome::OpenDialog(DialogRequest::UiTests)
+			}
+			Command::MatchCombos { pack } => {
+				self.menu().close();
+				if !self.dev_mode {
+					return Outcome::Failed("match-combos: requires --dev".into());
+				}
+				// The named pack, else the active map's palette-owning tileset.
+				let Some(pack) = pack.or_else(|| self.project.uses.iter().find(|u| u.palette).map(|u| u.name.clone()))
+				else {
+					return Outcome::Failed("match-combos: no tileset (open a map or name a pack)".into());
+				};
+				match map_core::match_combos_map(&pack, &self.assets_root, roll_seed()) {
+					Ok(project) => {
+						let line = format!("match combos for {pack}: {}x{} map", project.width, project.height);
+						eprintln!("{line}");
+						self.console.push_line(line);
+						self.add_doc(project, None, None)
+					}
+					Err(e) => Outcome::Failed(format!("match-combos: {e}")),
+				}
+			}
 			Command::UpdateMap => {
-				self.menu.close();
+				self.menu().close();
 				if !self.dev_mode {
 					return Outcome::Failed("update-map: requires --dev".into());
 				}
@@ -4772,6 +7389,29 @@ impl EditorState {
 			Command::PassOverlay { on } => {
 				self.show_pass_overlay = on.unwrap_or(!self.show_pass_overlay);
 				self.console.push_line(format!("pass overlay: {}", if self.show_pass_overlay { "on" } else { "off" },));
+				Outcome::Redraw
+			}
+			Command::Resources { on } => {
+				self.show_resources = on.unwrap_or(!self.show_resources);
+				self.console.push_line(format!("resource overlay: {}", if self.show_resources { "on" } else { "off" }));
+				// Load the marker sprites so the overlay draws them like the game; a
+				// failure (no MaxPath) is non-fatal - the overlay falls back to tint.
+				if self.show_resources {
+					let _ = self.ensure_markers();
+				}
+				Outcome::Redraw
+			}
+			Command::ShoreBugs { on } => {
+				self.show_shore_bugs = on.unwrap_or(!self.show_shore_bugs);
+				self.shore_bug_rev = u64::MAX; // force a recompute on the next frame
+				self.console.push_line(format!("shore bugs: {}", if self.show_shore_bugs { "on" } else { "off" }));
+				Outcome::Redraw
+			}
+			Command::MatchProblems { on } => {
+				self.show_match_problems = on.unwrap_or(!self.show_match_problems);
+				self.match_problem_rev = u64::MAX; // force a recompute on the next frame
+				self.console
+					.push_line(format!("match problems: {}", if self.show_match_problems { "on" } else { "off" }));
 				Outcome::Redraw
 			}
 			Command::ShowOnlyLayer { on } => {
@@ -4872,1278 +7512,5 @@ impl EditorState {
 			}
 			_ => unreachable!("non-assert command routed to exec_assert"),
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	fn resources() -> PathBuf {
-		Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources")
-	}
-
-	#[test]
-	fn nearest_palette_index_matches_closest_and_skips_slot_0() {
-		// Palette: slot 0 black (transparent slot), 1 red, 2 green, 3 blue.
-		let mut pal = vec![0u8; 768];
-		pal[3..6].copy_from_slice(&[255, 0, 0]);
-		pal[6..9].copy_from_slice(&[0, 255, 0]);
-		pal[9..12].copy_from_slice(&[0, 0, 255]);
-		assert_eq!(nearest_palette_index(&pal, 250, 10, 10), 1, "near-red → red");
-		assert_eq!(nearest_palette_index(&pal, 10, 240, 5), 2, "near-green → green");
-		// Pure black is closest to slot 0, but slot 0 is skipped, so it falls to
-		// the next-nearest real color rather than mapping to "transparent".
-		assert_ne!(nearest_palette_index(&pal, 0, 0, 0), 0);
-	}
-
-	#[test]
-	fn template_map_entries_label_name_and_filename() {
-		let entries = template_map_entries(&resources().join("assets/maps"));
-		assert!(!entries.is_empty(), "the shipped stock maps");
-		// Map name as the label, file name right-aligned in the note column -
-		// GREEN_1.json is "New Luzon".
-		let green = entries.iter().find(|e| e.path.file_stem().is_some_and(|s| s == "GREEN_1")).expect("GREEN_1");
-		assert_eq!(green.label, "New Luzon");
-		assert_eq!(green.note.as_deref(), Some("GREEN_1"));
-	}
-
-	fn editor() -> EditorState {
-		let resources = resources();
-		let project = Project::new(8, 8, &["GREEN".to_string()], &resources.join("assets/tilepacks"), 1).unwrap();
-		EditorState::new(project, (800, 600), None, resources)
-	}
-
-	fn new_tab(e: &mut EditorState, seed: u64) -> Outcome {
-		e.execute(Command::New { width: 8, height: 8, packs: vec!["GREEN".into()], seed: Some(seed) })
-	}
-
-	/// Routing safety net: every toolbox run-button command must parse AND
-	/// execute without tripping an `unreachable!` (mis-routed-variant) panic.
-	/// Toolbox commands are side-effect-free (tool/brush/shape/layer/transform/
-	/// pass/select) - no IO or dialogs - so running them on a scratch editor is
-	/// safe. `Act::Todo` buttons carry no command and are skipped.
-	#[test]
-	fn toolbox_commands_route_without_panicking() {
-		for group in crate::toolbox::GROUPS {
-			for button in group.buttons {
-				let crate::toolbox::Act::Run(cmd) = button.act else { continue };
-				let parsed = crate::command::parse_line(cmd)
-					.unwrap_or_else(|e| panic!("{cmd}: parse error: {e}"))
-					.unwrap_or_else(|| panic!("{cmd}: empty command"));
-				// A mis-routed variant trips `unreachable!` in execute and fails here.
-				let mut e = editor();
-				let _ = e.execute(parsed);
-			}
-		}
-	}
-
-	#[test]
-	fn filename_sanitization_lowercases_and_strips() {
-		assert_eq!(sanitize_filename("My Cool Oasis"), "my-cool-oasis");
-		assert_eq!(sanitize_filename("a/b:c*?"), "abc", "special chars dropped");
-		assert_eq!(sanitize_filename("  spaced  out  "), "spaced-out", "edges trimmed, runs collapsed");
-		assert_eq!(sanitize_filename("Lake-2"), "lake-2");
-		assert_eq!(sanitize_filename("***"), "template", "empty result falls back");
-		assert_eq!(sanitize_filename("под"), "template", "non-ascii dropped -> fallback");
-	}
-
-	#[test]
-	fn natural_sort_orders_numbers_by_value() {
-		use std::cmp::Ordering::Less;
-		assert_eq!(natural_cmp("template-3", "template-20"), Less, "3 < 20");
-		assert_eq!(natural_cmp("template-20", "template-100"), Less, "20 < 100");
-		let mut v = ["template-100", "template-3", "template-20", "template-2", "template-1"];
-		v.sort_by(|a, b| natural_cmp(a, b));
-		assert_eq!(v, ["template-1", "template-2", "template-3", "template-20", "template-100"]);
-		// Leading zeros tie by value; plain text is case-insensitive.
-		assert_eq!(natural_cmp("a007", "a7"), std::cmp::Ordering::Equal);
-		assert_eq!(natural_cmp("Crater", "desert"), Less);
-	}
-
-	#[test]
-	fn dedupe_finds_only_removable_exact_duplicates() {
-		let mut e = editor();
-		// All-hole templates resolve in any project, so every one is "visible".
-		let mk = |w: u16, h: u16| Template {
-			name: String::new(),
-			width: w,
-			height: h,
-			uses: Vec::new(),
-			cells: vec![String::new(); (w * h) as usize],
-		};
-		let entry = |name: &str, stock: bool, t: Template| TemplateEntry {
-			name: name.to_string(),
-			path: PathBuf::from(format!("{name}.json")),
-			stock,
-			template: t,
-		};
-		// A stock template, two user copies of it, then a differently-sized one.
-		e.templates.entries = vec![
-			entry("stock", true, mk(2, 1)),
-			entry("copy-a", false, mk(2, 1)),
-			entry("copy-b", false, mk(2, 1)),
-			entry("other", false, mk(1, 1)),
-		];
-		// Both user copies are removable duplicates of the (kept) earlier original;
-		// the stock entry and the odd-sized one are left alone.
-		assert_eq!(e.duplicate_template_indices(), vec![1, 2]);
-	}
-
-	#[test]
-	fn context_menu_opens_with_state_dependent_items() {
-		let mut e = editor();
-		e.apply_shortcut_hints(vec![("copy".into(), "Ctrl+C".into())]);
-		// Nothing selected, empty clipboard: the lean menu.
-		assert!(matches!(e.execute(Command::ContextMenu { at: Some((400.0, 300.0)) }), Outcome::Redraw));
-		let lean = e.context_menu.as_ref().expect("open").panel(800.0, 600.0);
-		// Select something: the clipboard block appears, the panel grows.
-		e.execute(Command::SelectRect { x0: 1, y0: 1, x1: 2, y1: 2, mode: SelectMode::Replace });
-		e.execute(Command::ContextMenu { at: Some((400.0, 300.0)) });
-		let full = e.context_menu.as_ref().expect("open").panel(800.0, 600.0);
-		assert!(full.h > lean.h, "selection adds cut/copy/delete rows");
-		// `off` closes.
-		e.execute(Command::ContextMenu { at: None });
-		assert!(e.context_menu.is_none());
-	}
-
-	#[test]
-	fn focused_field_modal_yields_a_text_edit_menu() {
-		use crate::modal::ModalKey;
-		let action_cmds = |e: &EditorState| -> Vec<String> {
-			e.context_menu_items(None)
-				.into_iter()
-				.filter_map(|i| match i {
-					menu::Item::Action { command, .. } => Some(command),
-					_ => None,
-				})
-				.collect()
-		};
-		let mut e = editor();
-		// Map Preferences opens with its Name field focused → the edit menu, not
-		// the map menu (Paste always; no selection yet, so no Cut/Copy/Delete).
-		assert!(matches!(e.execute(Command::PreferencesModal), Outcome::Redraw));
-		let cmds = action_cmds(&e);
-		assert!(cmds.iter().any(|c| c == "edit-paste"), "paste offered: {cmds:?}");
-		assert!(!cmds.iter().any(|c| c == "fit"), "not the map menu: {cmds:?}");
-		assert!(!cmds.iter().any(|c| c == "edit-copy"), "no selection → no copy: {cmds:?}");
-		// Type + select: Cut/Copy/Delete now appear (and Select All, non-empty).
-		{
-			let m = e.active_modal().unwrap();
-			m.on_key(ModalKey::Char('X'));
-			m.on_key(ModalKey::SelectAll);
-		}
-		let cmds = action_cmds(&e);
-		for want in ["edit-cut", "edit-copy", "edit-delete", "edit-paste", "edit-select-all"] {
-			assert!(cmds.iter().any(|c| c == want), "{want} offered with a selection: {cmds:?}");
-		}
-		// Each edit row advertises its fixed shell shortcut (these keys are wired
-		// into the modal handler, not the config), so the menu still teaches them.
-		let hint = |cmd: &str| {
-			e.context_menu_items(None).into_iter().find_map(|i| match i {
-				menu::Item::Action { command, hint, .. } if command == cmd => Some(hint),
-				_ => None,
-			})
-		};
-		assert_eq!(hint("edit-copy"), Some(Some("Ctrl+C".into())));
-		assert_eq!(hint("edit-paste"), Some(Some("Ctrl+V".into())));
-		assert_eq!(hint("edit-select-all"), Some(Some("Ctrl+A".into())));
-	}
-
-	#[test]
-	fn menu_hint_resolves_binding_alias_and_fixed_shortcut() {
-		let mut e = editor();
-		e.apply_shortcut_hints(vec![("undo".into(), "Ctrl+Z".into()), ("quit".into(), "Esc".into())]);
-		// Exact config binding.
-		assert_eq!(e.menu_hint("undo").as_deref(), Some("Ctrl+Z"));
-		// Alias: Exit runs `quit-request` but shows the `quit` chord, and follows
-		// a rebind (here the table maps `quit` to Esc).
-		assert_eq!(e.menu_hint("quit-request").as_deref(), Some("Esc"));
-		// Fixed shell shortcuts (not in the config table).
-		assert_eq!(e.menu_hint("edit-cut").as_deref(), Some("Ctrl+X"));
-		assert_eq!(e.menu_hint("stamp cancel").as_deref(), Some("Esc"));
-		// Unbound commands stay clean.
-		assert_eq!(e.menu_hint("map-preferences"), None);
-		// The bar bakes the alias too: File ▸ Exit gets the quit chord.
-		let exit = e.menu.menus.iter().flat_map(|m| &m.items).find_map(|i| match i {
-			menu::Item::Action { command, hint, .. } if command == "quit-request" => Some(hint.clone()),
-			_ => None,
-		});
-		assert_eq!(exit, Some(Some("Esc".into())), "Exit row baked with the quit chord");
-	}
-
-	#[test]
-	fn palette_manager_save_rename_delete_round_trip() {
-		let mut e = editor();
-		let dir = e.user_palettes_dir();
-		let path = dir.join("__test_pal__.json");
-		let renamed = dir.join("__test_pal2__.json");
-		// Clean slate (a leftover from a previously-failed run must not confuse us).
-		let _ = std::fs::remove_file(&path);
-		let _ = std::fs::remove_file(&renamed);
-
-		// Save the working palette under a name → file written, rescanned, selected.
-		assert!(matches!(e.execute(Command::PaletteSaveAs { name: "__test_pal__".into() }), Outcome::Redraw));
-		assert!(path.is_file(), "saved file exists");
-		assert!(e.palettes.files.contains(&path), "rescanned + present");
-		assert_eq!(e.selected_palette(), Some(&path), "the new palette is selected");
-		assert!(e.selected_palette_is_user(), "a user palette is editable");
-
-		// Rename it.
-		e.execute(Command::PaletteRename { from: path.clone(), to: "__test_pal2__".into() });
-		assert!(!path.is_file() && renamed.is_file(), "renamed on disk");
-		assert_eq!(e.selected_palette(), Some(&renamed));
-
-		// Delete it.
-		e.execute(Command::PaletteDelete { path: renamed.clone() });
-		assert!(!renamed.is_file(), "deleted on disk");
-		assert!(e.palettes.sel.is_none(), "selection cleared");
-	}
-
-	#[test]
-	fn map_palette_toggle_reseeds_the_cycler_from_the_internal_palette() {
-		let mut e = editor();
-		// A GREEN project: working slot 1 is the game red, the pack's own
-		// (internal) byte there differs - that's exactly what the toggle shows.
-		let game = [e.project.palette[3], e.project.palette[4], e.project.palette[5]];
-		let internal = e.project.internal_palette();
-		let raw = [internal[3], internal[4], internal[5]];
-		assert_ne!(game, raw, "GREEN's palette.json slot 1 differs from the game palette");
-
-		assert!(matches!(e.execute(Command::MapPalette { on: None }), Outcome::Redraw));
-		assert!(e.debug_map_palette);
-		assert_eq!(&e.cycler.rgba()[4..7], &raw, "cycler reseeded from the internal palette");
-		e.execute(Command::MapPalette { on: Some(false) });
-		assert!(!e.debug_map_palette);
-		assert_eq!(&e.cycler.rgba()[4..7], &game, "back to the game-resolved palette");
-		// A `window wrlpalette` toggle reaches the (hidden-by-default) panel.
-		assert!(!e.workspace.is_visible("wrlpalette"));
-		assert!(matches!(e.execute(Command::Window { id: "wrlpalette".into(), on: Some(true) }), Outcome::Redraw));
-		assert!(e.workspace.is_visible("wrlpalette"));
-	}
-
-	#[test]
-	fn map_preferences_modal_edits_and_applies_metadata() {
-		use crate::modal::ModalKey;
-		let mut e = editor();
-		assert!(matches!(e.execute(Command::PreferencesModal), Outcome::Redraw));
-		assert!(e.modal_as::<crate::preferences::Preferences>().is_some());
-		{
-			let m = e.active_modal().unwrap();
-			// Name field is focused first; replace its default, then Tab past
-			// Players to Description and type there too.
-			m.on_key(ModalKey::SelectAll);
-			for c in "Twin Peaks".chars() {
-				m.on_key(ModalKey::Char(c));
-			}
-		}
-		e.apply_preferences();
-		assert!(e.modal_as::<crate::preferences::Preferences>().is_none(), "save closes the modal");
-		assert_eq!(e.project.name, "Twin Peaks");
-		assert!(e.dirty());
-	}
-
-	#[test]
-	fn status_bar_toggles_and_reserves_the_bottom_strip() {
-		let mut e = editor();
-		assert!(e.status_bar);
-		assert_eq!(e.workspace.bottom, crate::statusbar::BAR_H);
-		e.execute(Command::StatusBar { on: Some(false) });
-		assert!(!e.status_bar);
-		assert_eq!(e.workspace.bottom, 0.0, "hidden bar releases the strip");
-		e.execute(Command::StatusBar { on: None });
-		assert!(e.status_bar);
-		// The hint follows the active tool / mode.
-		e.execute(Command::ToolSelect { name: "eraser".into() });
-		assert!(e.status_hint().contains("Eraser"), "{}", e.status_hint());
-		e.execute(Command::Mode { name: "localpass".into() });
-		assert!(e.status_hint().contains("Override"), "{}", e.status_hint());
-	}
-
-	#[test]
-	fn brush_size_paints_a_centered_square() {
-		let mut e = editor(); // 8×8
-		e.execute(Command::Tile { spec: Some("GLa000".into()) });
-		e.execute(Command::BrushSize { size: 3 });
-		assert_eq!(e.brush_size, 3);
-		e.execute(Command::Paint { x: 4, y: 4 });
-		let ground = |e: &EditorState, x, y| e.project.cell(x, y).unwrap()[LAYER_GROUND].is_some();
-		for dy in -1..=1i32 {
-			for dx in -1..=1i32 {
-				assert!(ground(&e, (4 + dx) as u16, (4 + dy) as u16), "({},{}) painted", 4 + dx, 4 + dy);
-			}
-		}
-		assert!(!ground(&e, 6, 4), "outside the 3×3 footprint untouched");
-		// Even sizes snap odd so the square stays centred.
-		e.execute(Command::BrushSize { size: 4 });
-		assert_eq!(e.brush_size, 5);
-	}
-
-	#[test]
-	fn circle_brush_drops_the_far_corners() {
-		let mut e = editor(); // 8×8
-		e.execute(Command::BrushSize { size: 5 });
-		e.execute(Command::BrushShape { shape: "circle".into() });
-		let cells = e.brush_cells(4, 4);
-		assert!(!cells.contains(&(2, 2)) && !cells.contains(&(6, 6)), "circle drops the far corners");
-		assert!(cells.contains(&(4, 2)) && cells.contains(&(2, 4)), "axis cells kept");
-		e.execute(Command::BrushShape { shape: "square".into() });
-		assert!(e.brush_cells(4, 4).contains(&(2, 2)), "square keeps corners");
-	}
-
-	#[test]
-	fn terrain_brush_paints_a_land_water_mask_and_grows_the_coast() {
-		let mut e = editor(); // 8×8 GREEN
-		let ground = |e: &EditorState, x, y| e.project.cell(x, y).unwrap()[LAYER_GROUND];
-		let water = |e: &EditorState, x, y| e.project.cell(x, y).unwrap()[LAYER_WATER];
-
-		// "water" button: arms the terrain brush AND picks the water material.
-		e.execute(Command::ToolSelect { name: "paint-water".into() });
-		assert_eq!(e.tool, Tool::PaintMask);
-		assert!(e.mask_water, "the water button paints water");
-		// One huge dab floods the whole 8×8 to open ocean (no active tile needed).
-		e.execute(Command::BrushShape { shape: "square".into() });
-		e.execute(Command::BrushSize { size: 15 });
-		e.execute(Command::PaintMask { x: 4, y: 4 });
-		for y in 0..8u16 {
-			for x in 0..8u16 {
-				assert!(ground(&e, x, y).is_none(), "({x},{y}) ground cleared for water");
-				assert!(water(&e, x, y).is_some(), "({x},{y}) water-variant beneath");
-			}
-		}
-		e.take_mask_region(); // discard the flood's bounds
-
-		// "land" button flips the material; paint a 3×3 island into the ocean.
-		e.execute(Command::ToolSelect { name: "paint-land".into() });
-		assert!(!e.mask_water, "the land button paints land");
-		e.execute(Command::BrushSize { size: 3 });
-		e.execute(Command::PaintMask { x: 4, y: 4 });
-		for dy in -1..=1i32 {
-			for dx in -1..=1i32 {
-				assert!(ground(&e, (4 + dx) as u16, (4 + dy) as u16).is_some(), "land at ({},{})", 4 + dx, 4 + dy);
-			}
-		}
-
-		// The stroke recorded its painted bounds, grown by one and clamped.
-		let region = e.take_mask_region().expect("the stroke painted something");
-		assert_eq!(region, (2, 2, 6, 6), "3×3 footprint at (4,4), grown by one");
-		assert!(e.take_mask_region().is_none(), "the bounds are consumed once");
-
-		// Shoring that region (what release does) tiles the new coast: the water
-		// ring around the island becomes shore on the ground layer.
-		let (changed, _unresolved) = e.project.auto_shore(Some(region));
-		assert!(changed > 0, "the land/water boundary grew shore tiles");
-		assert!(ground(&e, 2, 4).is_some(), "a shore tile landed on the island's coast");
-	}
-
-	#[test]
-	fn auto_shore_command_sets_the_brush_coast_mode() {
-		let mut e = editor();
-		assert_eq!(e.brush_shore, BrushShore::Sweep, "default is sweep");
-		e.execute(Command::AutoShore { mode: "loop-walk".into() });
-		assert_eq!(e.brush_shore, BrushShore::LoopWalk);
-		e.execute(Command::AutoShore { mode: "off".into() });
-		assert_eq!(e.brush_shore, BrushShore::Off);
-		assert!(matches!(e.execute(Command::AutoShore { mode: "bogus".into() }), Outcome::Failed(_)));
-	}
-
-	#[test]
-	fn fix_shore_modal_loops_to_a_clean_coast_then_undoes() {
-		// A 24x24 GREEN map with a RAW scattered-noise mask (auto-shore off):
-		// dense enough that a single placement pass leaves broken seams the GREEN
-		// set can't tile without reshaping - so the accurate tier must escalate.
-		let res = resources();
-		let project = Project::new(24, 24, &["GREEN".to_string()], &res.join("assets/tilepacks"), 1).unwrap();
-		let mut e = EditorState::new(project, (800, 600), None, res);
-		e.execute(Command::AutoShore { mode: "off".into() });
-		e.execute(Command::ToolSelect { name: "paint-water".into() });
-		e.execute(Command::BrushShape { shape: "square".into() });
-		e.execute(Command::BrushSize { size: 99 });
-		e.execute(Command::PaintMask { x: 12, y: 12 });
-		e.execute(Command::ToolSelect { name: "paint-land".into() });
-		e.execute(Command::BrushSize { size: 1 });
-		for y in 0..24u16 {
-			for x in 0..24u16 {
-				if (x.wrapping_mul(2654) ^ y.wrapping_mul(40503)) % 5 < 2 {
-					e.execute(Command::PaintMask { x, y });
-				}
-			}
-		}
-		// Placement alone leaves broken seams the accurate tier must escalate past.
-		let raw = e.project.shore_defects(None);
-		assert!(raw > 0, "the noise mask has defects");
-
-		// Open the dialog on the accurate tier (escalates) and drive its
-		// per-frame loop to completion - it must never report done with defects.
-		e.execute(Command::AutoFixModal { method: Some("sweep-fix".into()) });
-		assert!(e.autofix_running(), "a preset method auto-starts the run");
-		let mut guard = 0;
-		while e.autofix_running() {
-			e.autofix_tick(0.0, false);
-			guard += 1;
-			assert!(guard < 10_000, "the fix loop must terminate");
-		}
-		assert_eq!(e.project.shore_defects(None), 0, "the modal leaves a perfect coast");
-		let af = e.modal_as::<crate::autofix::AutoFix>().unwrap();
-		assert_eq!(af.remaining, 0, "the dialog reports zero remaining");
-		assert!(af.applied.is_some(), "and an applied result (so Undo is offered)");
-
-		// Undo reverts the whole fix (placement + every pass) in one step.
-		e.autofix_undo();
-		assert_eq!(e.project.shore_defects(None), raw, "undo restores the raw coast");
-		assert!(e.modal_as::<crate::autofix::AutoFix>().unwrap().applied.is_none(), "Undo clears the applied result");
-	}
-
-	#[test]
-	fn shore_ladder_lays_missing_coast_and_fixes_seams() {
-		use map_core::FixStrength;
-		// Paint a RAW land/water mask (terrain brush, auto-shore off) so there is
-		// no coast yet - the case the old fix modes couldn't handle.
-		let paint_raw = |e: &mut EditorState| {
-			e.execute(Command::AutoShore { mode: "off".into() });
-			e.execute(Command::ToolSelect { name: "paint-water".into() });
-			e.execute(Command::BrushShape { shape: "square".into() });
-			e.execute(Command::BrushSize { size: 15 });
-			e.execute(Command::PaintMask { x: 4, y: 4 }); // flood to ocean
-			e.execute(Command::ToolSelect { name: "paint-land".into() });
-			e.execute(Command::BrushSize { size: 3 });
-			e.execute(Command::PaintMask { x: 4, y: 4 }); // a 3x3 island
-		};
-		let ground = |e: &EditorState, x, y| e.project.cell(x, y).unwrap()[LAYER_GROUND].is_some();
-
-		// Full (Destructive): every seam closed and the coast is stable - a
-		// fresh auto_shore is a no-op. This is the 100% guarantee.
-		let mut e = editor();
-		paint_raw(&mut e);
-		assert!(!ground(&e, 2, 4), "raw: no coast laid beside the island");
-		e.execute(Command::Shore { region: None, mode: ShoreMode::Full });
-		assert_eq!(e.project.fix_session(None, FixStrength::Shore).found(), 0, "Full closes every seam");
-		assert_eq!(e.project.auto_shore(None), (0, 0), "Full's coast is complete and idempotent");
-
-		// Sweep + Fix (Aggressive): lays the missing coast - the water ring
-		// around the island becomes shore on the ground layer.
-		let mut e = editor();
-		paint_raw(&mut e);
-		e.execute(Command::Shore { region: None, mode: ShoreMode::SweepFix });
-		assert!(ground(&e, 2, 4), "Sweep + Fix laid the coast where it was missing");
-	}
-
-	#[test]
-	fn fill_with_active_selection_fills_only_the_selection() {
-		let mut e = editor();
-		e.execute(Command::Tile { spec: Some("GLa000".into()) });
-		e.execute(Command::SelectRect { x0: 1, y0: 1, x1: 2, y1: 2, mode: SelectMode::Replace });
-		assert_eq!(e.selection.count(), 4);
-		// Fill: the click cell (6,6) is ignored when a selection is active.
-		assert!(matches!(e.execute(Command::Fill { x: 6, y: 6 }), Outcome::Redraw));
-		let ground = |e: &EditorState, x, y| e.project.cell(x, y).unwrap()[LAYER_GROUND].map(|t| t.tile);
-		let want = ground(&e, 1, 1);
-		assert!(want.is_some(), "selected cell filled");
-		assert_eq!(ground(&e, 2, 2), want, "whole selection filled");
-		assert_eq!(ground(&e, 6, 6), None, "outside the selection untouched");
-	}
-
-	#[test]
-	fn pass_editors_split_tile_passability_from_per_cell_overrides() {
-		let mut e = editor();
-		// Local Pass Override Editor: the pass overlay turns on; painting sets a
-		// per-cell override, the eraser-driven clear lifts it.
-		assert!(matches!(e.execute(Command::Mode { name: "localpass".into() }), Outcome::Redraw));
-		assert_eq!(e.mode, EditorMode::LocalPass);
-		assert!(e.show_pass_overlay);
-		e.execute(Command::PassPaint { x: 1, y: 1, value: 3 });
-		assert_eq!(e.project.pass_override(1, 1), Some(3));
-		e.execute(Command::PassClear { x: 1, y: 1 });
-		assert_eq!(e.project.pass_override(1, 1), None, "clear lifts the override");
-		// Pass Table Editor: tile passability is tile-dependent - no per-cell
-		// override is created, but the cell reads the new value.
-		assert!(matches!(e.execute(Command::Mode { name: "pass".into() }), Outcome::Redraw));
-		e.execute(Command::TilePass { x: 2, y: 2, value: 2 });
-		assert_eq!(e.project.pass_override(2, 2), None, "tile pass is not a cell override");
-		assert_eq!(e.project.pass_at(2, 2), Some(2), "the cell reads the tile's new pass");
-	}
-
-	#[test]
-	fn pass_table_edit_queues_the_stock_pack_for_bake_only_in_dev() {
-		let mut e = editor();
-		// A stock GREEN tile under the cell, so the pass edit lands in GREEN's table.
-		e.execute(Command::Place { x: 1, y: 1, spec: "GLa000".into() });
-
-		// Without --dev the pass still edits in memory, but nothing is queued for
-		// Bake (so it could never reach the shipped tiles.pass.json).
-		e.execute(Command::TilePass { x: 1, y: 1, value: 3 });
-		assert!(!e.tile_ops.dirty_packs.contains("GREEN"), "no --dev: pack not queued for bake");
-
-		// With --dev, editing a stock tile's pass queues its pack - Bake then writes
-		// tiles.pass.json (this was the missing link; the edit was lost before).
-		e.dev_mode = true;
-		assert!(matches!(e.execute(Command::TilePass { x: 1, y: 1, value: 1 }), Outcome::Redraw));
-		assert!(e.tile_ops.dirty_packs.contains("GREEN"), "--dev: the affected pack is queued for bake");
-		assert_eq!(e.project.pass_at(1, 1), Some(1), "the in-memory pass reflects the edit");
-
-		// A no-op edit (same value) does not spuriously queue anything new.
-		let mut e2 = editor();
-		e2.dev_mode = true;
-		e2.execute(Command::Place { x: 1, y: 1, spec: "GLa000".into() });
-		let current = e2.project.pass_at(1, 1).unwrap();
-		e2.execute(Command::TilePass { x: 1, y: 1, value: current });
-		assert!(!e2.tile_ops.dirty_packs.contains("GREEN"), "unchanged pass does not queue a bake");
-	}
-
-	#[test]
-	fn reset_tile_pass_restores_the_tileset_values_and_undoes() {
-		let mut e = editor();
-		e.execute(Command::Place { x: 1, y: 1, spec: "GLa000".into() });
-		// The tileset's canonical pass for GLa000 (a fresh load of GREEN).
-		let fresh = map_core::TilePack::load(&e.assets_root, "GREEN").unwrap();
-		let canonical = fresh.pass.as_ref().unwrap()[fresh.index_of["GLa000"] as usize];
-		let edited = if canonical == 3 { 0 } else { 3 };
-
-		// Edit the tile pass away from the tileset value.
-		e.execute(Command::TilePass { x: 1, y: 1, value: edited });
-		assert_eq!(e.project.pass_at(1, 1), Some(edited), "the edit took");
-
-		// Reset restores the tileset value...
-		assert!(matches!(e.execute(Command::ResetTilePass), Outcome::Redraw));
-		assert_eq!(e.project.pass_at(1, 1), Some(canonical), "reset to the tileset pass");
-		// ...as one undo unit (the edit comes back).
-		assert!(e.project.undo(), "reset is undoable");
-		assert_eq!(e.project.pass_at(1, 1), Some(edited), "undo restored the edit");
-
-		// Resetting when already canonical is a quiet no-op.
-		e.execute(Command::ResetTilePass);
-		assert!(matches!(e.execute(Command::ResetTilePass), Outcome::Ok), "no-op when already at tileset");
-		// Per-cell overrides are untouched by the reset.
-		e.execute(Command::Mode { name: "localpass".into() });
-		e.execute(Command::PassPaint { x: 1, y: 1, value: 2 });
-		e.execute(Command::ResetTilePass);
-		assert_eq!(e.project.pass_override(1, 1), Some(2), "reset leaves per-cell overrides alone");
-	}
-
-	#[test]
-	fn opening_a_stock_map_keeps_its_origin_path_less() {
-		let mut e = editor();
-		let stock = e.resources_root.join("assets/maps/GREEN_1.json");
-		assert!(stock.is_file(), "the shipped GREEN_1 map exists");
-		e.execute(Command::Open { path: stock.clone() });
-		// A shipped map loads path-less (so Save can't overwrite it) but keeps its
-		// origin, so DEV ▸ Update Map can still write back to it.
-		assert_eq!(e.path, None, "stock map is path-less (Save → Save As)");
-		assert_eq!(e.origin.as_deref(), Some(stock.as_path()), "its origin is remembered");
-	}
-
-	#[test]
-	fn update_map_overwrites_the_origin_only_in_dev() {
-		let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("temp/update-map-test");
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
-		let target = dir.join("stock.json");
-
-		// Simulate a stock map: an origin to write back to, but path-less (Save off).
-		let mut e = editor();
-		e.origin = Some(target.clone());
-		e.path = None;
-		e.execute(Command::Place { x: 1, y: 1, spec: "GLa000".into() });
-
-		// Without --dev it's refused and nothing is written.
-		assert!(matches!(e.execute(Command::UpdateMap), Outcome::Failed(_)), "update-map needs --dev");
-		assert!(!target.exists(), "nothing written without --dev");
-
-		// With --dev it overwrites the origin and marks the project saved, without
-		// adopting a save path (so plain Save stays protected).
-		e.dev_mode = true;
-		assert!(!matches!(e.execute(Command::UpdateMap), Outcome::Failed(_)), "update-map writes in --dev");
-		assert!(target.is_file(), "the original file was written");
-		assert!(!e.dirty(), "update-map marks the project saved");
-		assert_eq!(e.path, None, "it does not adopt the path");
-
-		// A map with no original file at all (New / WRL / image) is refused, even in --dev.
-		let mut fresh = editor();
-		fresh.dev_mode = true;
-		assert!(matches!(fresh.execute(Command::UpdateMap), Outcome::Failed(_)), "no origin/path → refused");
-		let _ = std::fs::remove_dir_all(&dir);
-	}
-
-	#[test]
-	fn show_only_selected_layer_masks_the_view_to_the_active_layer() {
-		let mut e = editor();
-		// Off: every layer composites (all bits set).
-		assert!(!e.show_only_layer);
-		assert_eq!(e.layer_mask(), (1 << map_core::MAX_LAYERS) - 1);
-		// On with the default active layer (ground) → ground only.
-		assert!(matches!(e.execute(Command::ShowOnlyLayer { on: None }), Outcome::Redraw));
-		assert!(e.show_only_layer);
-		assert_eq!(e.layer_mask(), 1 << LAYER_GROUND);
-		// Switching the active layer re-targets the filter, no extra toggle.
-		e.execute(Command::Layer { name: "water".into() });
-		assert_eq!(e.layer_mask(), 1 << LAYER_WATER);
-		// Off restores the full mask.
-		e.execute(Command::ShowOnlyLayer { on: Some(false) });
-		assert_eq!(e.layer_mask(), (1 << map_core::MAX_LAYERS) - 1);
-	}
-
-	#[test]
-	fn ctrl_click_builds_a_palette_multi_selection() {
-		let mut e = editor();
-		e.execute(Command::ColorToggle { index: 64 });
-		e.execute(Command::ColorToggle { index: 70 });
-		assert_eq!(e.palettes.multi, vec![64, 70]);
-		assert_eq!(e.active_color, Some(70), "last toggled stays the focus");
-		// Re-toggling removes a slot.
-		e.execute(Command::ColorToggle { index: 64 });
-		assert_eq!(e.palettes.multi, vec![70]);
-		// A plain select clears the multi set; a shift-range too.
-		e.execute(Command::Color { index: 100 });
-		assert!(e.palettes.multi.is_empty());
-		e.execute(Command::ColorToggle { index: 80 });
-		e.execute(Command::ColorTo { index: 90 });
-		assert!(e.palettes.multi.is_empty(), "shift-range clears multi");
-	}
-
-	#[test]
-	fn convert_palette_guards_projects_and_converts_wrl_imports() {
-		let convert = || Command::ConvertPalette { rasterize: false, water: true, relaxed: false, threshold: 0.05 };
-		// A .json project doesn't own its tiles - loud refusal; the modal
-		// opener refuses identically.
-		let mut e = editor();
-		assert!(matches!(e.execute(convert()), Outcome::Failed(_)));
-		assert!(matches!(e.execute(Command::ConvertPaletteModal), Outcome::Failed(_)));
-
-		// A WRL import with an off-spec static slot converts (DocReplaced -
-		// the tile atlas must rebuild) and the cycler follows the new palette.
-		let mut tiles = vec![0u8; max_assets::wrl::TILE_DATA_SIZE];
-		tiles.fill(40);
-		let mut palette = map_core::GAME_PALETTE.to_vec();
-		palette[40 * 3..40 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]);
-		let wrl = max_assets::wrl::WrlFile {
-			header: vec![0; 5],
-			width: 1,
-			height: 1,
-			minimap: vec![0],
-			bigmap: vec![0],
-			tile_count: 1,
-			tiles,
-			palette,
-			pass_table: vec![0],
-		};
-		e.add_doc(Project::from_wrl(&wrl, "CONV"), None, None);
-		assert!(matches!(e.execute(Command::ConvertPaletteModal), Outcome::Redraw));
-		assert!(
-			e.modal_as::<crate::convertpalette::ConvertPalette>().is_some(),
-			"the options modal opens for WRL imports"
-		);
-		e.close_modal();
-		assert!(matches!(e.execute(convert()), Outcome::DocReplaced));
-		let to = e.project.packs[0].tiles[0] as usize;
-		assert_eq!(&e.cycler.rgba()[to * 4..to * 4 + 3], &[0xff, 0x00, 0xee]);
-		// Already compatible now - the second run is a no-op.
-		assert!(matches!(e.execute(convert()), Outcome::Redraw));
-		// Undo restores the document structurally (atlas rebuild) and the
-		// cycler follows the restored (game-resolved) palette; redo too.
-		assert!(matches!(e.execute(Command::Undo), Outcome::DocReplaced));
-		assert!(e.project.packs[0].tiles.iter().all(|&b| b == 40));
-		assert_eq!(&e.cycler.rgba()[40 * 4..40 * 4 + 3], &map_core::GAME_PALETTE[40 * 3..40 * 3 + 3]);
-		assert!(matches!(e.execute(Command::Redo), Outcome::DocReplaced));
-		assert_eq!(&e.cycler.rgba()[to * 4..to * 4 + 3], &[0xff, 0x00, 0xee]);
-		// The rasterize method works through the same command (tiny map -
-		// the synchronous re-import is instant here).
-		let rast = Command::ConvertPalette { rasterize: true, water: true, relaxed: false, threshold: 0.05 };
-		assert!(matches!(e.execute(rast), Outcome::DocReplaced));
-		assert!(matches!(e.execute(Command::Undo), Outcome::DocReplaced));
-	}
-
-	#[test]
-	fn rasterize_conversion_runs_stepped_with_progress_and_abort() {
-		// The interactive path: modal → start → per-frame ticks → completion
-		// swaps the document (DocReplaced) and closes the modal.
-		let mut e = editor();
-		let mut tiles = vec![0u8; max_assets::wrl::TILE_DATA_SIZE];
-		tiles.fill(40);
-		let mut palette = map_core::GAME_PALETTE.to_vec();
-		palette[40 * 3..40 * 3 + 3].copy_from_slice(&[0xff, 0x00, 0xee]);
-		let wrl = max_assets::wrl::WrlFile {
-			header: vec![0; 5],
-			width: 1,
-			height: 1,
-			minimap: vec![0],
-			bigmap: vec![0],
-			tile_count: 1,
-			tiles,
-			palette,
-			pass_table: vec![0],
-		};
-		e.add_doc(Project::from_wrl(&wrl, "STEP"), None, None);
-		e.execute(Command::ConvertPaletteModal);
-		e.modal_as_mut::<crate::convertpalette::ConvertPalette>().unwrap().method =
-			crate::convertpalette::Method::Rasterize;
-
-		// An abort mid-run returns to the options with the session dropped.
-		assert!(matches!(e.palette_convert_start(), Outcome::Redraw));
-		assert!(e.palette_converting());
-		assert!(matches!(e.palette_convert_tick(0.1, true), Outcome::Redraw));
-		let m = e.modal_as::<crate::convertpalette::ConvertPalette>().unwrap();
-		assert!(!m.running && m.session.is_none() && m.stage == "Aborted");
-		assert!(e.project.packs[0].tiles.iter().all(|&b| b == 40), "abort leaves the document untouched");
-
-		// A full run: bounded ticks make visible progress, completion swaps
-		// the document as one undo unit and drops the modal.
-		assert!(matches!(e.palette_convert_start(), Outcome::Redraw));
-		let mut ticks = 0;
-		let outcome = loop {
-			ticks += 1;
-			assert!(ticks < 10_000, "conversion never finished");
-			match e.palette_convert_tick(ticks as f32 * 0.01, false) {
-				Outcome::Redraw => continue,
-				other => break other,
-			}
-		};
-		assert!(matches!(outcome, Outcome::DocReplaced));
-		assert!(e.modal_as::<crate::convertpalette::ConvertPalette>().is_none(), "the modal closes on completion");
-		assert!(!e.project.packs[0].tiles.contains(&40), "pink re-quantized off the static slot");
-		assert!(matches!(e.execute(Command::Undo), Outcome::DocReplaced), "one undo restores the document");
-		assert!(e.project.packs[0].tiles.iter().all(|&b| b == 40));
-	}
-
-	#[test]
-	fn delete_clears_selected_ground_without_clipboard() {
-		let mut e = editor();
-		e.execute(Command::Place { x: 1, y: 1, spec: "GSa000".into() });
-		// Nothing selected → a loud no-op.
-		assert!(matches!(e.execute(Command::Delete), Outcome::Failed(_)));
-		e.execute(Command::SelectRect { x0: 1, y0: 1, x1: 1, y1: 1, mode: SelectMode::Replace });
-		assert!(matches!(e.execute(Command::Delete), Outcome::Redraw));
-		assert!(e.clipboard.is_none(), "delete is not cut");
-		let spec = e.project.cell_spec(1, 1).unwrap_or_default();
-		assert!(!spec.contains("GSa000"), "ground cleared: {spec}");
-	}
-
-	#[test]
-	fn delete_clears_the_active_layer_delete_all_clears_both() {
-		let mut e = editor();
-		let has = |e: &EditorState, layer: usize| e.project.cell(1, 1).unwrap()[layer].is_some();
-		// A cell with the water base + ground on top.
-		e.execute(Command::Place { x: 1, y: 1, spec: "GLa000".into() });
-		assert!(has(&e, LAYER_WATER) && has(&e, LAYER_GROUND), "starts with water + ground");
-		e.execute(Command::SelectRect { x0: 1, y0: 1, x1: 1, y1: 1, mode: SelectMode::Replace });
-
-		// On the ground layer (default), Delete lifts ground and keeps the water.
-		assert!(matches!(e.execute(Command::Delete), Outcome::Redraw));
-		assert!(!has(&e, LAYER_GROUND) && has(&e, LAYER_WATER), "ground gone, water base kept");
-
-		// On the water layer, the same Delete drops the water - no land/water split.
-		e.execute(Command::Place { x: 1, y: 1, spec: "GLa000".into() });
-		e.execute(Command::Layer { name: "water".into() });
-		assert!(matches!(e.execute(Command::Delete), Outcome::Redraw));
-		assert!(has(&e, LAYER_GROUND) && !has(&e, LAYER_WATER), "water gone, ground kept");
-
-		// Delete All empties every layer regardless of which one is active.
-		assert!(matches!(e.execute(Command::DeleteAll), Outcome::Redraw));
-		assert!(!has(&e, LAYER_GROUND) && !has(&e, LAYER_WATER), "all layers cleared → a true hole");
-
-		// Both refuse an empty selection.
-		e.execute(Command::SelectOp { op: "clear".into() });
-		assert!(matches!(e.execute(Command::DeleteAll), Outcome::Failed(_)), "delete-all needs a selection");
-	}
-
-	#[test]
-	fn quit_request_guards_unsaved_work() {
-		let mut e = editor();
-		// A fresh map is clean: a quit request goes straight through.
-		assert!(!e.dirty());
-		assert!(matches!(e.execute(Command::QuitRequest), Outcome::Quit));
-		// Dirtying it makes the quit request raise the confirm instead of quitting.
-		e.execute(Command::Place { x: 0, y: 0, spec: "GLa000".into() });
-		assert!(e.dirty());
-		assert!(matches!(e.execute(Command::QuitRequest), Outcome::Redraw));
-		assert!(e.modal_as::<crate::confirm::ConfirmClose>().is_some(), "quit raises the Save/Discard/Cancel guard");
-		// The quit confirm fires quit!/save-and-quit, not the tab-close commands.
-		let c = crate::confirm::ConfirmClose::new_quit("x".into());
-		assert_eq!((c.discard_line(), c.save_line()), ("quit!", "save-and-quit"));
-	}
-
-	#[test]
-	fn tabs_stack_switch_and_close() {
-		let mut e = editor();
-		assert_eq!(e.tab_infos().len(), 1);
-		// The first new replaces the bootstrap scratch tab (no stacking).
-		new_tab(&mut e, 2);
-		assert_eq!(e.tab_infos().len(), 1);
-		// Subsequent new/open stack as tabs and activate the newest.
-		new_tab(&mut e, 3);
-		new_tab(&mut e, 4);
-		assert_eq!(e.tab_infos().len(), 3);
-		assert_eq!(e.active_tab(), 2);
-		// Switching activates another tab; switching to the active one is a no-op.
-		assert!(matches!(e.execute(Command::Tab { index: 0 }), Outcome::DocReplaced));
-		assert_eq!(e.active_tab(), 0);
-		assert!(matches!(e.execute(Command::Tab { index: 0 }), Outcome::Ok));
-		// Closing drops a tab (these are clean new maps, so no prompt).
-		e.execute(Command::CloseProject { force: false });
-		assert_eq!(e.tab_infos().len(), 2);
-		e.execute(Command::CloseProject { force: false });
-		assert_eq!(e.tab_infos().len(), 1);
-		// Closing the last project is allowed - it resets to a blank scratch
-		// (one tab, replaceable by the next open/new), app stays open.
-		assert!(matches!(e.execute(Command::CloseProject { force: false }), Outcome::DocReplaced));
-		assert_eq!(e.tab_infos().len(), 1);
-		assert!(e.tabs.replace_scratch);
-	}
-
-	#[test]
-	fn nav_pan_and_zoom_move_the_view() {
-		let mut e = editor();
-		let pan0 = e.view.pan;
-		e.execute(Command::Pan { dx: 3.0, dy: 2.0 });
-		assert_eq!(e.view.pan[0] - pan0[0], 3.0 * TILE_PX as f32, "pan dx = 3 tiles");
-		assert_eq!(e.view.pan[1] - pan0[1], 2.0 * TILE_PX as f32, "pan dy = 2 tiles");
-		let z = e.view.zoom;
-		e.execute(Command::Zoom { factor: 2.0 });
-		assert!(e.view.zoom > z, "zoom in grows the zoom");
-		e.execute(Command::Zoom { factor: 0.25 });
-		assert!(e.view.zoom < 2.0 * z, "zoom out shrinks it back");
-		e.execute(Command::Fit);
-		assert!((ZOOM_MIN..=ZOOM_MAX).contains(&e.view.zoom), "fit stays in range");
-	}
-
-	#[test]
-	fn overlay_flags_toggle_through_execute() {
-		let mut e = editor();
-		// on/off are explicit; a bare/None argument toggles (the unified flag rule).
-		e.execute(Command::Grid { on: Some(true) });
-		assert!(e.show_grid, "grid on");
-		e.execute(Command::Grid { on: Some(false) });
-		assert!(!e.show_grid, "grid off");
-		e.execute(Command::Grid { on: None });
-		assert!(e.show_grid, "grid toggle flips off -> on");
-		let animate = e.animate;
-		e.execute(Command::Animate { on: None });
-		assert_eq!(e.animate, !animate, "animate toggles");
-		e.execute(Command::Crt { on: Some(true) });
-		assert!(e.crt, "crt on");
-		e.execute(Command::PassOverlay { on: Some(true) });
-		assert!(e.show_pass_overlay, "pass overlay on");
-	}
-
-	#[test]
-	fn select_ops_set_the_mask() {
-		let mut e = editor(); // 8x8 = 64 cells
-		e.execute(Command::SelectOp { op: "all".into() });
-		assert_eq!(e.selection.count(), 64, "select all");
-		e.execute(Command::SelectOp { op: "clear".into() });
-		assert_eq!(e.selection.count(), 0, "clear");
-		e.execute(Command::SelectOp { op: "invert".into() });
-		assert_eq!(e.selection.count(), 64, "invert of empty = all");
-		e.execute(Command::SelectOp { op: "invert".into() });
-		assert_eq!(e.selection.count(), 0, "invert of all = empty");
-		assert!(matches!(e.execute(Command::SelectOp { op: "bogus".into() }), Outcome::Failed(_)), "unknown op fails");
-	}
-
-	#[test]
-	fn set_color_writes_a_dynamic_slot_and_rejects_static() {
-		let mut e = editor();
-		assert!(matches!(e.execute(Command::SetColor { slot: 100, rgb: [0xaa, 0xbb, 0xcc] }), Outcome::Redraw));
-		let at = 100 * 3;
-		assert_eq!(&e.project.palette[at..at + 3], &[0xaa, 0xbb, 0xcc], "dynamic slot 100 written");
-		// A game-static slot (outside the dynamic 64..=159 range) is refused.
-		let out = e.execute(Command::SetColor { slot: 0, rgb: [1, 2, 3] });
-		assert!(matches!(out, Outcome::Failed(_)), "static slot refused");
-	}
-
-	#[test]
-	fn erase_clears_a_painted_ground_cell() {
-		let mut e = editor();
-		e.execute(Command::Tile { spec: Some("GLa000".into()) });
-		e.execute(Command::Paint { x: 3, y: 3 });
-		assert!(e.project.cell(3, 3).unwrap()[LAYER_GROUND].is_some(), "painted");
-		e.execute(Command::Erase { x: 3, y: 3, layer: None });
-		assert!(e.project.cell(3, 3).unwrap()[LAYER_GROUND].is_none(), "erased");
-	}
-
-	#[test]
-	fn paint_fill_transform_and_hsl_drive_state() {
-		let mut e = editor(); // 8×8 GREEN
-		// Paint needs an active tile; with one it places onto the ground layer.
-		assert!(matches!(e.execute(Command::Paint { x: 0, y: 0 }), Outcome::Failed(_)), "paint needs a tile");
-		e.execute(Command::Tile { spec: Some("GLa000".into()) });
-		assert!(matches!(e.execute(Command::Paint { x: 2, y: 2 }), Outcome::Redraw));
-		assert!(e.project.cell(2, 2).unwrap()[LAYER_GROUND].is_some(), "paint placed the tile");
-
-		// Fill floods the connected empty-ground region with the active tile.
-		e.execute(Command::Fill { x: 0, y: 0 });
-		let painted = (0..8u16)
-			.flat_map(|y| (0..8u16).map(move |x| (x, y)))
-			.filter(|&(x, y)| e.project.cell(x, y).unwrap()[LAYER_GROUND].is_some())
-			.count();
-		assert!(painted > 1, "fill spread to multiple cells (got {painted})");
-
-		// Transform rotates the active paint tile; four cw turns are identity.
-		e.execute(Command::Tile { spec: Some("GLa000".into()) });
-		assert!(matches!(e.execute(Command::TransformTile { op: "cw".into() }), Outcome::Redraw));
-		assert_ne!(e.active_tile.as_deref(), Some("GLa000"), "cw added a transform suffix");
-		for _ in 0..3 {
-			e.execute(Command::TransformTile { op: "cw".into() });
-		}
-		assert_eq!(e.active_tile.as_deref(), Some("GLa000"), "4× cw returns to identity");
-		assert!(matches!(e.execute(Command::TransformTile { op: "bogus".into() }), Outcome::Failed(_)), "bad op fails");
-
-		// HSL block shift darkens a dynamic slot; a game-static slot is refused.
-		e.execute(Command::SetColor { slot: 100, rgb: [120, 120, 120] });
-		let before = e.project.palette[100 * 3];
-		assert!(matches!(e.execute(Command::HslBlock { slot: 100, dh: 0.0, ds: 0.0, dl: -40.0 }), Outcome::Redraw));
-		assert!(e.project.palette[100 * 3] < before, "hsl-block -L darkened the slot");
-		let static_shift = e.execute(Command::HslBlock { slot: 0, dh: 0.0, ds: 0.0, dl: 10.0 });
-		assert!(matches!(static_shift, Outcome::Failed(_)), "static slot refused");
-	}
-
-	#[test]
-	fn free_stem_in_bumps_on_collision() {
-		let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("temp/free-stem-test");
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
-		// An empty dir: the base name is free.
-		assert_eq!(free_stem_in(&dir, "map", None), "map");
-		// With `map.json` present it bumps to `map-2`, then `map-3`.
-		std::fs::write(dir.join("map.json"), "{}").unwrap();
-		assert_eq!(free_stem_in(&dir, "map", None), "map-2");
-		std::fs::write(dir.join("map-2.json"), "{}").unwrap();
-		assert_eq!(free_stem_in(&dir, "map", None), "map-3");
-		// Excluding the colliding file (a rename keeping its own name) frees the base.
-		assert_eq!(free_stem_in(&dir, "map", Some(&dir.join("map.json"))), "map");
-		let _ = std::fs::remove_dir_all(&dir);
-	}
-
-	#[test]
-	fn template_pack_joins_terrain_packs_and_excludes_water() {
-		let pack = |uses: &str| {
-			let json = format!(r#"{{"version":"1","name":"t","width":1,"height":1,"use":{uses},"map":[[""]]}}"#);
-			template_pack(&Template::from_str(&json).unwrap())
-		};
-		assert_eq!(pack(r#"[{"name":"GREEN","version":"1"}]"#), "GREEN", "single pack → its name");
-		// WATER is the universal base layer - excluded from the dir name.
-		assert_eq!(pack(r#"[{"name":"WATER","version":"1"},{"name":"CRATER","version":"1"}]"#), "CRATER");
-		// Multiple terrain packs: sorted, joined with `+` (regardless of order).
-		assert_eq!(pack(r#"[{"name":"GREEN","version":"1"},{"name":"DESERT","version":"1"}]"#), "DESERT+GREEN");
-		assert_eq!(pack(r#"[{"name":"WATER","version":"1"}]"#), "WATER", "only WATER → WATER");
-		assert_eq!(pack("[]"), "MISC", "no packs → MISC");
-	}
-
-	#[test]
-	fn template_rename_name_uniqueness_is_per_tileset() {
-		let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("temp/rename-tileset-test");
-		let _ = std::fs::remove_dir_all(&dir);
-		let (a, b) = (dir.join("A"), dir.join("B"));
-		std::fs::create_dir_all(&a).unwrap();
-		std::fs::create_dir_all(&b).unwrap();
-		let mk = |dir: &Path, name: &str, pack: &str| {
-			let t = Template {
-				name: name.to_string(),
-				width: 1,
-				height: 1,
-				uses: vec![(pack.to_string(), "1".to_string())],
-				cells: vec![String::new()],
-			};
-			t.save(&dir.join(format!("{name}.json"))).unwrap();
-			TemplateEntry { name: t.name.clone(), path: dir.join(format!("{name}.json")), stock: false, template: t }
-		};
-		let mut e = editor();
-		// Tileset A holds "Shared" + "Taken"; tileset B holds another "Shared".
-		e.templates.entries = vec![mk(&a, "Shared", "A"), mk(&b, "Shared", "B"), mk(&a, "Taken", "A")];
-
-		// Renaming A's "Shared" onto "Taken" (same tileset) is rejected...
-		e.templates.sel = Some(0);
-		assert!(
-			matches!(
-				e.execute(Command::TemplateRename { from: "Shared".into(), to: "Taken".into() }),
-				Outcome::Failed(_)
-			),
-			"same-tileset name collision is rejected",
-		);
-
-		// ...but the *selected* duplicate is the one renamed (not the first by name),
-		// and a target that only exists in another tileset is allowed. Rename B's
-		// "Shared" (index 1) → "Taken": B has no "Taken", so it succeeds and touches
-		// B, leaving A's "Shared" alone.
-		e.templates.sel = Some(1);
-		assert!(
-			!matches!(
-				e.execute(Command::TemplateRename { from: "Shared".into(), to: "Taken".into() }),
-				Outcome::Failed(_)
-			),
-			"a name used only in another tileset is allowed",
-		);
-		assert!(b.join("taken.json").exists(), "B's Shared was renamed (sanitized filename)");
-		assert!(!b.join("Shared.json").exists(), "B's old file is gone");
-		assert!(a.join("Shared.json").exists(), "A's Shared was untouched - the selected dup was renamed");
-		let _ = std::fs::remove_dir_all(&dir);
-	}
-
-	#[test]
-	fn template_pick_arms_the_selected_entry_not_the_first_by_name() {
-		// Two templates share the display name "Shared" but belong to different
-		// tilesets (packs A and B). Empty cells → both compatible with any map, so
-		// resolution - not `missing_id` - is what's under test. The explorer arms
-		// the exact entry clicked, so `template-pick` must honour the selection
-		// rather than grabbing the first "Shared" by entry order.
-		let mk = |name: &str, pack: &str| {
-			let t = Template {
-				name: name.to_string(),
-				width: 1,
-				height: 1,
-				uses: vec![(pack.to_string(), "1".to_string())],
-				cells: vec![String::new()],
-			};
-			TemplateEntry {
-				name: t.name.clone(),
-				path: PathBuf::from(format!("{pack}/{name}.json")),
-				stock: false,
-				template: t,
-			}
-		};
-		let mut e = editor();
-		e.templates.entries = vec![mk("Shared", "A"), mk("Shared", "B")];
-
-		// Selecting B's "Shared" (index 1) arms B's template, not A's (index 0).
-		e.templates.sel = Some(1);
-		assert!(!matches!(e.execute(Command::TemplatePick { name: "Shared".into() }), Outcome::Failed(_)));
-		assert_eq!(e.stamp.as_ref().unwrap().uses[0].0, "B", "the selected entry is armed");
-		assert_eq!(e.templates.sel, Some(1), "selection stays on the picked entry");
-
-		// With no matching selection, the scripted path falls back to first-by-name.
-		e.stamp = None;
-		e.templates.sel = None;
-		assert!(!matches!(e.execute(Command::TemplatePick { name: "Shared".into() }), Outcome::Failed(_)));
-		assert_eq!(e.stamp.as_ref().unwrap().uses[0].0, "A", "no selection → first match (scripted path)");
-	}
-
-	#[test]
-	fn template_context_items_adapt_to_stock_vs_user() {
-		let labels = |items: &[menu::Item]| -> Vec<String> {
-			items
-				.iter()
-				.filter_map(|it| match it {
-					menu::Item::Action { label, .. } => Some(label.clone()),
-					_ => None,
-				})
-				.collect()
-		};
-		let mk = |name: &str, stock: bool| TemplateEntry {
-			name: name.into(),
-			path: PathBuf::from(format!("{name}.json")),
-			stock,
-			template: Template {
-				name: name.into(),
-				width: 1,
-				height: 1,
-				uses: vec![("GREEN".into(), String::new())],
-				cells: vec!["GLa000".into()],
-			},
-		};
-		let mut e = editor();
-		e.templates.entries = vec![mk("mine", false), mk("shipped", true)];
-
-		// A user template: Use, Rename, Duplicate, Delete, Export as PNG.
-		e.templates.sel = Some(0);
-		let user = labels(&e.template_context_items());
-		for want in ["Use", "Rename", "Duplicate", "Delete", "Export as PNG"] {
-			assert!(user.iter().any(|l| l == want), "user menu has {want}: {user:?}");
-		}
-		// A stock template is read-only: no Rename/Delete, but Duplicate + Export stay.
-		e.templates.sel = Some(1);
-		let stock = labels(&e.template_context_items());
-		assert!(!stock.iter().any(|l| l == "Rename"), "stock can't be renamed");
-		assert!(!stock.iter().any(|l| l == "Delete"), "stock can't be deleted");
-		for want in ["Use", "Duplicate", "Export as PNG"] {
-			assert!(stock.iter().any(|l| l == want), "stock menu has {want}: {stock:?}");
-		}
-		// --dev unlocks the stock template: Rename + Delete come back.
-		e.dev_mode = true;
-		let dev_stock = labels(&e.template_context_items());
-		for want in ["Use", "Rename", "Duplicate", "Delete", "Export as PNG"] {
-			assert!(dev_stock.iter().any(|l| l == want), "dev stock menu has {want}: {dev_stock:?}");
-		}
-	}
-
-	#[test]
-	fn dev_mode_unlocks_stock_template_rename_and_delete() {
-		let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("temp/dev-stock-template-test");
-		let _ = std::fs::remove_dir_all(&dir);
-		let pack_dir = dir.join("GREEN");
-		std::fs::create_dir_all(&pack_dir).unwrap();
-		let t = Template {
-			name: "ridge".into(),
-			width: 1,
-			height: 1,
-			uses: vec![("GREEN".into(), String::new())],
-			cells: vec!["GLa000".into()],
-		};
-		let path = pack_dir.join("ridge.json");
-		t.save(&path).unwrap();
-		let entry = || TemplateEntry { name: "ridge".into(), path: path.clone(), stock: true, template: t.clone() };
-
-		// Without --dev: the rename/delete modals and the delete itself are refused,
-		// and the stock file is left on disk.
-		let mut e = editor();
-		e.templates.entries = vec![entry()];
-		e.templates.sel = Some(0);
-		assert!(matches!(e.execute(Command::TemplateRenameModal), Outcome::Failed(_)), "no --dev: rename refused");
-		assert!(matches!(e.execute(Command::TemplateDeleteModal), Outcome::Failed(_)), "no --dev: delete refused");
-		assert!(matches!(e.execute(Command::TemplateDelete { name: None }), Outcome::Failed(_)));
-		assert!(path.exists(), "the stock file survives without --dev");
-
-		// With --dev: the modal opener no longer refuses, and the delete removes the
-		// stock file. (A fresh editor so the opened modal doesn't linger.)
-		let mut e = editor();
-		e.dev_mode = true;
-		e.templates.entries = vec![entry()];
-		e.templates.sel = Some(0);
-		assert!(matches!(e.execute(Command::TemplateRenameModal), Outcome::Redraw), "--dev: rename opens");
-		assert!(!matches!(e.execute(Command::TemplateDelete { name: None }), Outcome::Failed(_)), "--dev: delete runs");
-		assert!(!path.exists(), "--dev removed the stock template file");
-		let _ = std::fs::remove_dir_all(&dir);
-	}
-
-	#[test]
-	fn template_export_png_writes_one_image_cell_per_template_cell() {
-		let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("temp/template-png-test");
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
-		let mut e = editor();
-		// A real 2x1 template: ground over the project's actual water spec, then bare
-		// ground - so every id resolves and the tiles rasterize.
-		let water = e.project.cell_spec(0, 0).unwrap();
-		let t = Template {
-			name: "ridge".into(),
-			width: 2,
-			height: 1,
-			uses: vec![("GREEN".into(), String::new()), ("WATER".into(), String::new())],
-			cells: vec![format!("{water},GLa000"), "GLa001".into()],
-		};
-		e.templates.entries =
-			vec![TemplateEntry { name: t.name.clone(), path: dir.join("ridge.json"), stock: false, template: t }];
-
-		// No selection → refused; the bare command (no path) just opens the dialog,
-		// which is unavailable headless.
-		e.templates.sel = None;
-		assert!(matches!(e.execute(Command::TemplateExportPng { path: None }), Outcome::Failed(_)));
-
-		e.templates.sel = Some(0);
-		let png = dir.join("ridge.png");
-		assert!(matches!(e.execute(Command::TemplateExportPng { path: Some(png.clone()) }), Outcome::Redraw));
-		let (rgba, w, h) = decode_png_rgba(&png).expect("decode the exported png");
-		assert_eq!((w, h), (2 * 64, 64), "one 64px image cell per template cell");
-		assert!(rgba.chunks_exact(4).any(|p| p[3] == 255), "the ground tiles rasterize opaque pixels");
-		let _ = std::fs::remove_dir_all(&dir);
-	}
-
-	#[test]
-	fn save_then_open_round_trips_the_project_on_disk() {
-		let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("temp/save-roundtrip-test");
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
-		let path = dir.join("m.json");
-
-		let mut e = editor();
-		e.execute(Command::Tile { spec: Some("GLa000".into()) });
-		e.execute(Command::Paint { x: 1, y: 1 });
-		e.execute(Command::SetColor { slot: 100, rgb: [0x12, 0x34, 0x56] }); // a palette override to carry
-		let saved_hash = e.project.hash();
-		assert!(matches!(e.execute(Command::Save { path: Some(path.clone()) }), Outcome::Ok | Outcome::Redraw));
-		assert!(path.exists(), "the project file was written");
-		assert!(!e.dirty(), "save cleared the dirty flag");
-
-		// Reload into a fresh editor: the document hashes identically.
-		let mut e2 = editor();
-		e2.execute(Command::Open { path });
-		assert_eq!(e2.project.hash(), saved_hash, "reloaded project matches what was saved");
-		let _ = std::fs::remove_dir_all(&dir);
-	}
-
-	#[test]
-	fn dirty_tab_guards_close_and_quit() {
-		let mut e = editor();
-		new_tab(&mut e, 2); // replaces scratch
-		new_tab(&mut e, 3); // second tab, active
-		// Dirty the active tab.
-		e.execute(Command::Place { x: 0, y: 0, spec: "GSa000".into() });
-		assert!(e.dirty());
-		// Closing a dirty tab opens the Save/Discard/Cancel confirm modal.
-		assert!(matches!(e.execute(Command::CloseProject { force: false }), Outcome::Redraw));
-		assert!(e.modal_as::<crate::confirm::ConfirmClose>().is_some());
-		e.close_modal();
-		// Discard (`close-project!`) closes despite the unsaved changes.
-		assert!(matches!(e.execute(Command::CloseProject { force: true }), Outcome::DocReplaced));
-		assert!(e.modal_as::<crate::confirm::ConfirmClose>().is_none());
-		// Quit guards on ANY open tab being dirty.
-		e.execute(Command::Place { x: 1, y: 1, spec: "GSa000".into() });
-		assert!(matches!(e.execute(Command::Quit { force: false }), Outcome::Failed(_)));
-		assert!(matches!(e.execute(Command::Quit { force: true }), Outcome::Quit));
-	}
-
-	#[test]
-	fn reopening_a_path_switches_instead_of_stacking() {
-		let mut e = editor();
-		// Two distinct in-memory tabs first (path-less new maps never dedup).
-		new_tab(&mut e, 2);
-		new_tab(&mut e, 3);
-		assert_eq!(e.tab_infos().len(), 2);
-		// Switching keeps per-tab state independent: dirty one, switch away, back.
-		e.execute(Command::Place { x: 0, y: 0, spec: "GSa000".into() });
-		assert!(e.dirty());
-		e.execute(Command::Tab { index: 0 });
-		assert!(!e.dirty(), "tab 0 is its own clean document");
-		e.execute(Command::Tab { index: 1 });
-		assert!(e.dirty(), "tab 1's edit survived the switch");
-	}
-
-	#[test]
-	fn ui_scale_shrinks_the_logical_ui_size() {
-		// `ui_screen` is what the chrome lays out in: physical / scale. (Set the
-		// field directly rather than `set_ui_scale`, which also writes a process
-		// global the parallel font tests read.)
-		let mut e = editor();
-		assert_eq!(e.ui_scale, 1.0);
-		assert_eq!(e.ui_screen(), (800.0, 600.0)); // 1.0: logical == physical
-		e.ui_scale = 1.25;
-		assert_eq!(e.ui_screen(), (640.0, 480.0)); // 125% of an 800×600 target
-		e.ui_scale = 1.5;
-		let (lw, lh) = e.ui_screen();
-		assert!((lw - 533.333).abs() < 0.01 && (lh - 400.0).abs() < 0.01, "150%: {lw}×{lh}");
-	}
-
-	#[test]
-	fn dialog_path_policy_follows_purpose() {
-		use crate::command::FilePurpose::*;
-		let tmp = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("temp/dialog-policy-test");
-		let _ = std::fs::remove_dir_all(&tmp);
-		let res = tmp.join("resources");
-		let doc = PathBuf::from("/maps/proj/forest.json");
-		let user_templates = res.join("user/templates");
-
-		// Palette purposes always land in (and create) user/palettes.
-		let pal = dialog_default_dir(SavePalette, &res, None, None, None);
-		assert_eq!(pal, res.join("user/palettes"));
-		assert!(pal.is_dir(), "palette dir is created on first use");
-		// Templates land in (and create) the user templates dir.
-		assert_eq!(dialog_default_dir(ImportTemplate, &res, None, None, Some(&user_templates)), user_templates);
-		assert!(user_templates.is_dir());
-		// Maps: the open doc's folder wins; with no doc, Load falls back to
-		// assets/maps (not created), Save to resources/maps (created).
-		assert_eq!(dialog_default_dir(Load, &res, Some(&doc), None, None), Path::new("/maps/proj"));
-		assert_eq!(dialog_default_dir(Load, &res, None, None, None), res.join("assets/maps"));
-		assert_eq!(dialog_default_dir(SaveAs, &res, None, None, None), res.join("maps"));
-		assert!(res.join("maps").is_dir(), "save destination is created");
-
-		// Suggested names ensure a `.json` extension; only save-style purposes pre-fill.
-		assert_eq!(dialog_suggested_name(SaveAs, Some(&doc), "Untitled").as_deref(), Some("forest.json"));
-		assert_eq!(dialog_suggested_name(SaveCopy, None, "My Map").as_deref(), Some("My Map.json"));
-		assert_eq!(dialog_suggested_name(SavePalette, None, "swamp").as_deref(), Some("swamp.json"));
-		assert_eq!(dialog_suggested_name(Load, Some(&doc), "x"), None);
-		// WRL export pre-fills a `.wrl` name (the doc's stem, else the project name)
-		// and lands in the same save dir as a project save.
-		assert_eq!(dialog_suggested_name(ExportWrl, Some(&doc), "Untitled").as_deref(), Some("forest.wrl"));
-		assert_eq!(dialog_suggested_name(ExportWrl, None, "My Map").as_deref(), Some("My Map.wrl"));
-		assert_eq!(dialog_default_dir(ExportWrl, &res, None, None, None), res.join("maps"));
-
-		let _ = std::fs::remove_dir_all(&tmp);
 	}
 }

@@ -54,8 +54,8 @@ impl BlitPass {
 		});
 		let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("blit.layout"),
-			bind_group_layouts: &[&bgl],
-			push_constant_ranges: &[],
+			bind_group_layouts: &[Some(&bgl)],
+			immediate_size: 0,
 		});
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some("blit.pipeline"),
@@ -64,11 +64,11 @@ impl BlitPass {
 				module: &shader,
 				entry_point: Some("vs_main"),
 				compilation_options: Default::default(),
-				buffers: &[wgpu::VertexBufferLayout {
+				buffers: &[Some(wgpu::VertexBufferLayout {
 					array_stride: std::mem::size_of::<BlitVertex>() as wgpu::BufferAddress,
 					step_mode: wgpu::VertexStepMode::Vertex,
 					attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
-				}],
+				})],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
@@ -83,7 +83,7 @@ impl BlitPass {
 			},
 			depth_stencil: None,
 			multisample: wgpu::MultisampleState::default(),
-			multiview: None,
+			multiview_mask: None,
 			cache: None,
 		});
 		Self { pipeline, bgl, sampler }
@@ -122,7 +122,6 @@ impl BlitPass {
 
 	/// Draw the bound texture's `uv` window (`[u0, v0, u1, v1]`) into `dst`,
 	/// clipped to `scissor`.
-	#[allow(clippy::too_many_arguments)]
 	pub fn draw(
 		&self,
 		device: &wgpu::Device,
@@ -172,5 +171,69 @@ impl BlitPass {
 		pass.set_bind_group(0, bind_group, &[]);
 		pass.set_vertex_buffer(0, buffer.slice(..));
 		pass.draw(0..verts.len() as u32, 0..1);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::path::Path;
+
+	/// Decode a PNG `capture` wrote back to tightly-packed RGBA8.
+	fn read_png(path: &Path) -> (Vec<u8>, u32, u32) {
+		let file = std::fs::File::open(path).expect("open png");
+		let mut reader = png::Decoder::new(std::io::BufReader::new(file)).read_info().expect("png info");
+		let mut buf = vec![0; reader.output_buffer_size().expect("png size")];
+		let info = reader.next_frame(&mut buf).expect("png frame");
+		buf.truncate(info.buffer_size());
+		(buf, info.width, info.height)
+	}
+
+	/// One render pass that clears `view` to `color`.
+	fn clear(encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, color: wgpu::Color) {
+		encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+			label: Some("test.clear"),
+			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+				view,
+				resolve_target: None,
+				depth_slice: None,
+				ops: wgpu::Operations { load: wgpu::LoadOp::Clear(color), store: wgpu::StoreOp::Store },
+			})],
+			depth_stencil_attachment: None,
+			timestamp_writes: None,
+			occlusion_query_set: None,
+			multiview_mask: None,
+		});
+	}
+
+	/// `draw` with a degenerate (zero-width) scissor is a guarded no-op, while
+	/// the identical call with a full scissor paints the uploaded texture -
+	/// proving the early return (not a broken pipeline) suppressed the quad.
+	#[test]
+	fn draw_skips_degenerate_scissor_but_paints_otherwise() {
+		let (device, queue, _serial) = crate::visual_test::test_gpu();
+		let blit = BlitPass::new(&device, crate::capture::FORMAT);
+		let bg = blit.upload(&device, &queue, &[255u8; 2 * 2 * 4], (2, 2));
+		let (w, h) = (8u32, 8u32);
+		let full = Rect::new(0.0, 0.0, w as f32, h as f32);
+		let uv = [0.0, 0.0, 1.0, 1.0];
+		let dir = std::env::temp_dir().join(format!("max-map-editor-blit-{}", std::process::id()));
+
+		let skipped = dir.join("blit-skipped.png");
+		crate::capture::render_to_png(&device, &queue, w, h, &skipped, None, None, |encoder, view| {
+			clear(encoder, view, wgpu::Color::RED);
+			blit.draw(&device, encoder, view, &bg, full, uv, Rect::new(0.0, 0.0, 0.0, h as f32), (w, h), 1.0);
+		});
+		let (rgba, ..) = read_png(&skipped);
+		assert!(rgba.chunks_exact(4).all(|p| p == [255, 0, 0, 255]), "a zero-width scissor draws nothing");
+
+		let painted = dir.join("blit-painted.png");
+		crate::capture::render_to_png(&device, &queue, w, h, &painted, None, None, |encoder, view| {
+			clear(encoder, view, wgpu::Color::RED);
+			blit.draw(&device, encoder, view, &bg, full, uv, full, (w, h), 1.0);
+		});
+		let (rgba, ..) = read_png(&painted);
+		assert!(rgba.chunks_exact(4).all(|p| p == [255, 255, 255, 255]), "the full scissor paints the white texture");
+		let _ = std::fs::remove_dir_all(&dir);
 	}
 }

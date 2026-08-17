@@ -1,13 +1,15 @@
-//! In-app console: line input + scrollback over the command parser
-//!. Pure state - rendering lives in `text.rs`, key routing in
-//! `main.rs`, execution in `state.rs`. Leaner than world-editor's original
-//! (no autocomplete yet - `suggestions()` is wired but empty).
+//! In-app console: scrollback + history over the command parser. The **input
+//! line is a `wgpu_ui::TextInput`** (hosted in a `PanelUi`, events routed by
+//! the shell like any layer's); this type owns only the log / history / scroll
+//! model around it. Rendering is `console_view.rs` (the retained
+//! `ConsoleView` widget), routing `main.rs`, execution `state.rs`. Leaner than
+//! world-editor's original (no autocomplete yet - `suggestions()` is wired but
+//! empty).
 
 const MAX_LOG: usize = 500;
 
 pub struct Console {
 	open: bool,
-	input: String,
 	log: Vec<String>,
 	history: Vec<String>,
 	/// Index into `history` while browsing with Up/Down, newest-last.
@@ -21,16 +23,20 @@ impl Console {
 	pub fn new() -> Self {
 		Self {
 			open: false,
-			input: String::new(),
 			log: vec![
+				// Grouped by family rather than enumerated: the verb list is ~200
+				// long and grows with every feature, so a flat list here goes stale
+				// silently (it had lost template-*, scenery-*, unit-* and generate
+				// entirely). Families stay true; the manual carries the arguments.
 				"M.A.X. Map Editor console - Enter runs, Up/Down history, PgUp/PgDn scroll".into(),
-				"commands: new[!] new-map tile tool transform pick paint shore[ alt|fix] stroke".into(),
-				"          mode pass-pick pass-paint  grid pass-overlay  resize[-modal]".into(),
-				"          place erase undo redo open[!] save save-project save-copy export".into(),
-				"          file-dialog fix-shore-modal color set-color hsl-block".into(),
-				"          window dock picker minimap menu".into(),
-				"          pan pan-to zoom zoom-at zoom-to fit set-tile set-pass".into(),
-				"          animate tick console screenshot hash assert-* quit[!]".into(),
+				"files:    new[!] open[!] save save-as save-project save-copy export-wrl export-save".into(),
+				"edit:     tile tool pick paint place erase undo redo stroke select-* copy cut paste".into(),
+				"terrain:  shore fix-shore-modal paint-mask resize[-modal] generate[-modal] resource-*".into(),
+				"content:  unit-* object-* scenery-* template-* tile-* palette-* match-*".into(),
+				"view:     mode grid pass-overlay resources ingame crt zoom[-at|-to] pan[-to] fit".into(),
+				"layout:   window dock picker minimap menu tab console status-bar ui-scale".into(),
+				"testing:  screenshot hash assert-* animate tick quit[!]".into(),
+				"Help > User Manual lists every verb with its arguments.".into(),
 			],
 			history: Vec::new(),
 			hist_pos: None,
@@ -45,12 +51,14 @@ impl Console {
 	pub fn set_open(&mut self, open: bool) {
 		self.open = open;
 	}
-	pub fn input(&self) -> &str {
-		&self.input
-	}
+	/// The whole scrollback. Only the tests read it now — the view is handed
+	/// [`visible_lines`](Self::visible_lines) instead, so nothing outside this
+	/// module has to know about `scroll`.
+	#[cfg(test)]
 	pub fn log(&self) -> &[String] {
 		&self.log
 	}
+	#[cfg(test)]
 	pub fn scroll(&self) -> usize {
 		self.scroll
 	}
@@ -69,33 +77,34 @@ impl Console {
 		self.view_rows = rows.max(1);
 	}
 
-	/// Append printable characters to the input line.
-	pub fn insert(&mut self, text: &str) {
-		for ch in text.chars().filter(|c| !c.is_control()) {
-			self.input.push(ch);
-		}
+	/// The `rows` scrollback lines the view should show, oldest first — the
+	/// window `scroll` names, ending at the live tail when it is 0. The console
+	/// view is handed exactly this and draws it bottom-up.
+	pub fn visible_lines(&self, rows: usize) -> Vec<String> {
+		let end = self.log.len() - self.scroll.min(self.log.len());
+		let start = end.saturating_sub(rows);
+		self.log[start..end].to_vec()
 	}
 
-	pub fn backspace(&mut self) {
-		self.input.pop();
-	}
-
-	/// Enter: echo the line into the log + history and return it for parsing.
-	pub fn submit(&mut self) -> Option<String> {
-		let line = std::mem::take(&mut self.input);
+	/// Enter: echo `line` into the log + history. Returns the line to parse when
+	/// it is non-empty; the caller clears the input `TextInput` itself. Also
+	/// resets history browsing and snaps the scrollback to the live tail.
+	pub fn submit(&mut self, line: &str) -> Option<String> {
 		self.hist_pos = None;
 		self.scroll = 0;
 		if line.trim().is_empty() {
 			return None;
 		}
 		self.push_line(format!("] {line}"));
-		self.history.push(line.clone());
-		Some(line)
+		self.history.push(line.to_string());
+		Some(line.to_string())
 	}
 
-	pub fn history_prev(&mut self) {
+	/// Up: recall the previous history entry into the input; `None` leaves the
+	/// input untouched (empty history). The caller feeds the text into the field.
+	pub fn history_prev(&mut self) -> Option<String> {
 		if self.history.is_empty() {
-			return;
+			return None;
 		}
 		let pos = match self.hist_pos {
 			None => self.history.len() - 1,
@@ -103,19 +112,21 @@ impl Console {
 			Some(p) => p - 1,
 		};
 		self.hist_pos = Some(pos);
-		self.input = self.history[pos].clone();
+		Some(self.history[pos].clone())
 	}
 
-	pub fn history_next(&mut self) {
+	/// Down: walk forward through history, finally restoring the empty prompt
+	/// (`Some("")`); `None` when nothing is being browsed (leave the input alone).
+	pub fn history_next(&mut self) -> Option<String> {
 		match self.hist_pos {
-			None => {}
+			None => None,
 			Some(p) if p + 1 < self.history.len() => {
 				self.hist_pos = Some(p + 1);
-				self.input = self.history[p + 1].clone();
+				Some(self.history[p + 1].clone())
 			}
 			Some(_) => {
 				self.hist_pos = None;
-				self.input.clear();
+				Some(String::new())
 			}
 		}
 	}
@@ -142,15 +153,13 @@ mod tests {
 	#[test]
 	fn submit_echoes_and_records_history() {
 		let mut c = Console::new();
-		c.insert("fit");
-		assert_eq!(c.submit().as_deref(), Some("fit"));
+		assert_eq!(c.submit("fit").as_deref(), Some("fit"));
 		assert_eq!(c.log().last().unwrap(), "] fit");
-		assert_eq!(c.input(), "");
-		assert!(c.submit().is_none(), "empty input does not submit");
-		c.history_prev();
-		assert_eq!(c.input(), "fit");
-		c.history_next();
-		assert_eq!(c.input(), "");
+		assert!(c.submit("   ").is_none(), "blank input does not submit");
+		assert!(c.submit("").is_none(), "empty input does not submit");
+		// The one submitted line is the only history entry.
+		assert_eq!(c.history_prev().as_deref(), Some("fit"), "Up recalls the last line");
+		assert_eq!(c.history_next().as_deref(), Some(""), "Down past the newest restores the empty prompt");
 	}
 
 	#[test]
@@ -166,6 +175,49 @@ mod tests {
 		assert_eq!(c.scroll(), 0);
 		c.push_line("new");
 		assert_eq!(c.scroll(), 0, "new output snaps to tail");
+	}
+
+	/// The autocomplete hooks are wired but intentionally empty stubs until the
+	/// dropdown lands - they must report "nothing" rather than panic.
+	#[test]
+	fn suggestion_stubs_report_nothing() {
+		let c = Console::new();
+		assert!(c.suggestions().is_empty(), "no autocomplete entries yet");
+		assert_eq!(c.sel(), 0, "no selection without entries");
+	}
+
+	/// History browsing clamps at both ends and returns the text the caller
+	/// pushes into the `TextInput`: Up with no history is `None` (leave the input
+	/// alone), Up pins at the oldest entry, Down walks forward and finally
+	/// restores the empty prompt.
+	#[test]
+	fn history_navigation_clamps_and_walks_both_ways() {
+		// No history yet: Up/Down leave the (typed) input alone (None).
+		let mut c = Console::new();
+		assert!(c.history_next().is_none(), "next with empty history is a no-op");
+		assert!(c.history_prev().is_none(), "prev with empty history is a no-op");
+
+		let mut c = Console::new();
+		c.submit("first");
+		c.submit("second");
+		assert_eq!(c.history_prev().as_deref(), Some("second"));
+		assert_eq!(c.history_prev().as_deref(), Some("first"));
+		assert_eq!(c.history_prev().as_deref(), Some("first"), "Up clamps at the oldest entry");
+		assert_eq!(c.history_next().as_deref(), Some("second"), "Down walks forward through history");
+		assert_eq!(c.history_next().as_deref(), Some(""), "Down past the newest restores the empty prompt");
+	}
+
+	/// The scrollback is bounded: old lines fall off the front once the log
+	/// exceeds its cap, so a long session can't grow without limit.
+	#[test]
+	fn log_drops_oldest_lines_past_the_cap() {
+		let mut c = Console::new();
+		for i in 0..600 {
+			c.push_line(format!("line {i}"));
+		}
+		assert_eq!(c.log().len(), MAX_LOG, "log capped");
+		assert_eq!(c.log().last().unwrap(), "line 599", "newest kept");
+		assert_eq!(c.log().first().unwrap(), "line 100", "oldest dropped from the front");
 	}
 
 	#[test]

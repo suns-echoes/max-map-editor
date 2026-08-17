@@ -1,0 +1,12 @@
+{
+	"version": "1",
+	"shadow": [130, 136, 137, 139, 142, 146, 150, 152],
+	"shadowAlpha": 115,
+	"close": 0,
+	"pieces": {
+		"cliff-1": { "scarp": true },
+		"cliff-2": { "scarp": true },
+		"cliff-3": { "scarp": true },
+		"cliff-4": { "scarp": true }
+	}
+}

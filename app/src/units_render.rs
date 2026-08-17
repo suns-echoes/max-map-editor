@@ -1,7 +1,8 @@
 //! GPU half of the unit-preview feature (see `units.rs`): a single R8Uint
-//! atlas holding every unit's body / turret / shadow frame in fixed 128px
-//! slots, plus one quad pipeline that samples atlas → working palette with
-//! the per-team color-slot remap done in the shader (`units.wgsl`).
+//! atlas holding every unit's selectable body / turret / shadow frames (the 8
+//! compass headings / decorative variants, [`crate::units::MAX_HEADINGS`]) in
+//! fixed 128px slots, plus one quad pipeline that samples atlas → working
+//! palette with the per-team color-slot remap done in the shader (`units.wgsl`).
 //!
 //! The pass owns its own 256×1 palette texture (updated from the cycler
 //! alongside the map renderer's), so unit colors follow palette edits and
@@ -12,10 +13,12 @@ use wgpu::util::DeviceExt;
 use crate::ui::Rect;
 use crate::units::{UnitLibrary, UnitQuad};
 
-/// Atlas geometry: 32×32 slots of 128px in a 4096² texture - room for ~340
-/// units × 3 sprites each, far beyond the game's roster.
+/// Atlas geometry: 48×48 slots of 128px in a 6144² texture. Every unit now
+/// contributes up to 8 body + 8 turret + 8 shadow frames (was 1 each), plus up
+/// to 8 connector-strut frames for the ~30 connector hosts, so the roster needs
+/// ~1.5k slots; 2304 leaves comfortable headroom.
 const SLOT: u32 = 128;
-const SLOTS_PER_ROW: u32 = 32;
+const SLOTS_PER_ROW: u32 = 48;
 const ATLAS: u32 = SLOT * SLOTS_PER_ROW;
 
 /// Where one sprite landed in the atlas.
@@ -24,24 +27,47 @@ pub struct SlotMeta {
 	pub size: (u32, u32),
 }
 
-/// Per-unit atlas placements, parallel to `UnitLibrary::units`.
+impl SlotMeta {
+	/// A placeholder for a frame that didn't fit the atlas, used to keep an
+	/// index-addressed slot list (connector struts) position-stable.
+	pub const EMPTY: SlotMeta = SlotMeta { origin: (0, 0), size: (0, 0) };
+}
+
+/// Per-unit atlas placements, parallel to `UnitLibrary::units`. Each unit holds
+/// a list of frame slots (heading / variant order); an object selects one by
+/// its `angle`.
 pub struct AtlasSlots {
-	body: Vec<Option<SlotMeta>>,
-	turret: Vec<Option<SlotMeta>>,
-	shadow: Vec<Option<SlotMeta>>,
+	body: Vec<Vec<SlotMeta>>,
+	turret: Vec<Vec<SlotMeta>>,
+	shadow: Vec<Vec<SlotMeta>>,
+	/// Connector-strut frames (one per connector half-edge, `CONNECTOR_BIT_FRAME`
+	/// order) for connector hosts; empty for every other unit.
+	connector: Vec<Vec<SlotMeta>>,
 }
 
 impl AtlasSlots {
-	pub fn body(&self, unit: usize) -> Option<&SlotMeta> {
-		self.body.get(unit)?.as_ref()
+	/// The body frame `h` (heading / variant) for `unit`, clamped to what was
+	/// atlased; `None` if the unit has no body slot.
+	pub fn body(&self, unit: usize, h: usize) -> Option<&SlotMeta> {
+		let frames = self.body.get(unit)?;
+		frames.get(h.min(frames.len().checked_sub(1)?))
 	}
 
-	pub fn turret(&self, unit: usize) -> Option<&SlotMeta> {
-		self.turret.get(unit)?.as_ref()
+	pub fn turret(&self, unit: usize, h: usize) -> Option<&SlotMeta> {
+		let frames = self.turret.get(unit)?;
+		frames.get(h.min(frames.len().checked_sub(1)?))
 	}
 
-	pub fn shadow(&self, unit: usize) -> Option<&SlotMeta> {
-		self.shadow.get(unit)?.as_ref()
+	pub fn shadow(&self, unit: usize, h: usize) -> Option<&SlotMeta> {
+		let frames = self.shadow.get(unit)?;
+		frames.get(h.min(frames.len().checked_sub(1)?))
+	}
+
+	/// The connector-strut frame at side offset `k` (`CONNECTOR_BIT_FRAME`) for
+	/// `unit`; `None` when the unit is not a host or that strut wasn't atlased
+	/// (a zero-size sentinel from a frame that didn't fit).
+	pub fn connector(&self, unit: usize, k: usize) -> Option<&SlotMeta> {
+		self.connector.get(unit)?.get(k).filter(|m| m.size.0 > 0 && m.size.1 > 0)
 	}
 }
 
@@ -51,7 +77,7 @@ struct UnitVertex {
 	pos: [f32; 2],
 	uv: [f32; 2],
 	origin: [u32; 2],
-	/// bits 0..3 = team, bit 3 = shadow.
+	/// bits 0..2 = team, bit 3 = shadow, bit 4 = ghost (half-alpha preview).
 	flags: u32,
 }
 
@@ -70,11 +96,16 @@ impl UnitsGpu {
 		format: wgpu::TextureFormat,
 		palette_rgba: &[u8],
 	) -> Self {
-		// ---- atlas: pack every frame into the next free 128px slot ----
+		// ---- atlas: pack every selectable frame into the next free 128px slot ----
 		let mut pixels = vec![0u8; (ATLAS * ATLAS) as usize];
 		let mut next = 0u32;
+		let mut overflow = false;
 		let mut place = |frame: &max_assets::image::IndexedFrame| -> Option<SlotMeta> {
-			if frame.width > SLOT || frame.height > SLOT || next >= SLOTS_PER_ROW * SLOTS_PER_ROW {
+			if frame.width > SLOT || frame.height > SLOT {
+				return None;
+			}
+			if next >= SLOTS_PER_ROW * SLOTS_PER_ROW {
+				overflow = true;
 				return None;
 			}
 			let origin = ((next % SLOTS_PER_ROW) * SLOT, (next / SLOTS_PER_ROW) * SLOT);
@@ -86,12 +117,31 @@ impl UnitsGpu {
 			}
 			Some(SlotMeta { origin, size: (frame.width, frame.height) })
 		};
-
-		let mut slots = AtlasSlots { body: Vec::new(), turret: Vec::new(), shadow: Vec::new() };
+		let mut slots = AtlasSlots { body: Vec::new(), turret: Vec::new(), shadow: Vec::new(), connector: Vec::new() };
 		for unit in &lib.units {
-			slots.body.push(unit.body().and_then(&mut place));
-			slots.turret.push(unit.turret().and_then(&mut place));
-			slots.shadow.push(unit.shadow_frame().and_then(&mut place));
+			// A unit's selectable frames (heading / variant order); a frame that
+			// doesn't fit a slot is dropped, so a later index just clamps back.
+			slots.body.push((0..unit.body_count()).filter_map(|h| unit.body_frame(h).and_then(&mut place)).collect());
+			slots
+				.turret
+				.push((0..unit.turret_count()).filter_map(|h| unit.turret_frame(h).and_then(&mut place)).collect());
+			slots
+				.shadow
+				.push((0..unit.shadow_count()).filter_map(|h| unit.shadow_frame_at(h).and_then(&mut place)).collect());
+			// Connector struts are indexed by side offset `k`, so the slot list must
+			// stay position-stable: a frame too big for a slot (a wide 2×2 strut)
+			// becomes a zero-size sentinel rather than shifting later offsets.
+			slots.connector.push(
+				(0..unit.connector_count())
+					.map(|k| unit.connector_frame(k).and_then(&mut place).unwrap_or(SlotMeta::EMPTY))
+					.collect(),
+			);
+		}
+		if overflow {
+			eprintln!(
+				"units atlas full ({} slots) - some unit frames were dropped; raise SLOTS_PER_ROW",
+				SLOTS_PER_ROW * SLOTS_PER_ROW
+			);
 		}
 
 		let atlas_texture = device.create_texture_with_data(
@@ -171,8 +221,8 @@ impl UnitsGpu {
 		});
 		let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("units.layout"),
-			bind_group_layouts: &[&bgl],
-			push_constant_ranges: &[],
+			bind_group_layouts: &[Some(&bgl)],
+			immediate_size: 0,
 		});
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some("units.pipeline"),
@@ -181,11 +231,11 @@ impl UnitsGpu {
 				module: &shader,
 				entry_point: Some("vs_main"),
 				compilation_options: Default::default(),
-				buffers: &[wgpu::VertexBufferLayout {
+				buffers: &[Some(wgpu::VertexBufferLayout {
 					array_stride: std::mem::size_of::<UnitVertex>() as u64,
 					step_mode: wgpu::VertexStepMode::Vertex,
 					attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Uint32x2, 3 => Uint32],
-				}],
+				})],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
@@ -200,7 +250,7 @@ impl UnitsGpu {
 			primitive: wgpu::PrimitiveState::default(),
 			depth_stencil: None,
 			multisample: wgpu::MultisampleState::default(),
-			multiview: None,
+			multiview_mask: None,
 			cache: None,
 		});
 
@@ -239,6 +289,7 @@ impl UnitsGpu {
 		scissor: Option<Rect>,
 		screen: (u32, u32),
 		scale: f32,
+		ghost: bool,
 	) {
 		if quads.is_empty() {
 			return;
@@ -266,7 +317,8 @@ impl UnitsGpu {
 		let ny = |y: f32| 1.0 - y / lh * 2.0;
 		let mut verts = Vec::with_capacity(quads.len() * 6);
 		for q in quads {
-			let flags = (q.team as u32) | ((q.shadow as u32) << 3);
+			// bit 4 = ghost (the shader halves the sprite's alpha for the placement preview).
+			let flags = (q.team as u32) | ((q.shadow as u32) << 3) | ((ghost as u32) << 4);
 			let (x0, y0, x1, y1) = (q.rect.x, q.rect.y, q.rect.x + q.rect.w, q.rect.y + q.rect.h);
 			let (uw, uh) = (q.sprite.0 as f32, q.sprite.1 as f32);
 			let v = |x: f32, y: f32, u: f32, vv: f32| UnitVertex {

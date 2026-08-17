@@ -198,23 +198,25 @@ paint 23 16
 paint 23 17
 stroke end
 
-# The loop-walk shores it but strands a couple of broken seams at the
-# steep folds (it does not auto-repair).
+# The loop-walk now lays a clean coast even on this steep sine fold: the
+# symmetric land/water rule presents `__LAND__` to land, so it no longer
+# strands seams at the steep folds.
 shore alt
-assert-hash 0xa2d8591ec59b8095
+assert-hash 0x88810a198e0b48d9
 
-# `shore fix` re-tiles the broken windows and closes them.
+# `shore fix` is the separate, deliberate repair pass; on an already-clean
+# coast it changes nothing (strict improvements only).
 shore fix
-assert-hash 0xb87dff37db49fc01
+assert-hash 0x88810a198e0b48d9
 
-# Idempotent: a clean coast has nothing to fix.
+# Idempotent: still nothing to fix.
 shore fix
-assert-hash 0xb87dff37db49fc01
+assert-hash 0x88810a198e0b48d9
 
-# One undo unit: back to the broken state.
+# One undo unit: `shore alt` undoes back to the bare painted coast.
 undo
-assert-hash 0xa2d8591ec59b8095
+assert-hash 0x78df6250e1a9e6a3
 redo
-assert-hash 0xb87dff37db49fc01
+assert-hash 0x88810a198e0b48d9
 
 screenshot temp/shore-fix.png

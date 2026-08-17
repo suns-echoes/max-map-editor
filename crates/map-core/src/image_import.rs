@@ -144,10 +144,10 @@ impl ConvertSession {
 		}
 		let want = src_w as usize * src_h as usize * 4;
 		if rgba.len() != want {
-			return Err(format!("rgba is {} bytes, want {want} for {src_w}×{src_h}", rgba.len()));
+			return Err(format!("rgba is {} bytes, want {want} for {src_w}x{src_h}", rgba.len()));
 		}
 		if !(1..=1024).contains(&opts.width_tiles) || !(1..=1024).contains(&opts.height_tiles) {
-			return Err(format!("map size {}×{} tiles (1..=1024)", opts.width_tiles, opts.height_tiles));
+			return Err(format!("map size {}x{} tiles (1..=1024)", opts.width_tiles, opts.height_tiles));
 		}
 		let (tiles_x, tiles_y) = (opts.width_tiles as usize, opts.height_tiles as usize);
 		let (tw, th) = (tiles_x * TILE_SIZE, tiles_y * TILE_SIZE);
@@ -198,7 +198,7 @@ impl ConvertSession {
 			return Err("pin: conversion already started".into());
 		}
 		if pins.len() != self.tw * self.th {
-			return Err(format!("pin: {} pins, want {} ({}×{})", pins.len(), self.tw * self.th, self.tw, self.th));
+			return Err(format!("pin: {} pins, want {} ({}x{})", pins.len(), self.tw * self.th, self.tw, self.th));
 		}
 		for &(slot, rgb) in palette {
 			set_slot_rgb(&mut self.palette, slot, rgb);
@@ -580,10 +580,10 @@ struct Group {
 pub fn image_to_wrl(rgba: &[u8], width: u32, height: u32) -> Result<WrlFile, String> {
 	let n = TILE_SIZE as u32;
 	if width == 0 || height == 0 || !width.is_multiple_of(n) || !height.is_multiple_of(n) {
-		return Err(format!("image {width}×{height}: each side must be a non-zero multiple of {n}"));
+		return Err(format!("image {width}x{height}: each side must be a non-zero multiple of {n}"));
 	}
 	if width / n > 1024 || height / n > 1024 {
-		return Err(format!("image yields a {}×{}-cell map (max 1024×1024)", width / n, height / n));
+		return Err(format!("image yields a {}x{}-cell map (max 1024x1024)", width / n, height / n));
 	}
 	let mut s = ConvertSession::new(rgba.to_vec(), width, height, ConvertOpts::fit_source(width, height))?;
 	while !s.is_done() {
@@ -884,6 +884,129 @@ mod tests {
 		assert_eq!(wrl.bigmap, vec![0, 0, 0, 0]);
 	}
 
+	/// Build a `tiles_x`×`tiles_y`-tile RGBA image with per-pixel control.
+	fn pixel_image(tiles_x: u32, tiles_y: u32, pixel: impl Fn(u32, u32) -> [u8; 3]) -> (Vec<u8>, u32, u32) {
+		let (w, h) = (tiles_x * 64, tiles_y * 64);
+		let mut rgba = vec![0u8; (w * h) as usize * 4];
+		for y in 0..h {
+			for x in 0..w {
+				let c = pixel(x, y);
+				let i = (y * w + x) as usize * 4;
+				rgba[i..i + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+			}
+		}
+		(rgba, w, h)
+	}
+
+	#[test]
+	fn pin_length_must_match_the_target_raster() {
+		let (rgba, w, h) = solid_blocks(1, 1, |_, _| [40, 80, 120]);
+		let mut s = ConvertSession::new(rgba, w, h, ConvertOpts::fit_source(w, h)).unwrap();
+		let err = s.pin(vec![0u8; 3], &[]).unwrap_err();
+		assert!(err.contains("3 pins, want 4096"), "the error spells out both counts: {err}");
+	}
+
+	/// Driving with a 1-chunk budget walks every phase: the stage labels appear
+	/// in pipeline order, progress stays monotonic within 0..=1, and a clean
+	/// run never reports an error.
+	#[test]
+	fn stage_labels_and_progress_walk_every_phase() {
+		let (rgba, w, h) = solid_blocks(1, 1, |_, _| [90, 60, 30]);
+		let mut s = ConvertSession::new(rgba, w, h, ConvertOpts::fit_source(w, h)).unwrap();
+		let mut stages = vec![s.stage()];
+		let mut last = s.progress();
+		while !s.is_done() {
+			s.step(1); // exactly one chunk per call - every phase gets observed
+			assert!(s.error().is_none(), "a clean conversion never errors");
+			let p = s.progress();
+			assert!((0.0..=1.0).contains(&p) && p >= last, "progress is monotonic in 0..=1");
+			last = p;
+			if *stages.last().unwrap() != s.stage() {
+				stages.push(s.stage());
+			}
+		}
+		assert_eq!(
+			stages,
+			vec!["Resampling image", "Clustering colours", "Dithering pixels", "Building tiles", "Done"],
+			"every stage shows, in pipeline order"
+		);
+		assert_eq!(s.progress(), 1.0);
+	}
+
+	/// Relaxed dedupe's colour-set gate: two tiles with the same mean but
+	/// different colour sets (solid grey vs a far-apart checkerboard) never
+	/// merge at a small threshold.
+	#[test]
+	fn relaxed_colour_set_gate_keeps_different_palettes_apart() {
+		let (rgba, w, h) = pixel_image(2, 1, |x, y| {
+			if x < 64 {
+				[100, 100, 100] // tile 0: solid
+			} else if (x + y) % 2 == 0 {
+				[140, 100, 100] // tile 1: checkerboard of ±40, same mean
+			} else {
+				[60, 100, 100]
+			}
+		});
+		let opts = ConvertOpts { dedupe: Dedupe::Relaxed, threshold: 0.05, ..ConvertOpts::fit_source(w, h) };
+		assert_eq!(run(&rgba, w, h, opts).tile_count, 2, "same mean is not enough - the colour sets differ");
+	}
+
+	/// Relaxed dedupe's edge-ring gate: same colours, same mean, but a
+	/// horizontal vs a vertical split face different ways - the walls differ,
+	/// so they never merge (a N-shore must not collapse with an E-shore).
+	#[test]
+	fn relaxed_edge_ring_gate_keeps_orientations_apart() {
+		let (a, b) = ([100u8, 100, 100], [160u8, 100, 100]);
+		let (rgba, w, h) = pixel_image(2, 1, |x, y| {
+			if x < 64 {
+				if y < 32 { a } else { b } // tile 0: top/bottom split
+			} else if x - 64 < 32 {
+				a // tile 1: left/right split (same colours, same mean)
+			} else {
+				b
+			}
+		});
+		let opts = ConvertOpts { dedupe: Dedupe::Relaxed, threshold: 0.05, ..ConvertOpts::fit_source(w, h) };
+		assert_eq!(run(&rgba, w, h, opts).tile_count, 2, "differing edge rings block the merge");
+	}
+
+	/// Relaxed dedupe's body-similarity gate: identical rings and colour sets,
+	/// but opposite-phase interior stripes exceed the per-tile budget at a small
+	/// threshold (kept apart) and fall inside it at a large one (merged).
+	#[test]
+	fn relaxed_body_budget_gate_scales_with_the_threshold() {
+		let base = [100u8, 100, 100];
+		let stripes = |x: u32, y: u32, phase: u32| {
+			let (tx, ty) = (x % 64, y % 64);
+			if tx == 0 || ty == 0 || tx == 63 || ty == 63 {
+				base // identical ring on both tiles
+			} else if ty % 2 == phase {
+				[130, 100, 100]
+			} else {
+				[70, 100, 100]
+			}
+		};
+		let (rgba, w, h) = pixel_image(2, 1, |x, y| if x < 64 { stripes(x, y, 0) } else { stripes(x, y, 1) });
+		let tight = ConvertOpts { dedupe: Dedupe::Relaxed, threshold: 0.05, ..ConvertOpts::fit_source(w, h) };
+		assert_eq!(run(&rgba, w, h, tight).tile_count, 2, "the summed body distance busts the tight budget");
+		let loose = ConvertOpts { dedupe: Dedupe::Relaxed, threshold: 0.9, ..ConvertOpts::fit_source(w, h) };
+		assert_eq!(run(&rgba, w, h, loose).tile_count, 1, "a loose budget lets the same pair merge");
+	}
+
+	#[test]
+	fn image_to_wrl_rejects_maps_over_1024_cells() {
+		// 65600 = 64 × 1025: side-aligned, but one cell over the map limit.
+		let err = image_to_wrl(&[], 65600, 64).unwrap_err();
+		assert!(err.contains("max 1024"), "dimension guard fires before buffer checks: {err}");
+	}
+
+	#[test]
+	fn per_pixel_mode_of_one_member_is_that_member() {
+		let mut a = [3u8; TILE_DATA_SIZE];
+		a[7] = 9;
+		assert_eq!(per_pixel_mode(&[a]), a, "a single-member group is its own representative");
+	}
+
 	#[test]
 	fn crop_and_fill_coverage_reach_the_requested_size() {
 		// A 2×2-tile source mapped onto a 4×4-tile map under the non-default
@@ -892,7 +1015,7 @@ mod tests {
 		for coverage in [Coverage::Crop, Coverage::Fill] {
 			let opts = ConvertOpts { width_tiles: 4, height_tiles: 4, coverage, ..ConvertOpts::fit_source(w, h) };
 			let wrl = run(&rgba, w, h, opts);
-			assert_eq!((wrl.width, wrl.height), (4, 4), "{coverage:?} reaches 4×4");
+			assert_eq!((wrl.width, wrl.height), (4, 4), "{coverage:?} reaches 4x4");
 			assert_eq!(wrl.bigmap.len(), 16);
 		}
 	}

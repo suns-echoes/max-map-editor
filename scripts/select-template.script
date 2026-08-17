@@ -13,18 +13,19 @@ assert-cell 4 3 WTR005,GLa001
 
 # Rect-select the pair and copy it. The clipboard carries both layers,
 # so stamping rewrites the target's water too - fully deterministic.
+# The 2x1 footprint centres on the stamped cell, so it starts one left.
 select-rect 3 3 4 3
 copy
 paste
 stamp 8 8
-assert-cell 8 8 WTR000,GLa000
-assert-cell 9 8 WTR005,GLa001
+assert-cell 7 8 WTR000,GLa000
+assert-cell 8 8 WTR005,GLa001
 
 # One stamp = one undo unit: undo lifts it, re-stamping lands the same
 # cells again (the ghost stays armed).
 undo
 stamp 8 8
-assert-cell 8 8 WTR000,GLa000
+assert-cell 7 8 WTR000,GLa000
 undo
 
 # Freehand-style cell ops compose: add two, subtract one.

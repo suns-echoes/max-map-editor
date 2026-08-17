@@ -8,7 +8,7 @@
 //!
 //! Usage: `cargo run -p map-core --example extract_patterns [ORIGINALS_DIR]`
 //! (default `testdata/originals`; the gitignored fixtures from
-//! `tools/fetch-testdata.sh`). Writes `resources/assets/<PACK>/tiles.patterns.json`.
+//! `tools/fetch-testdata.sh`). Writes `resources/assets/tilepacks/<PACK>/tiles.patterns.json`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

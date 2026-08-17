@@ -1,4 +1,18 @@
 {
+	"SLA": {
+		"N": [
+			"__LAND__"
+		],
+		"W": [
+			"__LAND__"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
 	"SSA": {
 		"N": [
 			"__WATER__"
@@ -24,13 +38,16 @@
 		],
 		"E": [
 			"SSA:!",
+			"SSA:!N",
 			"SSD:W",
 			"SSD:!",
+			"SSD:!N",
 			"SSE",
 			"SSF",
 			"SSF:!W",
 			"SSG",
-			"SSG:!"
+			"SSG:!",
+			"SSG:!N"
 		]
 	},
 	"SSB": {
@@ -44,7 +61,8 @@
 			"SSB:S",
 			"SSB:!S",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		],
 		"E": [
 			"__WATER__"
@@ -58,6 +76,7 @@
 			"__WATER__"
 		],
 		"S": [
+			"SSA:!S",
 			"SSC:E",
 			"SSC:!S",
 			"SSE:E",
@@ -73,19 +92,25 @@
 			"SSL:!W"
 		],
 		"E": [
+			"SSA:W",
 			"SSC:W",
 			"SSC:!",
+			"SSC:!N",
 			"SSE:!",
+			"SSE:!N",
 			"SSH",
 			"SSH:!",
+			"SSH:!N",
 			"SSI",
 			"SSI:!",
+			"SSI:!N",
 			"SSJ",
 			"SSJ:!W",
 			"SSK",
 			"SSK:!W",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		]
 	},
 	"SSD": {
@@ -96,6 +121,7 @@
 			"__WATER__"
 		],
 		"S": [
+			"SSA:E",
 			"SSD:E",
 			"SSD:!S",
 			"SSE:!W",
@@ -105,13 +131,16 @@
 			"SSG:!W"
 		],
 		"E": [
+			"SSA:!N",
 			"SSD:W",
 			"SSD:!",
+			"SSD:!N",
 			"SSE",
 			"SSF",
 			"SSF:!W",
 			"SSG",
-			"SSG:!"
+			"SSG:!",
+			"SSG:!N"
 		]
 	},
 	"SSE": {
@@ -119,41 +148,64 @@
 			"__WATER__"
 		],
 		"W": [
+			"SSA",
+			"SSD",
+			"SSD:!W",
 			"SSE:!",
+			"SSE:!N",
 			"SSF:W",
 			"SSF:!",
+			"SSF:!N",
 			"SSG",
-			"SSG:!"
+			"SSG:!",
+			"SSG:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSA:W",
+			"SSC:W",
+			"SSC:!N",
 			"SSE:!",
+			"SSE:!N",
 			"SSH",
 			"SSH:!",
+			"SSH:!N",
 			"SSI",
 			"SSI:!",
+			"SSI:!N",
 			"SSJ",
 			"SSJ:!W",
 			"SSK",
 			"SSK:!W",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		]
 	},
 	"SSF": {
 		"N": [
+			"SSA:!W",
+			"SSD",
+			"SSD:!W",
+			"SSE:E",
 			"SSF:E",
 			"SSF:!S",
 			"SSG:E",
 			"SSG:!W"
 		],
 		"W": [
+			"SSA",
+			"SSD",
+			"SSD:!W",
+			"SSE:!N",
 			"SSF:W",
 			"SSF:!",
+			"SSF:!N",
 			"SSG",
-			"SSG:!"
+			"SSG:!",
+			"SSG:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -167,15 +219,29 @@
 			"__WATER__"
 		],
 		"W": [
+			"SSA",
+			"SSD",
+			"SSD:!W",
+			"SSE:!N",
+			"SSF:W",
+			"SSF:!N",
 			"SSG",
-			"SSG:!"
+			"SSG:!",
+			"SSG:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSA:!N",
+			"SSD:W",
+			"SSD:!N",
+			"SSE",
+			"SSF",
+			"SSF:!W",
 			"SSG",
-			"SSG:!"
+			"SSG:!",
+			"SSG:!N"
 		]
 	},
 	"SSH": {
@@ -183,31 +249,47 @@
 			"__WATER__"
 		],
 		"W": [
+			"SSA:!W",
+			"SSC",
+			"SSC:!W",
+			"SSE",
 			"SSH",
 			"SSH:!",
+			"SSH:!N",
 			"SSI",
 			"SSI:!",
+			"SSI:!N",
 			"SSJ:W",
 			"SSJ:!",
+			"SSJ:!N",
 			"SSK:W",
 			"SSK:!",
+			"SSK:!N",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSA:W",
+			"SSC:W",
+			"SSC:!N",
+			"SSE:!N",
 			"SSH",
 			"SSH:!",
+			"SSH:!N",
 			"SSI",
 			"SSI:!",
+			"SSI:!N",
 			"SSJ",
 			"SSJ:!W",
 			"SSK",
 			"SSK:!W",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		]
 	},
 	"SSI": {
@@ -215,31 +297,57 @@
 			"__WATER__"
 		],
 		"W": [
+			"SSA:!W",
+			"SSC",
+			"SSC:!W",
+			"SSE",
+			"SSH",
+			"SSH:!N",
 			"SSI",
 			"SSI:!",
+			"SSI:!N",
 			"SSJ:W",
 			"SSJ:!",
+			"SSJ:!N",
 			"SSK:W",
 			"SSK:!",
+			"SSK:!N",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSA:W",
+			"SSC:W",
+			"SSC:!N",
+			"SSE:!N",
+			"SSH",
+			"SSH:!N",
 			"SSI",
 			"SSI:!",
+			"SSI:!N",
 			"SSJ",
 			"SSJ:!W",
 			"SSK",
 			"SSK:!W",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		]
 	},
 	"SSJ": {
 		"N": [
+			"SSA",
+			"SSC",
+			"SSC:!W",
+			"SSE:!W",
+			"SSH:E",
+			"SSH:!W",
+			"SSI:E",
+			"SSI:!W",
 			"SSJ:E",
 			"SSJ:!S",
 			"SSK:E",
@@ -248,12 +356,23 @@
 			"SSL:!W"
 		],
 		"W": [
+			"SSA:!W",
+			"SSC",
+			"SSC:!W",
+			"SSE",
+			"SSH",
+			"SSH:!N",
+			"SSI",
+			"SSI:!N",
 			"SSJ:W",
 			"SSJ:!",
+			"SSJ:!N",
 			"SSK:W",
 			"SSK:!",
+			"SSK:!N",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -264,16 +383,38 @@
 	},
 	"SSK": {
 		"N": [
+			"SSA",
+			"SSC",
+			"SSC:!W",
+			"SSE:!W",
+			"SSH:E",
+			"SSH:!W",
+			"SSI:E",
+			"SSI:!W",
+			"SSJ:E",
+			"SSJ:!S",
 			"SSK:E",
 			"SSK:!S",
 			"SSL:E",
 			"SSL:!W"
 		],
 		"W": [
+			"SSA:!W",
+			"SSC",
+			"SSC:!W",
+			"SSE",
+			"SSH",
+			"SSH:!N",
+			"SSI",
+			"SSI:!N",
+			"SSJ:W",
+			"SSJ:!N",
 			"SSK:W",
 			"SSK:!",
+			"SSK:!N",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -284,19 +425,47 @@
 	},
 	"SSL": {
 		"N": [
+			"SSB",
+			"SSB:!N",
 			"SSL:S",
 			"SSL:!S"
 		],
 		"W": [
+			"SSA:!W",
+			"SSC",
+			"SSC:!W",
+			"SSE",
+			"SSH",
+			"SSH:!N",
+			"SSI",
+			"SSI:!N",
+			"SSJ:W",
+			"SSJ:!N",
+			"SSK:W",
+			"SSK:!N",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSA:W",
+			"SSC:W",
+			"SSC:!N",
+			"SSE:!N",
+			"SSH",
+			"SSH:!N",
+			"SSI",
+			"SSI:!N",
+			"SSJ",
+			"SSJ:!W",
+			"SSK",
+			"SSK:!W",
 			"SSL",
-			"SSL:!"
+			"SSL:!",
+			"SSL:!N"
 		]
 	}
 }

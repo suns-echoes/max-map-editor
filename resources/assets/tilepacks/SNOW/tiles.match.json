@@ -1,4 +1,18 @@
 {
+	"SLa": {
+		"N": [
+			"__LAND__"
+		],
+		"W": [
+			"__LAND__"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
 	"SSa": {
 		"N": [
 			"__WATER__"
@@ -24,13 +38,16 @@
 		],
 		"E": [
 			"SSa:!",
+			"SSa:!N",
 			"SSd:W",
 			"SSd:!",
+			"SSd:!N",
 			"SSe",
 			"SSf",
 			"SSf:!W",
 			"SSg",
-			"SSg:!"
+			"SSg:!",
+			"SSg:!N"
 		]
 	},
 	"SSb": {
@@ -44,7 +61,8 @@
 			"SSb:S",
 			"SSb:!S",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		],
 		"E": [
 			"__WATER__"
@@ -58,6 +76,7 @@
 			"__WATER__"
 		],
 		"S": [
+			"SSa:!S",
 			"SSc:E",
 			"SSc:!S",
 			"SSe:E",
@@ -73,19 +92,25 @@
 			"SSl:!W"
 		],
 		"E": [
+			"SSa:W",
 			"SSc:W",
 			"SSc:!",
+			"SSc:!N",
 			"SSe:!",
+			"SSe:!N",
 			"SSh",
 			"SSh:!",
+			"SSh:!N",
 			"SSi",
 			"SSi:!",
+			"SSi:!N",
 			"SSj",
 			"SSj:!W",
 			"SSk",
 			"SSk:!W",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		]
 	},
 	"SSd": {
@@ -96,6 +121,7 @@
 			"__WATER__"
 		],
 		"S": [
+			"SSa:E",
 			"SSd:E",
 			"SSd:!S",
 			"SSe:!W",
@@ -105,13 +131,16 @@
 			"SSg:!W"
 		],
 		"E": [
+			"SSa:!N",
 			"SSd:W",
 			"SSd:!",
+			"SSd:!N",
 			"SSe",
 			"SSf",
 			"SSf:!W",
 			"SSg",
-			"SSg:!"
+			"SSg:!",
+			"SSg:!N"
 		]
 	},
 	"SSe": {
@@ -119,41 +148,64 @@
 			"__WATER__"
 		],
 		"W": [
+			"SSa",
+			"SSd",
+			"SSd:!W",
 			"SSe:!",
+			"SSe:!N",
 			"SSf:W",
 			"SSf:!",
+			"SSf:!N",
 			"SSg",
-			"SSg:!"
+			"SSg:!",
+			"SSg:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSa:W",
+			"SSc:W",
+			"SSc:!N",
 			"SSe:!",
+			"SSe:!N",
 			"SSh",
 			"SSh:!",
+			"SSh:!N",
 			"SSi",
 			"SSi:!",
+			"SSi:!N",
 			"SSj",
 			"SSj:!W",
 			"SSk",
 			"SSk:!W",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		]
 	},
 	"SSf": {
 		"N": [
+			"SSa:!W",
+			"SSd",
+			"SSd:!W",
+			"SSe:E",
 			"SSf:E",
 			"SSf:!S",
 			"SSg:E",
 			"SSg:!W"
 		],
 		"W": [
+			"SSa",
+			"SSd",
+			"SSd:!W",
+			"SSe:!N",
 			"SSf:W",
 			"SSf:!",
+			"SSf:!N",
 			"SSg",
-			"SSg:!"
+			"SSg:!",
+			"SSg:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -167,15 +219,29 @@
 			"__WATER__"
 		],
 		"W": [
+			"SSa",
+			"SSd",
+			"SSd:!W",
+			"SSe:!N",
+			"SSf:W",
+			"SSf:!N",
 			"SSg",
-			"SSg:!"
+			"SSg:!",
+			"SSg:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSa:!N",
+			"SSd:W",
+			"SSd:!N",
+			"SSe",
+			"SSf",
+			"SSf:!W",
 			"SSg",
-			"SSg:!"
+			"SSg:!",
+			"SSg:!N"
 		]
 	},
 	"SSh": {
@@ -183,31 +249,47 @@
 			"__WATER__"
 		],
 		"W": [
+			"SSa:!W",
+			"SSc",
+			"SSc:!W",
+			"SSe",
 			"SSh",
 			"SSh:!",
+			"SSh:!N",
 			"SSi",
 			"SSi:!",
+			"SSi:!N",
 			"SSj:W",
 			"SSj:!",
+			"SSj:!N",
 			"SSk:W",
 			"SSk:!",
+			"SSk:!N",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSa:W",
+			"SSc:W",
+			"SSc:!N",
+			"SSe:!N",
 			"SSh",
 			"SSh:!",
+			"SSh:!N",
 			"SSi",
 			"SSi:!",
+			"SSi:!N",
 			"SSj",
 			"SSj:!W",
 			"SSk",
 			"SSk:!W",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		]
 	},
 	"SSi": {
@@ -215,31 +297,57 @@
 			"__WATER__"
 		],
 		"W": [
+			"SSa:!W",
+			"SSc",
+			"SSc:!W",
+			"SSe",
+			"SSh",
+			"SSh:!N",
 			"SSi",
 			"SSi:!",
+			"SSi:!N",
 			"SSj:W",
 			"SSj:!",
+			"SSj:!N",
 			"SSk:W",
 			"SSk:!",
+			"SSk:!N",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSa:W",
+			"SSc:W",
+			"SSc:!N",
+			"SSe:!N",
+			"SSh",
+			"SSh:!N",
 			"SSi",
 			"SSi:!",
+			"SSi:!N",
 			"SSj",
 			"SSj:!W",
 			"SSk",
 			"SSk:!W",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		]
 	},
 	"SSj": {
 		"N": [
+			"SSa",
+			"SSc",
+			"SSc:!W",
+			"SSe:!W",
+			"SSh:E",
+			"SSh:!W",
+			"SSi:E",
+			"SSi:!W",
 			"SSj:E",
 			"SSj:!S",
 			"SSk:E",
@@ -248,12 +356,23 @@
 			"SSl:!W"
 		],
 		"W": [
+			"SSa:!W",
+			"SSc",
+			"SSc:!W",
+			"SSe",
+			"SSh",
+			"SSh:!N",
+			"SSi",
+			"SSi:!N",
 			"SSj:W",
 			"SSj:!",
+			"SSj:!N",
 			"SSk:W",
 			"SSk:!",
+			"SSk:!N",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -264,16 +383,38 @@
 	},
 	"SSk": {
 		"N": [
+			"SSa",
+			"SSc",
+			"SSc:!W",
+			"SSe:!W",
+			"SSh:E",
+			"SSh:!W",
+			"SSi:E",
+			"SSi:!W",
+			"SSj:E",
+			"SSj:!S",
 			"SSk:E",
 			"SSk:!S",
 			"SSl:E",
 			"SSl:!W"
 		],
 		"W": [
+			"SSa:!W",
+			"SSc",
+			"SSc:!W",
+			"SSe",
+			"SSh",
+			"SSh:!N",
+			"SSi",
+			"SSi:!N",
+			"SSj:W",
+			"SSj:!N",
 			"SSk:W",
 			"SSk:!",
+			"SSk:!N",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -284,19 +425,47 @@
 	},
 	"SSl": {
 		"N": [
+			"SSb",
+			"SSb:!N",
 			"SSl:S",
 			"SSl:!S"
 		],
 		"W": [
+			"SSa:!W",
+			"SSc",
+			"SSc:!W",
+			"SSe",
+			"SSh",
+			"SSh:!N",
+			"SSi",
+			"SSi:!N",
+			"SSj:W",
+			"SSj:!N",
+			"SSk:W",
+			"SSk:!N",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"SSa:W",
+			"SSc:W",
+			"SSc:!N",
+			"SSe:!N",
+			"SSh",
+			"SSh:!N",
+			"SSi",
+			"SSi:!N",
+			"SSj",
+			"SSj:!W",
+			"SSk",
+			"SSk:!W",
 			"SSl",
-			"SSl:!"
+			"SSl:!",
+			"SSl:!N"
 		]
 	}
 }

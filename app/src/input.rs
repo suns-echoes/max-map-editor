@@ -190,6 +190,15 @@ const ACTIONS: &[(&str, &str, &str)] = &[
 	("SaveProject", "save-project", "Ctrl+S"),
 	("FileDialogSaveAs", "file-dialog save-as", "Ctrl+Shift+S"),
 	("FileDialogLoad", "file-dialog load", "Ctrl+O"),
+	// Save editor: warns it's experimental first, then opens the `.DTA` save
+	// picker on confirm (menu-only, no default chord).
+	("OpenSaveFile", "open-save-warn", ""),
+	// Save editor: writes the opened save (with edits) to a chosen `.DTA`.
+	("ExportSaveFile", "file-dialog export-save", ""),
+	// Save synthesis (Stage C): builds a fresh save from the current map alone
+	// and attaches it (name defaults to the session; slot GREEN_1).
+	("NewSaveFromMap", "new-save-from-map", ""),
+	("EditSaveData", "edit-save-data", ""),
 	("NewMap", "new-map", "Ctrl+N"),
 	("CloseProject", "close-project", "Ctrl+W"),
 	// Opens the WRL save picker - the SAME command the File menu runs (see
@@ -221,6 +230,7 @@ const ACTIONS: &[(&str, &str, &str)] = &[
 	("ZoomOut", "zoom 0.8", "Minus"),
 	("GridToggle", "grid toggle", "G"),
 	("PassOverlayToggle", "pass-overlay toggle", "O"),
+	("ResourcesToggle", "resources toggle", "R"),
 	("UnitsToggle", "units toggle", "U"),
 	// Tools (map editor only)
 	("ToolPencil", "tool pencil", "B"),
@@ -233,6 +243,12 @@ const ACTIONS: &[(&str, &str, &str)] = &[
 	("ToolPaintWater", "tool paint-water", "W"),
 	("ToolSelect", "tool select", "L"),
 	("ToolSelectRect", "tool select-rect", "M"),
+	// Object tools (save editing): V selects, G picks (eyedropper), H moves,
+	// J clones (the eyedropper's neighbour, and it carries the properties too).
+	("ToolObjSelect", "tool obj-select", "V"),
+	("ToolObjPick", "tool obj-pick", "G"),
+	("ToolObjMove", "tool obj-move", "H"),
+	("ToolObjClone", "tool obj-clone", "J"),
 	// Templates (only when one is selected in the explorer).
 	("TemplateRename", "template-rename", "F2"),
 	// Misc
@@ -284,11 +300,6 @@ pub fn binding_alias(line: &str) -> Option<&'static str> {
 /// `main.rs`) and the armed stamp's Esc cancel. Keep in sync with those sites.
 pub fn fixed_hint(line: &str) -> Option<&'static str> {
 	Some(match line {
-		"edit-cut" => "Ctrl+X",
-		"edit-copy" => "Ctrl+C",
-		"edit-paste" => "Ctrl+V",
-		"edit-select-all" => "Ctrl+A",
-		"edit-delete" => "Del",
 		"stamp cancel" => "Esc",
 		_ => return None,
 	})
@@ -499,6 +510,99 @@ mod tests {
 		assert_eq!(parse_chord("Backquote").unwrap().label(), "`");
 		assert_eq!(parse_chord("Ctrl+Equals").unwrap().label(), "Ctrl+=");
 		assert_eq!(parse_chord("f1").unwrap().label(), "F1");
+	}
+
+	/// Every named key the parser accepts gets its display label (menus show
+	/// these), Alt joins the modifier prefix chain, and a named key outside the
+	/// bindable set falls back to `?` rather than panicking.
+	#[test]
+	fn named_key_labels_cover_the_bindable_set() {
+		assert_eq!(parse_chord("Ctrl+Alt+X").unwrap().label(), "Ctrl+Alt+X", "Alt joins the prefix chain");
+		for (chord, label) in [
+			("enter", "Enter"),
+			("space", "Space"),
+			("tab", "Tab"),
+			("backspace", "Backspace"),
+			("ins", "Ins"),
+			("home", "Home"),
+			("end", "End"),
+			("pageup", "PgUp"),
+			("pagedown", "PgDn"),
+			("left", "Left"),
+			("right", "Right"),
+			("up", "Up"),
+			("down", "Down"),
+			("esc", "Esc"),
+		] {
+			assert_eq!(parse_chord(chord).unwrap().label(), label, "label of '{chord}'");
+		}
+		for n in 3..=12 {
+			assert_eq!(parse_chord(&format!("f{n}")).unwrap().label(), format!("F{n}"), "F{n} label");
+		}
+		// A named key we never parse (defensive): labels as "?" instead of panicking.
+		let odd = Chord { ctrl: false, shift: false, alt: false, key: BindKey::Named(NamedKey::CapsLock) };
+		assert_eq!(odd.label(), "?");
+	}
+
+	/// A single *control* character is not a printable key - it must fall
+	/// through to the named-key table and fail as unknown, not bind invisibly.
+	#[test]
+	fn control_characters_are_not_bindable_keys() {
+		let err = parse_chord("\u{1}").unwrap_err();
+		assert!(err.contains("unknown key"), "{err}");
+	}
+
+	/// `Bindings::load(Some(ini))` applies both INI sections; an INI without
+	/// `[Bindings]` / `[Mouse]` leaves every default in place.
+	#[test]
+	fn load_with_ini_applies_sections_or_keeps_defaults() {
+		// Both sections present: the keyboard rebind and the mouse option apply.
+		let ini = INI::from_str("[Bindings]\nfit=J\n[Mouse]\nPaintButton = Right\n").unwrap();
+		let b = Bindings::load(Some(&ini));
+		assert_eq!(b.lookup(ModifiersState::empty(), &Key::Character("j".into())), Some(Command::Fit));
+		assert!(b.is_paint_button(MouseButton::Right));
+
+		// Neither section: defaults survive untouched.
+		let empty = INI::from_str("[Paths]\nMaxPath=/nowhere\n").unwrap();
+		let b = Bindings::load(Some(&empty));
+		assert_eq!(b.lookup(ModifiersState::empty(), &Key::Character("f".into())), Some(Command::Fit));
+		assert!(b.is_paint_button(MouseButton::Left));
+		assert!(b.is_pan_button(MouseButton::Middle));
+	}
+
+	/// `[Mouse]` validation: unknown button names are skipped (a valid one in
+	/// the same list still applies), an unknown paint button leaves the
+	/// default, and a section without `ZoomStep` keeps the default step.
+	#[test]
+	fn mouse_section_skips_unknown_buttons() {
+		let ini = INI::from_str("[Mouse]\nPanButtons = Side Left\nPaintButton = Trackball\n").unwrap();
+		let mut b = Bindings::load(None);
+		b.apply_mouse(&ini);
+		assert!(b.is_pan_button(MouseButton::Left), "the valid button in the list applies");
+		assert!(!b.is_pan_button(MouseButton::Middle), "the parsed list replaces the defaults");
+		assert!(b.is_paint_button(MouseButton::Left), "unknown paint button keeps the default");
+		assert_eq!(b.zoom_step(), 1.15, "no ZoomStep entry keeps the default");
+
+		// An all-unknown PanButtons list parses empty and keeps the defaults.
+		let bad = INI::from_str("[Mouse]\nPanButtons = Side\n").unwrap();
+		let mut b = Bindings::load(None);
+		b.apply_mouse(&bad);
+		assert!(b.is_pan_button(MouseButton::Middle), "empty parse keeps the default pan buttons");
+	}
+
+	/// A `[Bindings]` entry whose action parses but whose chord doesn't (and
+	/// that isn't a legacy CHORD=ACTION line either) is skipped with a warning,
+	/// leaving the default binding alone.
+	#[test]
+	fn binding_entry_with_a_bad_chord_is_skipped() {
+		let mut b = Bindings::load(None);
+		let ini = INI::from_str("[Bindings]\nfit = NotAKey\n").unwrap();
+		b.apply_keyboard(&ini);
+		assert_eq!(
+			b.lookup(ModifiersState::empty(), &Key::Character("f".into())),
+			Some(Command::Fit),
+			"the unparseable entry left fit's default chord bound",
+		);
 	}
 
 	#[test]

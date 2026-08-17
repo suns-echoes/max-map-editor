@@ -154,3 +154,116 @@ fn parse_simple_image_raw(data: &[u8]) -> Option<SimpleImageRaw<'_>> {
 
 	Some((width, height, hot_spot_x, hot_spot_y, pixels, header_trans))
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The packed on-disk simple-image layout: 8-byte header + raw pixels.
+	fn blob(width: i16, height: i16, hot_x: i16, hot_y: i16, pixels: &[u8]) -> Vec<u8> {
+		let mut d = Vec::new();
+		d.extend_from_slice(&width.to_le_bytes());
+		d.extend_from_slice(&height.to_le_bytes());
+		d.extend_from_slice(&hot_x.to_le_bytes());
+		d.extend_from_slice(&hot_y.to_le_bytes());
+		d.extend_from_slice(pixels);
+		d
+	}
+
+	/// The FRAMEPIC BGRA quad for palette index `idx` (all entries are opaque,
+	/// so this doubles as the expected output of the transparency decoders).
+	fn pal(idx: u8) -> &'static [u8] {
+		&FRAMEPIC_PALETTE_BGRA[idx as usize * 4..idx as usize * 4 + 4]
+	}
+
+	/// `FromHeader` mode discards pixels matching `pixel[0,0]` (here 5) and
+	/// carries the header fields - including negative hot-spots - through.
+	#[test]
+	fn from_header_uses_the_first_pixel_as_the_discard_key() {
+		let img = parse_simple_image(&blob(2, 2, -3, -7, &[5, 0, 7, 5])).expect("a valid 2x2 image must decode");
+		assert_eq!(img.max_type, MaxType::MaxSimpleImage);
+		assert_eq!((img.width, img.height), (2, 2), "dimensions come from the header");
+		assert_eq!((img.hot_spot_x, img.hot_spot_y), (-3, -7), "hot-spots are sign-extended i16s");
+		let mut want = Vec::new();
+		want.extend_from_slice(&[0, 0, 0, 0]); // index 5 == header key -> discarded
+		want.extend_from_slice(pal(0));
+		want.extend_from_slice(pal(7));
+		want.extend_from_slice(&[0, 0, 0, 0]);
+		assert_eq!(img.data, want, "only pixels matching the header key become transparent");
+	}
+
+	/// `Index(N)` overrides the header key: index 7 is discarded while the
+	/// header's own key (5) stays visible.
+	#[test]
+	fn explicit_index_mode_overrides_the_header_key() {
+		let img = parse_simple_image_with(&blob(2, 2, 0, 0, &[5, 0, 7, 5]), SimpleImageTransparency::Index(7))
+			.expect("a valid 2x2 image must decode");
+		let mut want = Vec::new();
+		want.extend_from_slice(pal(5));
+		want.extend_from_slice(pal(0));
+		want.extend_from_slice(&[0, 0, 0, 0]); // index 7 == chosen key -> discarded
+		want.extend_from_slice(pal(5));
+		assert_eq!(img.data, want, "only the caller-chosen index becomes transparent");
+	}
+
+	/// `Opaque` paints every pixel solid, ignoring the header key entirely.
+	#[test]
+	fn opaque_mode_keeps_every_pixel_solid() {
+		let img = parse_simple_image_opaque(&blob(2, 2, 0, 0, &[5, 0, 7, 5])).expect("a valid 2x2 image must decode");
+		let mut want = Vec::new();
+		want.extend_from_slice(pal(5));
+		want.extend_from_slice(pal(0));
+		want.extend_from_slice(pal(7));
+		want.extend_from_slice(pal(5));
+		assert_eq!(img.data, want, "no pixel is discarded in opaque mode");
+	}
+
+	/// The indexed decoder swaps the transparent index with 0 so the shader's
+	/// global "0 discards" rule applies: 5 -> 0, 0 -> 5, others pass through.
+	#[test]
+	fn indexed_from_header_swaps_the_transparent_index_with_zero() {
+		let f = parse_simple_image_indexed(&blob(2, 2, -3, -7, &[5, 0, 7, 5])).expect("a valid 2x2 image must decode");
+		assert_eq!((f.width, f.height), (2, 2));
+		assert_eq!((f.hot_spot_x, f.hot_spot_y), (-3, -7), "hot-spots survive the indexed path too");
+		assert_eq!(f.pixels, vec![0, 5, 7, 0], "5<->0 swapped, 7 untouched");
+	}
+
+	/// `Index(0)` is the identity transform - the swap would be a no-op, so
+	/// the pixels come back verbatim.
+	#[test]
+	fn indexed_index_zero_is_the_identity_transform() {
+		let f = parse_simple_image_indexed_with(&blob(2, 2, 0, 0, &[5, 0, 7, 5]), SimpleImageTransparency::Index(0))
+			.expect("a valid 2x2 image must decode");
+		assert_eq!(f.pixels, vec![5, 0, 7, 5], "transparent index 0 needs no swap");
+	}
+
+	/// Indexed `Opaque` skips the swap entirely, keeping raw indices - even
+	/// zeros - intact for full-bleed backgrounds.
+	#[test]
+	fn indexed_opaque_keeps_raw_indices() {
+		let f = parse_simple_image_indexed_with(&blob(2, 2, 0, 0, &[5, 0, 7, 5]), SimpleImageTransparency::Opaque)
+			.expect("a valid 2x2 image must decode");
+		assert_eq!(f.pixels, vec![5, 0, 7, 5], "opaque mode must not remap any index");
+	}
+
+	/// Every malformed-header shape is rejected by both the BGRA and the
+	/// indexed entry points: short input, non-positive or oversized
+	/// dimensions, and a payload that disagrees with width * height.
+	#[test]
+	fn malformed_headers_are_rejected() {
+		let cases: Vec<(&str, Vec<u8>)> = vec![
+			("too short for the header + key pixel", blob(1, 1, 0, 0, &[])),
+			("zero width", blob(0, 1, 0, 0, &[9])),
+			("zero height", blob(1, 0, 0, 0, &[9])),
+			("negative width", blob(-1, 1, 0, 0, &[9])),
+			("width over the cap", blob(MAX_IMAGE_WIDTH + 1, 1, 0, 0, &vec![9; MAX_IMAGE_WIDTH as usize + 1])),
+			("height over the cap", blob(1, MAX_IMAGE_HEIGHT + 1, 0, 0, &vec![9; MAX_IMAGE_HEIGHT as usize + 1])),
+			("payload shorter than width * height", blob(2, 2, 0, 0, &[9, 9, 9])),
+			("payload longer than width * height", blob(2, 2, 0, 0, &[9, 9, 9, 9, 9])),
+		];
+		for (why, data) in &cases {
+			assert!(parse_simple_image(data).is_none(), "BGRA decode must reject: {why}");
+			assert!(parse_simple_image_indexed(data).is_none(), "indexed decode must reject: {why}");
+		}
+	}
+}

@@ -1,4 +1,32 @@
 {
+	"CHa": {
+		"N": [
+			"__LAND__"
+		],
+		"W": [
+			"__LAND__"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
+	"CLa": {
+		"N": [
+			"__LAND__"
+		],
+		"W": [
+			"__LAND__"
+		],
+		"S": [
+			"__LAND__"
+		],
+		"E": [
+			"__LAND__"
+		]
+	},
 	"CSa": {
 		"N": [
 			"__WATER__"
@@ -26,13 +54,16 @@
 		],
 		"E": [
 			"CSa:!",
+			"CSa:!N",
 			"CSc:W",
 			"CSc:!",
+			"CSc:!N",
 			"CSe",
 			"CSf",
 			"CSf:!W",
 			"CSg",
-			"CSg:!"
+			"CSg:!",
+			"CSg:!N"
 		]
 	},
 	"CSb": {
@@ -47,9 +78,11 @@
 			"CSb:!S",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm",
 			"CSm:E",
 			"CSm:!",
+			"CSm:!N",
 			"CSm:!E"
 		],
 		"E": [
@@ -64,6 +97,7 @@
 			"__WATER__"
 		],
 		"S": [
+			"CSa:E",
 			"CSc:E",
 			"CSc:!S",
 			"CSe:!W",
@@ -73,13 +107,16 @@
 			"CSg:!W"
 		],
 		"E": [
+			"CSa:!N",
 			"CSc:W",
 			"CSc:!",
+			"CSc:!N",
 			"CSe",
 			"CSf",
 			"CSf:!W",
 			"CSg",
-			"CSg:!"
+			"CSg:!",
+			"CSg:!N"
 		]
 	},
 	"CSd": {
@@ -90,6 +127,7 @@
 			"__WATER__"
 		],
 		"S": [
+			"CSa:!S",
 			"CSd:E",
 			"CSd:!S",
 			"CSe:E",
@@ -107,17 +145,24 @@
 			"CSm:!W"
 		],
 		"E": [
+			"CSa:W",
 			"CSd:W",
 			"CSd:!",
+			"CSd:!N",
 			"CSe:!",
+			"CSe:!N",
 			"CSh",
 			"CSh:!",
+			"CSh:!N",
+			"CSi",
+			"CSi:!N",
 			"CSj",
 			"CSj:!W",
 			"CSk",
 			"CSk:!W",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm",
 			"CSm:!E"
 		]
@@ -127,38 +172,66 @@
 			"__WATER__"
 		],
 		"W": [
+			"CSa",
+			"CSc",
+			"CSc:!W",
 			"CSe:!",
+			"CSe:!N",
 			"CSf:W",
 			"CSf:!",
+			"CSf:!N",
 			"CSg",
-			"CSg:!"
+			"CSg:!",
+			"CSg:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"CSa:W",
+			"CSd:W",
+			"CSd:!N",
 			"CSe:!",
+			"CSe:!N",
 			"CSh",
 			"CSh:!",
+			"CSh:!N",
 			"CSi",
 			"CSi:!",
+			"CSi:!N",
 			"CSj",
 			"CSj:!W",
 			"CSk",
 			"CSk:!W",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm",
 			"CSm:!E"
 		]
 	},
 	"CSf": {
-		"N": [],
+		"N": [
+			"CSa:!W",
+			"CSc",
+			"CSc:!W",
+			"CSe:E",
+			"CSf:E",
+			"CSf:!S",
+			"CSg:E",
+			"CSg:!W"
+		],
 		"W": [
+			"CSa",
+			"CSc",
+			"CSc:!W",
+			"CSe:!N",
 			"CSf:W",
 			"CSf:!",
+			"CSf:!N",
 			"CSg",
-			"CSg:!"
+			"CSg:!",
+			"CSg:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -172,15 +245,29 @@
 			"__WATER__"
 		],
 		"W": [
+			"CSa",
+			"CSc",
+			"CSc:!W",
+			"CSe:!N",
+			"CSf:W",
+			"CSf:!N",
 			"CSg",
-			"CSg:!"
+			"CSg:!",
+			"CSg:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"CSa:!N",
+			"CSc:W",
+			"CSc:!N",
+			"CSe",
+			"CSf",
+			"CSf:!W",
 			"CSg",
-			"CSg:!"
+			"CSg:!",
+			"CSg:!N"
 		]
 	},
 	"CSh": {
@@ -188,32 +275,48 @@
 			"__WATER__"
 		],
 		"W": [
+			"CSa:!W",
+			"CSd",
+			"CSd:!W",
+			"CSe",
 			"CSh",
 			"CSh:!",
+			"CSh:!N",
 			"CSi",
 			"CSi:!",
+			"CSi:!N",
 			"CSj:W",
 			"CSj:!",
+			"CSj:!N",
 			"CSk:W",
 			"CSk:!",
+			"CSk:!N",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm:E"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"CSa:W",
+			"CSd:W",
+			"CSd:!N",
+			"CSe:!N",
 			"CSh",
 			"CSh:!",
+			"CSh:!N",
 			"CSi",
 			"CSi:!",
+			"CSi:!N",
 			"CSj",
 			"CSj:!W",
 			"CSk",
 			"CSk:!W",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm:!E"
 		]
 	},
@@ -222,35 +325,62 @@
 			"__WATER__"
 		],
 		"W": [
+			"CSa:!W",
+			"CSd",
+			"CSd:!W",
+			"CSe",
+			"CSh",
+			"CSh:!N",
 			"CSi",
 			"CSi:!",
+			"CSi:!N",
 			"CSj:W",
 			"CSj:!",
+			"CSj:!N",
 			"CSk:W",
 			"CSk:!",
+			"CSk:!N",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm:E",
-			"CSm:!"
+			"CSm:!",
+			"CSm:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"CSa:W",
+			"CSd:W",
+			"CSd:!N",
+			"CSe:!N",
+			"CSh",
+			"CSh:!N",
 			"CSi",
 			"CSi:!",
+			"CSi:!N",
 			"CSj",
 			"CSj:!W",
 			"CSk",
 			"CSk:!W",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm",
 			"CSm:!E"
 		]
 	},
 	"CSj": {
 		"N": [
+			"CSa",
+			"CSd",
+			"CSd:!W",
+			"CSe:!W",
+			"CSh:E",
+			"CSh:!W",
+			"CSi:E",
+			"CSi:!W",
 			"CSj:E",
 			"CSj:!S",
 			"CSk:E",
@@ -258,17 +388,30 @@
 			"CSl:E",
 			"CSl:!W",
 			"CSm:E",
-			"CSm:!"
+			"CSm:!",
+			"CSm:!N"
 		],
 		"W": [
+			"CSa:!W",
+			"CSd",
+			"CSd:!W",
+			"CSe",
+			"CSh",
+			"CSh:!N",
+			"CSi",
+			"CSi:!N",
 			"CSj:W",
 			"CSj:!",
+			"CSj:!N",
 			"CSk:W",
 			"CSk:!",
+			"CSk:!N",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm:E",
-			"CSm:!"
+			"CSm:!",
+			"CSm:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -279,20 +422,44 @@
 	},
 	"CSk": {
 		"N": [
+			"CSa",
+			"CSd",
+			"CSd:!W",
+			"CSe:!W",
+			"CSh:E",
+			"CSh:!W",
+			"CSi:E",
+			"CSi:!W",
+			"CSj:E",
+			"CSj:!S",
 			"CSk:E",
 			"CSk:!S",
 			"CSl:E",
 			"CSl:!W",
 			"CSm:E",
-			"CSm:!"
+			"CSm:!",
+			"CSm:!N"
 		],
 		"W": [
+			"CSa:!W",
+			"CSd",
+			"CSd:!W",
+			"CSe",
+			"CSh",
+			"CSh:!N",
+			"CSi",
+			"CSi:!N",
+			"CSj:W",
+			"CSj:!N",
 			"CSk:W",
 			"CSk:!",
+			"CSk:!N",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm:E",
-			"CSm:!"
+			"CSm:!",
+			"CSm:!N"
 		],
 		"S": [
 			"__LAND__"
@@ -303,6 +470,8 @@
 	},
 	"CSl": {
 		"N": [
+			"CSb",
+			"CSb:!N",
 			"CSl:S",
 			"CSl:!W",
 			"CSm:W",
@@ -311,68 +480,105 @@
 			"CSm:!W"
 		],
 		"W": [
+			"CSa:!W",
+			"CSd",
+			"CSd:!W",
+			"CSe",
+			"CSh",
+			"CSh:!N",
+			"CSi",
+			"CSi:!N",
+			"CSj:W",
+			"CSj:!N",
+			"CSk:W",
+			"CSk:!N",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
 			"CSm:E",
-			"CSm:!"
+			"CSm:!",
+			"CSm:!N"
 		],
 		"S": [
 			"__LAND__"
 		],
 		"E": [
+			"CSa:W",
+			"CSd:W",
+			"CSd:!N",
+			"CSe:!N",
+			"CSh",
+			"CSh:!N",
+			"CSi",
+			"CSi:!N",
+			"CSj",
+			"CSj:!W",
+			"CSk",
+			"CSk:!W",
 			"CSl",
 			"CSl:!",
+			"CSl:!N",
+			"CSl:!W",
+			"CSm",
 			"CSm:!E"
 		]
 	},
 	"CSm": {
 		"N": [
+			"CSb",
+			"CSb:!N",
+			"CSl:S",
+			"CSl:!S",
 			"CSm:W",
 			"CSm:S",
 			"CSm:!S",
 			"CSm:!W"
 		],
 		"W": [
+			"CSa:!W",
+			"CSd",
+			"CSd:!W",
+			"CSe",
+			"CSi",
+			"CSi:!N",
+			"CSj:W",
+			"CSj:!N",
+			"CSk:W",
+			"CSk:!N",
+			"CSl",
+			"CSl:!N",
 			"CSm:E",
-			"CSm:!"
+			"CSm:!",
+			"CSm:!N"
 		],
 		"S": [
+			"CSa:S",
+			"CSd:S",
+			"CSd:!E",
+			"CSe:!E",
+			"CSh:W",
+			"CSh:!E",
+			"CSi:W",
+			"CSi:!E",
+			"CSj:W",
+			"CSj:!N",
+			"CSk:W",
+			"CSk:!N",
+			"CSl:W",
+			"CSl:!E",
 			"CSm:W",
 			"CSm:!S"
 		],
 		"E": [
+			"CSb:W",
+			"CSb:!E",
+			"CSl:E",
+			"CSl:!W",
 			"CSm:S",
 			"CSm:E",
 			"CSm:!",
+			"CSm:!N",
 			"CSm:!W"
-		]
-	},
-	"CLa": {
-		"N": [
-			"__LAND__"
-		],
-		"W": [
-			"__LAND__"
-		],
-		"S": [
-			"__LAND__"
-		],
-		"E": [
-			"__LAND__"
-		]
-	},
-	"CHa": {
-		"N": [
-			"__LAND__"
-		],
-		"W": [
-			"__LAND__"
-		],
-		"S": [
-			"__LAND__"
-		],
-		"E": [
-			"__LAND__"
 		]
 	}
 }

@@ -61,16 +61,20 @@ mod tests {
 	use super::*;
 
 	/// Byte-identical read→write round-trip over the stock maps (backlog
-	/// TEST-5). Reads the vendored `resources/originals/` (override with the
+	/// TEST-5). Reads the gitignored `testdata/originals/` (override with the
 	/// `MAX_DIR` env var); skips cleanly if that directory is absent.
+	///
+	/// The path used to say `resources/originals`, which the map corpus left
+	/// behind in the resource restructure - so this test had been silently
+	/// skipping ever since, and `MAX_REQUIRE_FIXTURES=1` is what caught it.
 	#[test]
 	fn stock_maps_round_trip_byte_identical() {
 		let dir = std::env::var("MAX_DIR").unwrap_or_else(|_| {
-			Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/originals").to_string_lossy().into_owned()
+			Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/originals").to_string_lossy().into_owned()
 		});
 		let dir = Path::new(&dir);
 		if !dir.is_dir() {
-			eprintln!("skipping: no M.A.X. dir at {}", dir.display());
+			crate::testutil::skip_fixture(&format!("no M.A.X. dir at {}", dir.display()));
 			return;
 		}
 		let mut checked = 0;
@@ -103,5 +107,54 @@ mod tests {
 			pass_table: vec![0; 1],
 		};
 		assert!(wrl_to_bytes(&wrl).is_err());
+	}
+
+	/// A `WrlFile` whose field lengths are all mutually consistent.
+	fn valid_wrl() -> WrlFile {
+		WrlFile {
+			header: vec![0; 5],
+			width: 2,
+			height: 1,
+			minimap: vec![0; 2],
+			bigmap: vec![0, 0],
+			tile_count: 1,
+			tiles: vec![0u8; TILE_DATA_SIZE],
+			palette: vec![0u8; 768],
+			pass_table: vec![0u8; 1],
+		}
+	}
+
+	/// Every size validation fires independently and names the offending
+	/// field, so a caller can tell which buffer it got wrong.
+	#[test]
+	fn each_size_validation_names_the_offending_field() {
+		type Mutate = fn(&mut WrlFile);
+		let cases: [(&str, Mutate); 5] = [
+			("header", |w| w.header = vec![0; 4]),
+			("minimap", |w| w.minimap = vec![0; 3]),
+			("tiles", |w| w.tiles = vec![0; TILE_DATA_SIZE - 1]),
+			("palette", |w| w.palette = vec![0; 767]),
+			("pass table", |w| w.pass_table = vec![0; 2]),
+		];
+		for (field, mutate) in cases {
+			let mut wrl = valid_wrl();
+			mutate(&mut wrl);
+			match wrl_to_bytes(&wrl) {
+				Err(WrlError::Parse(msg)) => assert!(msg.contains(field), "'{msg}' should name the {field} field"),
+				other => panic!("a bad {field} length must be a parse error, got {other:?}"),
+			}
+		}
+	}
+
+	/// `write_wrl_file` creates missing parent directories and writes exactly
+	/// the `wrl_to_bytes` serialization.
+	#[test]
+	fn write_wrl_file_creates_parents_and_writes_the_serialization() {
+		let dir = std::env::temp_dir().join(format!("mme-wrl-write-{}", std::process::id()));
+		let path = dir.join("nested").join("OUT.WRL");
+		let wrl = valid_wrl();
+		write_wrl_file(&wrl, &path).unwrap();
+		assert_eq!(std::fs::read(&path).unwrap(), wrl_to_bytes(&wrl).unwrap(), "file bytes match the serializer");
+		let _ = std::fs::remove_dir_all(&dir);
 	}
 }

@@ -225,4 +225,22 @@ mod tests {
 			let _ = parse_big_image_indexed(&d[..len]);
 		}
 	}
+
+	/// Out-of-range dimensions are rejected by both decoders before any
+	/// palette or RLE work happens.
+	#[test]
+	fn big_image_rejects_out_of_range_dimensions() {
+		for (why, w, h) in [
+			("zero width", 0i16, 2i16),
+			("negative height", 2, -1),
+			("width over the cap", MAX_IMAGE_WIDTH + 1, 1),
+			("height over the cap", 1, MAX_IMAGE_HEIGHT + 1),
+		] {
+			let mut d = big_blob();
+			d[4..6].copy_from_slice(&w.to_le_bytes());
+			d[6..8].copy_from_slice(&h.to_le_bytes());
+			assert!(parse_big_image(&d).is_none(), "BGRA decode must reject: {why}");
+			assert!(parse_big_image_indexed(&d).is_none(), "indexed decode must reject: {why}");
+		}
+	}
 }

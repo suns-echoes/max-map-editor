@@ -18,12 +18,13 @@ struct Uniforms {
 	tiles_per_row: u32,        // unused here (atlas is layered)
 };
 
-// Pass overlay: when enabled, tint each cell by its pass value.
+// Pass overlay + the atlas packing (cols, tiles per layer), so `atlas_pixel`
+// addresses tiles for whatever layer size the device limits chose.
 struct Overlay {
 	enabled:    u32,  // 0 = off
 	layer_mask: u32,  // bit n = composite layer n (bit0 water, bit1 ground)
-	_pad1:      u32,
-	_pad2:      u32,
+	atlas_cols: u32,             // tiles per row within a layer
+	atlas_per_layer: u32,        // tiles per array layer (cols * cols)
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -86,9 +87,9 @@ fn transformed_sub(sub: vec2<u32>, bits: u32) -> vec2<u32> {
 }
 
 fn atlas_pixel(index: u32, sub: vec2<u32>) -> u32 {
-	let layer = index >> 8u;
-	let slot = index & 255u;
-	let origin = vec2<u32>((slot % 16u) * 64u, (slot / 16u) * 64u);
+	let layer = index / overlay.atlas_per_layer;
+	let slot = index % overlay.atlas_per_layer;
+	let origin = vec2<u32>((slot % overlay.atlas_cols) * 64u, (slot / overlay.atlas_cols) * 64u);
 	return textureLoad(atlas, vec2<i32>(origin + sub), i32(layer), 0).r;
 }
 

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [rust, main]
+    branches: [rust, main, dev]
   pull_request:
 
 env:
@@ -12,36 +12,76 @@ env:
   CI: "true"
 
 jobs:
-  ci:
+  # The cheap lane: map-core and the support crates, plus the tree-wide checks
+  # (formatting, license policy). No graphics stack needed, so it stays fast
+  # and green on every branch.
+  core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      # winit + wgpu need these to *build* on Linux (X11/Wayland dev libs).
-      # Adjust here if a future dep pulls in more - this is a starting set.
-      - name: Install build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwayland-dev libxkbcommon-dev libx11-dev \
-            libxcursor-dev libxrandr-dev libxi-dev
 
       - name: Add rustfmt + clippy
         run: rustup component add rustfmt clippy
 
       # Formatting is the source of truth (rustfmt.toml) - fail on drift.
+      # Source-only, so this covers the app crate too.
       - name: Format check
         run: cargo fmt --check
 
-      # Dependency license policy (permissive only) + attribution freshness.
+      # Dependency license policy (permissive only) + attribution freshness
+      # (reads Cargo.lock directly - no cargo invocation, no build).
       - name: License check
         run: node tools/licenses.mjs --check
 
-      # Deny warnings on the crates we own. `ini` is gated now that it's
-      # been brought up to standard; `max-assets` still tracks its re-MAX
-      # upstream (its image/ module has known lints) and stays ungated.
-      - name: Clippy
-        run: cargo clippy -p max-map-editor -p map-core -p ini --all-targets --no-deps -- -D warnings
+      # crates/wgpu-ui is a mirror of the sibling toolkit repo. The runner has
+      # no sibling checkout, so this skips cleanly here; it is the local
+      # pre-commit guard that a hand-edit under crates/wgpu-ui never sticks.
+      - name: wgpu-ui mirror check
+        run: node tools/vendor-wgpu-ui.mjs --check
 
-      - name: Test
+      # Deny warnings on the gated core crates (`max-assets` still tracks its
+      # re-MAX upstream and stays ungated; the app crate is in the app lane).
+      - name: Clippy (core crates)
+        run: cargo clippy -p map-core -p ini --all-targets --no-deps -- -D warnings
+
+      # map-core's equivalence proof self-skips loudly without the
+      # (copyrighted, gitignored) testdata/originals fixtures; every other
+      # map-core/assets/ini/json test runs here.
+      - name: Test (core crates)
+        run: cargo test -p map-core -p max-assets -p ini -p json
+
+  # The full-workspace lane. `wgpu-ui` has no public remote, so this used to be
+  # unbuildable on a runner and sat gated to the pre-wgpu-ui branches; the
+  # toolkit is committed at crates/wgpu-ui now, so a plain checkout builds.
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # winit + wgpu need these to *build* on Linux (X11/Wayland dev libs).
+      # mesa-vulkan-drivers provides lavapipe (software Vulkan) so the runner
+      # has an adapter at all - `gpu.rs::pick_adapter` asks for a hardware one
+      # and falls back to a software rasterizer, and the visual/golden tests
+      # render CPU-side glyphs, so they are deterministic under it. This is
+      # what wgpu-ui's own CI does. Tests that still find no adapter skip
+      # cleanly rather than fail.
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwayland-dev libxkbcommon-dev libx11-dev \
+            libxcursor-dev libxrandr-dev libxi-dev \
+            mesa-vulkan-drivers
+
+      - name: Add clippy
+        run: rustup component add clippy
+
+      # The toolkit is held to its own stricter lints (see the generated
+      # crates/wgpu-ui/Cargo.toml), not the app's house-style allow-list.
+      - name: Clippy (app + toolkit)
+        run: cargo clippy -p max-map-editor -p wgpu-ui --all-targets --no-deps -- -D warnings
+
+      # The runners have no GPU: every test that needs an adapter self-skips
+      # (wgpu-ui's own unit tests included), and the rest run.
+      - name: Test (workspace)
         run: cargo test --workspace

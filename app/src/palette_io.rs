@@ -115,4 +115,11 @@ mod tests {
 	fn load_missing_file_errors() {
 		assert!(load(Path::new("temp/__palette_io_absent__.json")).is_err());
 	}
+
+	#[test]
+	fn save_to_a_parentless_path_surfaces_the_write_error() {
+		// `/` has no parent (nothing to create) and cannot be written as a file.
+		let err = save(Path::new("/"), &ramp(), "x").expect_err("writing a directory path fails");
+		assert!(err.starts_with('/'), "the error names the path: {err}");
+	}
 }

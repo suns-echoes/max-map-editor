@@ -1,0 +1,12 @@
+{
+	"version": "1",
+	"id": "pyramid-2a",
+	"name": "Pyramid 2A",
+	"family": "pyramid",
+	"transform": false,
+	"pass": [
+		"333",
+		"333",
+		"333"
+	]
+}

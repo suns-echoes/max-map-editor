@@ -174,4 +174,21 @@ mod tests {
 		assert!(read_wrl_file(&path).is_err());
 		let _ = std::fs::remove_file(&path);
 	}
+
+	/// `read_wrl_header` seeks past the bigmap and tile table and returns
+	/// just the minimap-preview fields, agreeing with the full reader.
+	#[test]
+	fn header_preview_matches_the_full_read() {
+		let mut wrl = valid_wrl();
+		wrl.minimap = vec![7, 9];
+		wrl.palette[0] = 42;
+		wrl.palette[767] = 43;
+		let path = scratch("header");
+		std::fs::write(&path, wrl_to_bytes(&wrl).unwrap()).unwrap();
+		let h = read_wrl_header(&path).unwrap();
+		assert_eq!((h.width, h.height, h.tile_count), (2, 1, 1), "dimensions and tile count from the header");
+		assert_eq!(h.minimap, vec![7, 9], "minimap bytes read in place");
+		assert_eq!((h.palette[0], h.palette[767]), (42, 43), "palette read after seeking past bigmap + tiles");
+		let _ = std::fs::remove_file(&path);
+	}
 }

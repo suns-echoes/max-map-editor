@@ -331,7 +331,14 @@ fn write_string(out: &mut String, s: &str) {
 }
 
 fn write_number(out: &mut String, n: f64) {
-	if n.fract() == 0.0 && n.abs() < 1e15 {
+	if !n.is_finite() {
+		// JSON has no NaN or infinity, and `format!` would emit the bare words
+		// `NaN` / `inf` - which this crate's own parser rejects, so the file we
+		// just wrote would not load. Emit null instead (what JSON.stringify does)
+		// so a stray non-finite value degrades to a missing field rather than an
+		// unreadable project.
+		out.push_str("null");
+	} else if n.fract() == 0.0 && n.abs() < 1e15 {
 		out.push_str(&format!("{}", n as i64));
 	} else {
 		out.push_str(&format!("{n}"));
@@ -423,5 +430,62 @@ mod tests {
 		assert!(parse(r#""\x""#).unwrap_err().contains("bad escape"));
 		// A lone surrogate is not a valid scalar - it decodes to U+FFFD.
 		assert_eq!(parse(r#""\ud800""#).unwrap().as_str(), Some("\u{FFFD}"));
+	}
+
+	#[test]
+	fn parser_reports_expected_char_and_eof() {
+		// A wrong delimiter names both the expected and the found byte.
+		let err = parse(r#"{"a" 1}"#).unwrap_err();
+		assert!(err.contains("expected ':' got '1'"), "{err}");
+		// A document with no value at all reports EOF, not a byte position.
+		assert_eq!(parse("").unwrap_err(), "unexpected EOF");
+		assert_eq!(parse("   ").unwrap_err(), "unexpected EOF");
+	}
+
+	#[test]
+	fn parser_reports_bad_container_separators() {
+		// A missing comma between members names the two accepted delimiters.
+		let err = parse(r#"{"a": 1 "b": 2}"#).unwrap_err();
+		assert!(err.contains("expected ',' or '}'"), "{err}");
+		let err = parse("[1 2]").unwrap_err();
+		assert!(err.contains("expected ',' or ']'"), "{err}");
+		// EOF inside a container reports the same separator expectation.
+		let err = parse(r#"{"a": 1"#).unwrap_err();
+		assert!(err.contains("expected ',' or '}'"), "{err}");
+		let err = parse("[1").unwrap_err();
+		assert!(err.contains("expected ',' or ']'"), "{err}");
+	}
+
+	#[test]
+	fn parser_decodes_every_named_escape() {
+		// All eight single-letter escapes decode to their characters.
+		let v = parse(r#""\"\\\/\n\t\r\b\f""#).unwrap();
+		assert_eq!(v.as_str(), Some("\"\\/\n\t\r\u{0008}\u{000C}"));
+	}
+
+	#[test]
+	fn parser_rejects_unterminated_string() {
+		// A string cut off before its closing quote is a hard error.
+		assert_eq!(parse(r#""abc"#).unwrap_err(), "unterminated string");
+	}
+
+	#[test]
+	fn serializes_null_and_empty_object() {
+		assert_eq!(JsonValue::Null.to_pretty(), "null");
+		assert_eq!(JsonValue::Object(vec![]).to_pretty(), "{}");
+		// Both survive a full document round-trip.
+		let src = "{\n\t\"a\": null,\n\t\"b\": {}\n}";
+		assert_eq!(parse(src).unwrap().to_pretty(), src);
+	}
+
+	#[test]
+	fn non_finite_numbers_serialize_as_null_not_as_unreadable_words() {
+		// `NaN` / `inf` are not JSON, and this crate's own parser rejects them -
+		// so writing them verbatim produced a file that could not be read back.
+		for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+			assert_eq!(JsonValue::Number(bad).to_pretty(), "null");
+		}
+		let doc = JsonValue::Object(vec![("a".into(), JsonValue::Number(f64::NAN))]);
+		assert!(parse(&doc.to_pretty()).is_ok(), "whatever we write, we must be able to read");
 	}
 }

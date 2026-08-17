@@ -27,10 +27,252 @@
 					LATEST RELEASE
 				</div>
 				<div>
-					<a href="https://github.com/suns-echoes/max-map-editor/releases/tag/v0.7.0">
-						<h3 class="no-margin">v0.7.0</h3>
+					<a href="https://github.com/suns-echoes/max-map-editor/releases/tag/v0.8.0">
+						<h3 class="no-margin">v0.8.0</h3>
 					</a>
 				</div>
+			</div>
+		</section>
+
+		<section class="log">
+			<div class="log-bg log-header">Current progress report #11
+				<div class="log-date">log date: distant future from 2026-08-16</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Things that stand on the ground</h2>
+				<p>
+					Commanders, the terrain grew a third dimension - or near enough.
+					A mountain in M.A.X. was never an object; it was a run of tiles
+					with a mountain painted across them, and you placed it the way
+					you place wallpaper. No longer. The new <strong>Scenery</strong>
+					library holds mountains, tree stands, rocky outcrops and meadows
+					as <strong>objects</strong>, cut out of the original art with the
+					ground removed and the artist's shadow turned translucent where
+					the art allows it.
+				</p>
+				<p>
+					Open <strong>Windows &rarr; Dockable Dialogs &rarr;
+					Scenery</strong>, click a piece, and the tools you already know
+					do the rest: the pencil drops it, the eraser lifts it, the arrow
+					drags it. Placement is by <strong>pixel</strong>, not by cell -
+					nothing snaps to the grid, and a piece hangs from its
+					<strong>centre of mass</strong>, so what sits under the cursor is
+					what lands. Objects standing close together share one shadow, so
+					a stand of trees reads as a stand of trees and not as a black
+					blot where two shadows crossed. It is all undoable, it is saved
+					with the project, and it composites into the WRL export - the
+					game sees ordinary tiles.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Four ways two objects can meet</h2>
+				<p>
+					Objects overlap. What happens where they do is now yours to
+					choose, per placement, from the <strong>blend</strong> dropdown
+					in the panel header - and it only ever touches scenery pixels,
+					never the ground under them:
+				</p>
+				<ul>
+					<li>- <strong>normal</strong> - stamp it as it is; the newer
+						object cuts its own silhouette out of the older one;</li>
+					<li>- <strong>brighter</strong> - keep whichever of the two inks
+						is lighter;</li>
+					<li>- <strong>darker</strong> - keep whichever is darker;</li>
+					<li>- <strong>higher</strong> - keep the ink of whichever object
+						<strong>stands taller</strong> there, so a hill dropped
+						against a mountain's flank interlocks with it instead of
+						sitting on top of it like a sticker.</li>
+				</ul>
+				<p>
+					<strong>higher</strong> is the interesting one, because it means
+					a piece knows how high it stands. Some do by hand - the CRATER
+					pack ships a real <strong>height map</strong> for every cut-out
+					in it - and where none is drawn the editor reads the relief off
+					the art itself: how deep inside its own outline a pixel sits, and
+					how brightly it was painted. A landform is tallest where it is
+					widest; a lit face is higher ground than a crevice; a crater is
+					read as the ring it is. Where that guess is wrong, the piece's
+					<strong>Heightmap</strong> tab lets you paint the truth - black
+					is ground level, white is the top - and export or import it as a
+					plain greyscale PNG. Whichever ink a blend keeps, it is always
+					one of the two originals and never a mixture, so the export shows
+					exactly what the screen does.
+				</p>
+				<p>
+					Your own objects are welcome: draw on a transparent background,
+					let the alpha channel say what is object and what is shadow, and
+					<strong>new</strong> turns the image into a placeable piece with
+					its colours snapped to the map's palette. One gesture recolours a
+					green tree autumn-brown and keeps its shading.
+				</p>
+			</div>
+			<div class="log-bg log-panel">
+				<div class="label">From the bridge:</div>
+				<div class="grid">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0036.webp" data-preview="true" title="The Scenery library - mountains, trees and meadows placed by pixel, interlocking under the 'higher' blend" /></div>
+				</div>
+				<div class="grid">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0037.webp" data-preview="true" title="The same two mountains, four ways: normal, brighter, darker, higher" /></div>
+				</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Round worlds, ragged worlds</h2>
+				<p>
+					The Random Terrain Generator learned what a coastline is for.
+					Islands, continents, seas and lakes now carry a
+					<strong>shape</strong> knob: at <strong>0</strong> it draws true
+					circles - smooth, rounded, deliberate - at <strong>50</strong>
+					the classic look, and at <strong>100</strong> a fully random
+					<strong>fractal</strong> coast of deep bays and long spits. The
+					value scales both how far the coast strays from the radius and
+					how fine the detail gets, so the whole range between an atoll
+					and a fjord is one slider. Every world still comes from its seed
+					and still grows back identically from it.
+				</p>
+			</div>
+			<div class="log-bg log-panel">
+				<div class="label">From the bridge:</div>
+				<div class="grid">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0038.webp" data-preview="true" title="The shape knob: 0 draws true circles, 100 a fractal coastline" /></div>
+				</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>The coastline, settled</h2>
+				<p>
+					<strong>Fix Shore</strong> is one honest tool now, not five
+					methods to choose between: it lays the missing coast with a
+					backtracking loop-walk, clears shore tiles stranded inland
+					(always a mistake), then works the remaining bad seams pass by
+					pass - faster than the old ladder and checked, every pass,
+					against the tileset's own matching table. It
+					<strong>re-tiles only the shore band</strong>, so land and water
+					keep the shape you drew, and a seam your tileset genuinely
+					cannot close gets <strong>flagged</strong> instead of blasted
+					open. The window floats over the live map - pan, zoom and edit
+					while it runs - counts broken seams down as it goes, and the
+					whole run is one undo step. <strong>Show Shore Bugs</strong> and
+					<strong>Show Problems</strong> point straight at whatever is
+					left.
+				</p>
+			</div>
+			<div class="log-bg log-panel">
+				<div class="label">From the bridge:</div>
+				<div class="grid">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0039.webp" data-preview="true" title="Raw land laid on water, every seam flagged red - and the same world after one Auto Fix run" /></div>
+				</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>The cockpit was stripped to the frame</h2>
+				<p>
+					Less visible, and the work of the whole cycle: every panel,
+					dialog, menu and field in this editor was rebuilt on
+					<strong>one</strong> in-house widget toolkit. There used to be
+					several - a text field in a panel and the same text field in a
+					dialog were, quietly, different code that behaved differently.
+					That is over. A field is a field wherever it sits: the same
+					caret, the same selection, the same system clipboard, the same
+					right-click menu. Dropdowns, scroll areas, tabs and menus,
+					likewise. The toolboxes went to labelled <strong>icon
+					grids</strong> while we were in there.
+				</p>
+				<p>
+					Two things you will notice on the first run. <strong>UI
+					Scale</strong> finally works properly: at 125% and 150% the
+					chrome font is rendered at the size it is drawn at instead of
+					being smeared up from the small one, so a big cockpit on a big
+					screen is <strong>sharp</strong>. And each editing mode now
+					keeps <strong>its own panel layout</strong> - the map editor,
+					the pass editors and the save editor each come back arranged the
+					way you left them, instead of fighting over one workspace.
+				</p>
+			</div>
+			<div class="log-bg log-panel">
+				<div class="label">From the bridge:</div>
+				<div class="grid">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0035.webp" data-preview="true" title="The rebuilt cockpit - minimap, tile explorer, palette and the icon-grid toolbox, all one toolkit" /></div>
+				</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>/!\ The "utility" opens your saved games</h2>
+				<p>
+					Commanders, the biggest one yet: the editor now reads a
+					<strong>saved game</strong>. Point <strong>File &rarr;
+					Experimental &rarr; Open Save File&hellip;</strong> at a
+					<code>.DTA</code> and the world comes up as an ordinary editable
+					map - with every unit, building, slab and piece of rubble standing
+					exactly where you left it, in its own team's colors. The save's tab
+					wears a <code>/!\</code> so you never mistake it for a plain map.
+				</p>
+				<p>
+					And it writes them back. <strong>Export Save File&hellip;</strong>
+					re-emits the whole thing, and an untouched save comes out
+					<strong>byte-identical</strong> to the one that went in - the proof
+					that nothing was lost in translation. Overwrite anything and the
+					previous five versions rotate away as <code>.bak1</code> &hellip;
+					<code>.bak5</code> first; this "utility" does not overwrite a
+					campaign without keeping the old one. There is even <strong>New
+					Save From Map</strong>, which synthesizes a fresh save out of a map
+					you just drew - no base save required.
+				</p>
+				<p>
+					It is flagged <strong>Experimental</strong> and it means it. Keep
+					your own backups, and tell me what breaks.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Every bolt on the machine</h2>
+				<p>
+					Pick any object with the <strong>Save Toolbox</strong>'s select
+					tool and the <strong>Unit Properties</strong> inspector opens it up:
+					team, a custom <strong>name</strong>, facing, turret angle, orders,
+					hits, ammo, cargo, and the countdown on a disabled unit - every
+					field edited in place, no dialog in the way. Buildings that link up
+					get a footprint-shaped <strong>connector grid</strong> to tick the
+					sides that join, and an <strong>advanced</strong> section opens the
+					unit's <strong>max values</strong> - HP, attack, armor, range,
+					speed, scan - seeded from the game's own stat tables and your clan's
+					upgrades. Place, move, delete, or eyedrop the type under the cursor;
+					drop slabs, rubble, roads and cones as ground cover.
+				</p>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Surveying the ground</h2>
+				<p>
+					A world's <strong>resource distribution</strong> - the raw
+					materials, fuel and gold a surveyor turns up - is now yours to
+					paint. <strong>View &rarr; Overlays &rarr; Resources</strong> draws
+					it with the game's <strong>own survey markers</strong>: the real
+					dial sprites out of your M.A.X. install, needles reading the amount
+					in each cell. Arm the resource brush, pick a material and an amount,
+					choose whether to <strong>set</strong>, <strong>add</strong> or
+					<strong>subtract</strong>, and drag. One stroke, one undo step.
+					Fair-start maps just got a lot easier to balance.
+				</p>
+			</div>
+			<div class="log-bg log-panel">
+				<div class="label">From the bridge:</div>
+				<div class="grid grid-2c">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0032.webp" data-preview="true" title="The save editor - a saved game opened, with the Save Toolbox and the Unit Properties inspector" /></div>
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0033.webp" data-preview="true" title="Resource distribution painted with the game's own survey markers" /></div>
+				</div>
+				<div class="grid">
+					<div><img class="log-screenshot" src="images/screens/preview_screen_0040.webp" data-preview="true" title="Save mode at 150% UI scale - its own layout, and a chrome font that stays sharp" /></div>
+				</div>
+			</div>
+			<div class="log-bg log-message">
+				<h2>Ship's maintenance</h2>
+				<p>
+					<strong>Edit &rarr; Editor Preferences&hellip;</strong> finally puts
+					the M.A.X. folders behind a dialog with a Browse button, instead of
+					a text file you had to know about - and the editor offers it on
+					first start rather than sitting there quietly doing half its job.
+					Land and obstruction art was lifted off the palette's cycling
+					slots, so terrain no longer shimmers where it was never meant to.
+				</p>
+				<p>
+					The <strong>User Manual</strong> (Help &rarr; User Manual) grew a
+					chapter for all of the above. Let's make some maps!
+				</p>
 			</div>
 		</section>
 
@@ -535,7 +777,7 @@
 					for preview.
 				</p>
 				<p>
-					&gt;&gt; <a target="_blank" href="https://github.com/suns-echoes/max-map-editor/blob/main/tools/cli/wrl-to-json.js">tools/cli/wrl-to-json.js</a>
+					&gt;&gt; <a target="_blank" href="https://github.com/suns-echoes/max-map-editor/blob/v0.7.0/tools/cli/wrl-to-json.js">tools/cli/wrl-to-json.js</a>
 				</p>
 			</div>
 			<div class="log-bg log-panel">

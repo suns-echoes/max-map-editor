@@ -310,4 +310,23 @@ mod tests {
 		// Assert
 		assert!(result.is_err());
 	}
+
+	#[test]
+	fn test_default_matches_new() {
+		// `INI::default()` must be interchangeable with `INI::new()`.
+		let ini = INI::default();
+		assert!(ini.is_empty(), "a default-constructed INI starts with no sections");
+	}
+
+	#[test]
+	fn test_section_names_lists_every_section() {
+		// Iteration order is unspecified (HashMap), so compare as a sorted list.
+		let mut ini = create_sample_ini();
+		ini.insert_section("Section2".to_string(), INISection::new());
+
+		let mut names: Vec<&str> = ini.section_names().collect();
+		names.sort_unstable();
+
+		assert_eq!(names, ["Section1", "Section2"], "section_names yields each section exactly once");
+	}
 }

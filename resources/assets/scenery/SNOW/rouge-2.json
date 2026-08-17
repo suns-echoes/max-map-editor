@@ -1,0 +1,11 @@
+{
+	"version": "1",
+	"id": "rouge-2",
+	"name": "Rouge 2",
+	"family": "rouge",
+	"transform": false,
+	"pass": [
+		"000",
+		"000"
+	]
+}

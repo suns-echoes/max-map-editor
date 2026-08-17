@@ -19,6 +19,7 @@ png      = { workspace = true }
 pollster = { workspace = true }
 rfd      = { workspace = true }
 wgpu     = { workspace = true }
+wgpu-ui  = { workspace = true }
 winit    = { workspace = true }
 
 [lints]

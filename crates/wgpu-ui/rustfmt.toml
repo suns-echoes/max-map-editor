@@ -1,0 +1,3 @@
+# Full auto-formatting: run `cargo fmt` (CI gate: `cargo fmt --check`).
+edition = "2024"
+newline_style = "Unix"

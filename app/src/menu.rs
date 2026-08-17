@@ -1,27 +1,17 @@
 //! Main menu bar: the ten menus from the design
-//! (`designs/features.drawio`, "Main menu" page) plus the Debug menu. Every leaf is either an
+//! (`designs/features.drawio`, "Main menu" page - Layers was promoted out of
+//! Mode into its own menu). Every leaf is either an
 //! **Action** - a command line through the command parser, exactly like a
-//! keybinding - or a **Todo** placeholder that echoes its backlog ticket
-//! (drawn dim, so the unbuilt surface area is visible but honest).
+//! keybinding - a **Toggle** (checkbox), a **Todo** placeholder that echoes its
+//! backlog ticket, or a **Disabled** row (drawn dim, inert) - the last two both
+//! drawn dim, so the unbuilt surface area is visible but honest.
 //!
 //! Pure geometry/state - the shell routes presses here first (menus are
 //! topmost); `menu NAME|off` drives it from scripts for screenshots.
 
 use std::path::PathBuf;
 
-use crate::text;
-use crate::theme;
-use crate::ui::{Hot, Rect, UiQuads};
-
 pub const BAR_H: f32 = 24.0;
-// 16px label + 4px top + 4px bottom padding.
-const ITEM_H: f32 = 24.0;
-const SEP_H: f32 = 7.0;
-const FONT: f32 = crate::ui::FONT_BODY; // menu is primary nav → the 16px tier
-const PAD_X: f32 = 10.0;
-/// Left gutter reserved on every dropdown row - holds the toggle checkbox and
-/// keeps all labels in one aligned column.
-const CHECK_W: f32 = 22.0;
 
 pub enum Item {
 	/// Runs a command line (validated by a test against the parser).
@@ -46,12 +36,29 @@ pub enum Item {
 		label: String,
 		ticket: &'static str,
 	},
+	/// A permanently-disabled row: drawn dim and inert (a planned tool that is
+	/// still a no-op - unlike [`Item::Todo`] it doesn't even echo a ticket).
+	Disabled {
+		label: String,
+	},
 	Sep,
 	/// Opens a side submenu.
 	Sub {
 		label: String,
 		items: Vec<Item>,
 	},
+	/// Opens a side submenu laid out as labelled columns (Template Maps). Each
+	/// column is a header over a stack of [`Item::Action`] rows.
+	Columns {
+		label: String,
+		columns: Vec<Column>,
+	},
+}
+
+/// One column of an [`Item::Columns`] submenu.
+pub struct Column {
+	pub header: String,
+	pub items: Vec<Item>,
 }
 
 fn act(label: &str, command: &str) -> Item {
@@ -80,6 +87,10 @@ fn toggle_id(label: &str, id: &str, key: &'static str) -> Item {
 
 fn todo(label: &str, ticket: &'static str) -> Item {
 	Item::Todo { label: label.into(), ticket }
+}
+
+fn disabled(label: &str) -> Item {
+	Item::Disabled { label: label.into() }
 }
 
 fn sub(label: &str, items: Vec<Item>) -> Item {
@@ -111,92 +122,78 @@ fn quick_items(entries: &[MapEntry], empty: &'static str) -> Vec<Item> {
 		.collect()
 }
 
+/// The **Template Maps** File-menu item: a columnar submenu grouped by terrain
+/// (Crater / Desert / Green / Snow) plus a Demo column for the `*_I` maps. Falls
+/// back to a plain placeholder submenu when no maps are installed. Template-map
+/// rows carry no right-aligned file name (`hint: None`) - the column header is
+/// the context.
+fn template_maps_item(entries: &[MapEntry]) -> Item {
+	if entries.is_empty() {
+		return sub("Template Maps", quick_items(entries, "(no template maps)"));
+	}
+	const HEADERS: [&str; 5] = ["Crater", "Desert", "Green", "Snow", "Demo"];
+	let mut columns: Vec<Column> =
+		HEADERS.iter().map(|h| Column { header: (*h).to_string(), items: Vec::new() }).collect();
+	for e in entries {
+		let stem = e.path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_ascii_uppercase();
+		// `*_I` maps are demos regardless of terrain; the rest sort by prefix.
+		let col = if stem.ends_with("_I") {
+			4
+		} else if stem.starts_with("CRATER") {
+			0
+		} else if stem.starts_with("DESERT") {
+			1
+		} else if stem.starts_with("GREEN") {
+			2
+		} else if stem.starts_with("SNOW") {
+			3
+		} else {
+			continue;
+		};
+		columns[col].items.push(Item::Action {
+			label: e.label.clone(),
+			command: format!("open! \"{}\"", e.path.display()),
+			hint: None,
+		});
+	}
+	Item::Columns { label: "Template Maps".to_string(), columns }
+}
+
 pub struct Menu {
 	pub title: &'static str,
 	pub items: Vec<Item>,
 }
 
+/// The menu **model**: the item tree (labels, command lines, live toggle
+/// keys, shortcut hints) the wgpu-ui `MenuBar` widget is built from via
+/// [`MenuBar::build_bar`]. Open/hover state lives in the widget; this stays
+/// the single source the editor mutates (dev menu, Quick Load, hints) —
+/// rebuild the widget after a structure change.
 pub struct MenuBar {
 	pub menus: Vec<Menu>,
-	/// Open dropdown (menu index).
-	pub open: Option<usize>,
-	/// Open submenu (item index within the open dropdown).
-	sub_open: Option<usize>,
-	hover: Option<(usize, bool)>, // (item index, inside submenu)
-}
-
-/// What a press did - the shell acts on `Run`/`Todo`.
-#[derive(Debug, PartialEq)]
-pub enum Press {
-	/// Not on the menu (and nothing was open) - fall through.
-	None,
-	/// Swallowed (opened/closed/ignored).
-	Consumed,
-	Run(String),
-	Todo(String, &'static str),
-}
-
-fn items_height(items: &[Item]) -> f32 {
-	items.iter().map(|it| if matches!(it, Item::Sep) { SEP_H } else { ITEM_H }).sum::<f32>() + 8.0
-}
-
-/// Gap between a label and its right-aligned shortcut hint.
-const HINT_GAP: f32 = 18.0;
-
-fn items_width(items: &[Item]) -> f32 {
-	items
-		.iter()
-		.filter_map(|it| match it {
-			Item::Action { label, hint, .. } | Item::Toggle { label, hint, .. } => {
-				let hint_w = hint.as_ref().map_or(0.0, |c| text::label_width(c, FONT) + HINT_GAP);
-				Some(text::label_width(label, FONT) + hint_w)
-			}
-			Item::Todo { label, .. } | Item::Sub { label, .. } => Some(text::label_width(label, FONT)),
-			Item::Sep => None,
-		})
-		.fold(120.0_f32, f32::max)
-		+ CHECK_W // left gutter (checkbox column)
-		+ PAD_X
-		+ 16.0 // submenu arrow column
-}
-
-/// Rect of item `i` inside a panel that starts at `(px, py)`.
-fn item_rect(items: &[Item], px: f32, py: f32, w: f32, i: usize) -> Rect {
-	let mut y = py + 4.0;
-	for (k, it) in items.iter().enumerate() {
-		let h = if matches!(it, Item::Sep) { SEP_H } else { ITEM_H };
-		if k == i {
-			return Rect::new(px, y, w, h);
-		}
-		y += h;
-	}
-	unreachable!("item index in range");
-}
-
-fn item_at(items: &[Item], panel: Rect, x: f32, y: f32) -> Option<usize> {
-	if !panel.contains(x, y) {
-		return None;
-	}
-	(0..items.len())
-		.find(|&i| !matches!(items[i], Item::Sep) && item_rect(items, panel.x, panel.y, panel.w, i).contains(x, y))
 }
 
 impl MenuBar {
 	/// The full design tree. `maps_dir` feeds the Quick Load submenu.
 	/// Add the developer-only **DEV** menu (last in the bar) when `--dev` is set.
 	/// Called once at startup; idempotent.
-	pub fn set_dev(&mut self, dev: bool) {
+	pub fn set_dev(&mut self, dev: bool, packs: &[String]) {
 		if !dev || self.menus.iter().any(|m| m.title == "DEV") {
 			return;
 		}
-		self.menus.push(Menu {
-			title: "DEV",
-			items: vec![
-				act("Bake to Asset Packs", "bake"),
-				act("Update Map", "update-map"),
-				act("Edit Match Data...", "match-editor"),
-			],
-		});
+		let mut items = vec![
+			act("Bake to Asset Packs", "bake"),
+			act("Update Map", "update-map"),
+			act("Edit Match Data...", "match-editor"),
+			act("UI Tests...", "ui-tests"),
+		];
+		// One entry per installed tileset: lay its whole tiles.match.json out as
+		// match-editor crosses on a fresh map for visual inspection.
+		if !packs.is_empty() {
+			let combos = packs.iter().map(|p| act(p, &format!("match-combos {p}"))).collect();
+			items.push(sub("Match Combinations Map", combos));
+		}
+		self.menus.push(Menu { title: "DEV", items });
 	}
 
 	/// Refresh the **Quick Load** submenu with the current recently-opened maps
@@ -215,6 +212,36 @@ impl MenuBar {
 		}
 	}
 
+	/// Refresh the **Edit ▸ Undo History** submenu with the most recent undo
+	/// actions (newest first); clicking one jumps back that many steps. Empty →
+	/// a single dim placeholder. No-op if the Edit ▸ Undo History sub is gone.
+	pub fn set_undo_history(&mut self, labels: &[String]) {
+		let items: Vec<Item> = if labels.is_empty() {
+			vec![Item::Disabled { label: "(nothing to undo)".into() }]
+		} else {
+			labels
+				.iter()
+				.enumerate()
+				.map(|(i, l)| Item::Action {
+					label: l.clone(),
+					// Undo through this action (it + everything newer): i+1 steps.
+					command: format!("undo-to {}", i + 1),
+					hint: None,
+				})
+				.collect()
+		};
+		if let Some(edit) = self.menus.iter_mut().find(|m| m.title == "Edit") {
+			for item in &mut edit.items {
+				if let Item::Sub { label, items: sub_items } = item {
+					if label == "Undo History" {
+						*sub_items = items;
+						return;
+					}
+				}
+			}
+		}
+	}
+
 	/// `templates` feeds the **Template Maps** submenu (stock starter maps);
 	/// `recent` feeds **Quick Load** (the user's recently-opened maps, kept in
 	/// sync afterwards via [`Self::set_recent`]).
@@ -225,9 +252,24 @@ impl MenuBar {
 				items: vec![
 					act_id("New Map...", "NewMap"),
 					act("New from Image...", "file-dialog new-from-image"),
+					act("New Terrain from Image...", "file-dialog new-map-shape"),
 					act_id("Load Map...", "FileDialogLoad"),
 					sub("Quick Load", quick_items(recent, "(no recent maps)")),
-					sub("Template Maps", quick_items(templates, "(no template maps)")),
+					template_maps_item(templates),
+					Item::Sep,
+					// The save-editor tools live behind an "Experimental" gate (they can
+					// break real saves — the Open action warns first). Single separators
+					// fence the submenu off from Template Maps above and Save below.
+					sub(
+						"Experimental",
+						vec![
+							act_id("Open Save File...", "OpenSaveFile"),
+							act_id("New Save From Map", "NewSaveFromMap"),
+							act_id("Export Save File...", "ExportSaveFile"),
+							// One click writes both game files (WRL + save) via two pickers.
+							act("Export to WRL and Save File...", "file-dialog export-wrl-and-save"),
+						],
+					),
 					Item::Sep,
 					act_id("Save Project", "SaveProject"),
 					act_id("Save Project As...", "FileDialogSaveAs"),
@@ -247,22 +289,41 @@ impl MenuBar {
 				items: vec![
 					act_id("Undo", "Undo"),
 					act_id("Redo", "Redo"),
-					todo("Undo History", "CORE-15"),
+					// Rebuilt each frame from the undo stack (`set_undo_history`).
+					sub("Undo History", vec![disabled("(nothing to undo)")]),
 					Item::Sep,
 					act_id("Cut", "Cut"),
 					act_id("Copy", "Copy"),
 					act_id("Paste", "Paste"),
+					Item::Sep,
 					act_id("Clear", "Delete"),
 					act_id("Clear All Layers", "DeleteAll"),
 					Item::Sep,
-					act("Map Preferences...", "map-preferences"),
+					act("Map Metadata...", "map-metadata"),
+					Item::Sep,
+					// Separator-fenced like File's Experimental block: save editing
+					// can corrupt real saves, so it never sits flush against the
+					// everyday items.
+					sub("Experimental", vec![act_id("Edit Save Data...", "EditSaveData")]),
+					Item::Sep,
+					act("Editor Preferences...", "editor-preferences"),
 				],
 			},
 			Menu {
 				title: "View",
 				items: vec![
 					sub(
-						"Zoom",
+						"Overlays",
+						vec![
+							toggle_id("Grid", "GridToggle", "grid"),
+							toggle_id("Passage", "PassOverlayToggle", "pass-overlay"),
+							toggle_id("Units", "UnitsToggle", "show-units"),
+							toggle_id("Resources", "ResourcesToggle", "resources"),
+						],
+					),
+					Item::Sep,
+					sub(
+						"Map Zoom",
 						vec![
 							act_id("100%", "ZoomTo100"),
 							act_id("50%", "ZoomTo50"),
@@ -271,20 +332,17 @@ impl MenuBar {
 							todo("Custom...", "UI-7"),
 						],
 					),
+					Item::Sep,
 					sub(
-						"UI Scale",
+						"User Interface",
 						vec![
 							toggle("Small", "ui-scale small", "ui-scale:small"),
 							toggle("Medium (125%)", "ui-scale medium", "ui-scale:medium"),
 							toggle("Large (150%)", "ui-scale large", "ui-scale:large"),
 						],
 					),
-					toggle_id("Show Grid", "GridToggle", "grid"),
-					toggle_id("Show Pass Overlay", "PassOverlayToggle", "pass-overlay"),
-					toggle_id("Show Units", "UnitsToggle", "show-units"),
+					Item::Sep,
 					toggle("Status Bar", "status-bar toggle", "status-bar"),
-					todo("Fullscreen", "SHELL-7"),
-					todo("Immersive Mode", "SHELL-7"),
 				],
 			},
 			Menu {
@@ -293,18 +351,10 @@ impl MenuBar {
 					toggle("Map Editor", "mode map", "mode:map"),
 					toggle("Pass Table Editor", "mode pass", "mode:pass"),
 					toggle("Local Pass Override Editor", "mode localpass", "mode:localpass"),
-					todo("Tile Pixel Editor", "SHELL-8 / TOOL-7"),
-					Item::Sep,
-					sub(
-						"Tile Layer",
-						vec![
-							toggle("Water", "layer water", "layer:water"),
-							toggle("Ground", "layer ground", "layer:ground"),
-							todo("Objects", "SHELL-8 (layer is a v2 format concern)"),
-							Item::Sep,
-							toggle("Show Only Selected", "show-only-layer toggle", "layer:only-selected"),
-						],
-					),
+					// The save editor is experimental (it can break real saves), so it
+					// sits behind its own gate - and, like the modes above, owns its
+					// own dock layout.
+					sub("Experimental", vec![toggle("Save Editor", "mode save", "mode:save")]),
 					Item::Sep,
 					sub(
 						"Render Mode",
@@ -318,13 +368,23 @@ impl MenuBar {
 					),
 				],
 			},
+			// Which layer the tools address. Its own menu rather than a Mode
+			// submenu: it is a per-edit choice, not a mode switch, and the tick
+			// that says what the pencil is pointed at is worth one click.
 			Menu {
-				title: "Snapshot",
+				title: "Layers",
 				items: vec![
-					todo("Take Snapshot", "CORE-14"),
-					todo("Revert to Snapshot", "CORE-14"),
-					todo("Show All Snapshots", "CORE-14"),
-					todo("Clear Snapshots", "CORE-14"),
+					toggle("Water", "layer water", "layer:water"),
+					toggle("Ground", "layer ground", "layer:ground"),
+					// The free-placed cut-outs (SCENERY.md). Not a tile layer -
+					// picking it re-points the pencil, the eraser and the arrow
+					// at the scenery list.
+					toggle("Scenery", "layer scenery", "layer:scenery"),
+					Item::Sep,
+					toggle("Show Only Selected", "show-only-layer toggle", "layer:only-selected"),
+					Item::Sep,
+					// Unit-layer visibility (the same registry toggle as View ▸ Overlays ▸ Units).
+					toggle_id("Units", "UnitsToggle", "show-units"),
 				],
 			},
 			Menu {
@@ -362,21 +422,24 @@ impl MenuBar {
 					sub(
 						"Shore",
 						vec![
-							act("Shore Sweep + Fix", "fix-shore-modal sweep-fix"),
-							act("Shore Loop-Walk + Fix", "fix-shore-modal loop-fix"),
-							act("Fix Shore...", "fix-shore-modal"),
-							todo("Find Shore Bugs...", "TOOL-13"),
+							act("Auto Fix...", "fix-shore-modal go"),
+							toggle("Show Shore Bugs", "shore-bugs toggle", "shore-bugs"),
 						],
 					),
-					Item::Sep,
-					todo("Auto Generate Pass Table...", "TOOL-6"),
-					act("Reset Pass Table to Tileset", "tile-pass-reset"),
-					Item::Sep,
-					sub("Palette", vec![act("Convert to Compatible Palette...", "convert-palette-modal")]),
-					Item::Sep,
-					act("Generate Random Terrain...", "generate-modal"),
-					Item::Sep,
-					act("Resize Map...", "resize-modal"),
+					sub("Validate", vec![toggle("Show Problems", "match-problems toggle", "match-problems")]),
+					sub(
+						"Passage Table",
+						vec![disabled("Auto-Generate Passage"), act("Reset to Tileset Passage", "tile-pass-reset")],
+					),
+					sub(
+						"Palette",
+						vec![
+							act("Convert to Compatible Palette...", "convert-palette-modal"),
+							toggle("Render with Map Palette", "map-palette toggle", "debug:map-palette"),
+						],
+					),
+					sub("Randomizers", vec![act("Generate Random Terrain...", "generate-modal")]),
+					sub("Map", vec![act("Resize Map...", "resize-modal")]),
 				],
 			},
 			Menu {
@@ -391,9 +454,12 @@ impl MenuBar {
 							toggle("Color Palette", "window palette", "win:palette"),
 							toggle("WRL Internal Palette", "window wrlpalette", "win:wrlpalette"),
 							toggle("Toolbox", "window toolbox", "win:toolbox"),
+							toggle("Save Toolbox", "window savetools", "win:savetools"),
+							toggle("Pass Types Palette", "window passtools", "win:passtools"),
+							toggle("Unit Properties", "window unitprops", "win:unitprops"),
 							toggle("Units", "window units", "win:units"),
 							toggle("Templates Explorer", "window templates", "win:templates"),
-							todo("Pass Types Palette", "TOOL-6"),
+							toggle("Scenery", "window scenery", "win:scenery"),
 							todo("Tile Packs Manager", "IO-4"),
 						],
 					),
@@ -403,10 +469,6 @@ impl MenuBar {
 					Item::Sep,
 					todo("Tabs Positions", "SHELL-9"),
 				],
-			},
-			Menu {
-				title: "Debug",
-				items: vec![toggle("Render using map palette", "map-palette toggle", "debug:map-palette")],
 			},
 			Menu {
 				title: "Help",
@@ -420,35 +482,10 @@ impl MenuBar {
 				],
 			},
 		];
-		Self { menus, open: None, sub_open: None, hover: None }
+		Self { menus }
 	}
 
 	/// Open a menu by title (case-insensitive) - the `menu` command.
-	pub fn open_by_name(&mut self, name: &str) -> Result<(), String> {
-		if name == "off" {
-			self.close();
-			return Ok(());
-		}
-		match self.menus.iter().position(|m| m.title.eq_ignore_ascii_case(name)) {
-			Some(i) => {
-				self.open = Some(i);
-				self.sub_open = None;
-				self.hover = None;
-				Ok(())
-			}
-			None => Err(format!(
-				"unknown menu '{name}' (have: {})",
-				self.menus.iter().map(|m| m.title).collect::<Vec<_>>().join(" ").to_lowercase(),
-			)),
-		}
-	}
-
-	pub fn close(&mut self) {
-		self.open = None;
-		self.sub_open = None;
-		self.hover = None;
-	}
-
 	/// Stamp a shortcut hint onto every Action/Toggle whose command `resolve`s to
 	/// one. `resolve` is the shell's single hint resolver (config binding, alias,
 	/// or fixed shell shortcut), so no item is wired up by hand. Called once at
@@ -474,324 +511,100 @@ impl MenuBar {
 		}
 	}
 
-	// ----- geometry ----------------------------------------------------------
-
-	fn title_cell(&self, i: usize) -> Rect {
-		let mut x = 4.0;
-		for (k, m) in self.menus.iter().enumerate() {
-			let w = text::label_width(m.title, FONT) + 2.0 * PAD_X;
-			if k == i {
-				return Rect::new(x, 0.0, w, BAR_H);
-			}
-			x += w;
+	/// Build the wgpu-ui menu-bar widget from this model. Every leaf gets a
+	/// sequential action id into the returned act table; toggle leaves also
+	/// map their id to the live state key the shell re-syncs each frame
+	/// (`wgpu_ui::MenuBar::set_checked`).
+	pub fn build_bar(&self) -> (wgpu_ui::MenuBar, Vec<Act>, Vec<(u64, &'static str)>) {
+		let mut acts = Vec::new();
+		let mut toggles = Vec::new();
+		// The bar fits the chrome strip the workspace reserves (BAR_H).
+		let mut bar = wgpu_ui::MenuBar::new().bar_height(BAR_H);
+		for m in &self.menus {
+			bar = bar.menu(m.title, build_items(&m.items, &mut acts, &mut toggles));
 		}
-		unreachable!("menu index in range");
-	}
-
-	/// The open dropdown's panel rect, kept on-screen: the width caps at the
-	/// viewport and the panel slides left rather than hanging off the right
-	/// edge (long Quick Load names).
-	fn dropdown_rect(&self, menu: usize, vw: f32) -> Rect {
-		let t = self.title_cell(menu);
-		let items = &self.menus[menu].items;
-		let w = items_width(items).min((vw - 8.0).max(60.0));
-		let x = t.x.min((vw - w - 4.0).max(0.0));
-		Rect::new(x, BAR_H, w, items_height(items))
-	}
-
-	/// The open submenu's panel rect (beside its parent item) - flipped to the
-	/// parent's left when the right side would leave the viewport.
-	fn submenu_rect(&self, menu: usize, item: usize, vw: f32) -> Option<Rect> {
-		let Item::Sub { items, .. } = &self.menus[menu].items[item] else { return None };
-		let d = self.dropdown_rect(menu, vw);
-		let parent = item_rect(&self.menus[menu].items, d.x, d.y, d.w, item);
-		let w = items_width(items).min((vw - 8.0).max(60.0));
-		let mut x = d.x + d.w - 2.0;
-		if x + w > vw {
-			x = (d.x - w + 2.0).max(0.0);
-		}
-		Some(Rect::new(x, parent.y, w, items_height(items)))
-	}
-
-	// ----- events -------------------------------------------------------------
-
-	fn leaf_press(item: &Item) -> Press {
-		match item {
-			Item::Action { command, .. } | Item::Toggle { command, .. } => Press::Run(command.clone()),
-			Item::Todo { label, ticket } => Press::Todo(label.clone(), ticket),
-			_ => Press::Consumed,
-		}
-	}
-
-	pub fn on_press(&mut self, x: f32, y: f32, vw: f32) -> Press {
-		// Bar titles: toggle a dropdown.
-		if y < BAR_H {
-			for i in 0..self.menus.len() {
-				if self.title_cell(i).contains(x, y) {
-					if self.open == Some(i) {
-						self.close();
-					} else {
-						self.open = Some(i);
-						self.sub_open = None;
-					}
-					return Press::Consumed;
-				}
-			}
-			let was_open = self.open.is_some();
-			self.close();
-			return if was_open { Press::Consumed } else { Press::None };
-		}
-		let Some(menu) = self.open else { return Press::None };
-
-		// Submenu first (it overlaps the dropdown's right edge).
-		if let Some(si) = self.sub_open {
-			if let (Some(panel), Item::Sub { items, .. }) =
-				(self.submenu_rect(menu, si, vw), &self.menus[menu].items[si])
-			{
-				if let Some(i) = item_at(items, panel, x, y) {
-					let press = Self::leaf_press(&items[i]);
-					if press != Press::Consumed {
-						self.close();
-					}
-					return press;
-				}
-			}
-		}
-		let d = self.dropdown_rect(menu, vw);
-		if let Some(i) = item_at(&self.menus[menu].items, d, x, y) {
-			if matches!(self.menus[menu].items[i], Item::Sub { .. }) {
-				self.sub_open = if self.sub_open == Some(i) { None } else { Some(i) };
-				return Press::Consumed;
-			}
-			let press = Self::leaf_press(&self.menus[menu].items[i]);
-			if press != Press::Consumed {
-				self.close();
-			}
-			return press;
-		}
-		if d.contains(x, y) {
-			return Press::Consumed; // a separator / panel padding
-		}
-		// Anywhere else closes the menu and swallows the click.
-		self.close();
-		Press::Consumed
-	}
-
-	/// Hover tracking: highlights, switching menus along the bar, opening
-	/// submenus. Returns true when a redraw is needed.
-	pub fn on_move(&mut self, x: f32, y: f32, vw: f32) -> bool {
-		let Some(menu) = self.open else { return false };
-		let mut changed = false;
-
-		// Sliding along the bar switches the open menu.
-		if y < BAR_H {
-			for i in 0..self.menus.len() {
-				if self.title_cell(i).contains(x, y) && self.open != Some(i) {
-					self.open = Some(i);
-					self.sub_open = None;
-					self.hover = None;
-					return true;
-				}
-			}
-		}
-
-		let mut hover = None;
-		if let Some(si) = self.sub_open {
-			if let (Some(panel), Item::Sub { items, .. }) =
-				(self.submenu_rect(menu, si, vw), &self.menus[menu].items[si])
-			{
-				if let Some(i) = item_at(items, panel, x, y) {
-					hover = Some((i, true));
-				}
-			}
-		}
-		if hover.is_none() {
-			let d = self.dropdown_rect(menu, vw);
-			if let Some(i) = item_at(&self.menus[menu].items, d, x, y) {
-				hover = Some((i, false));
-				// Hovering a submenu parent opens it; hovering a plain item
-				// closes any open submenu.
-				let is_sub = matches!(self.menus[menu].items[i], Item::Sub { .. });
-				let want = is_sub.then_some(i);
-				if self.sub_open != want {
-					self.sub_open = want;
-					changed = true;
-				}
-			}
-		}
-		if self.hover != hover {
-			self.hover = hover;
-			changed = true;
-		}
-		changed
-	}
-
-	// ----- drawing -------------------------------------------------------------
-
-	/// Draw the bar + any open dropdown. `checked` resolves a [`Item::Toggle`]'s
-	/// `key` against live editor state (so the checkboxes reflect the session).
-	pub fn draw(&self, w: f32, h: f32, checked: &dyn Fn(&str) -> bool, hot: Hot) -> UiQuads {
-		let mut q = UiQuads::default();
-		// Steel menu band with a shaded seam under it.
-		let bar = Rect::new(0.0, 0.0, w, BAR_H);
-		q.material(bar, w, h, theme::TITLE);
-		q.rect(Rect::new(0.0, BAR_H - 1.0, w, 1.0), w, h, theme::BEVEL.bottom);
-		for (i, m) in self.menus.iter().enumerate() {
-			let cell = self.title_cell(i);
-			if self.open == Some(i) {
-				q.rect(cell, w, h, theme::SELECTION);
-			} else if hot.hover(cell) {
-				q.rect(cell, w, h, theme::HOVER);
-			}
-			q.label_in(m.title, cell, PAD_X, FONT, w, h, theme::INK);
-		}
-		let Some(menu) = self.open else { return q };
-
-		draw_panel(
-			&mut q,
-			&self.menus[menu].items,
-			self.dropdown_rect(menu, w),
-			self.hover.filter(|(_, in_sub)| !in_sub).map(|(i, _)| i),
-			self.sub_open,
-			checked,
-			w,
-			h,
-		);
-		if let Some(si) = self.sub_open {
-			if let (Some(panel), Item::Sub { items, .. }) =
-				(self.submenu_rect(menu, si, w), &self.menus[menu].items[si])
-			{
-				let hov = self.hover.filter(|(_, in_sub)| *in_sub).map(|(i, _)| i);
-				draw_panel(&mut q, items, panel, hov, None, checked, w, h);
-			}
-		}
-		q
+		(bar, acts, toggles)
 	}
 }
 
-/// A small checkbox in a row's left gutter - an inset well, filled with the
-/// accent when `on`.
-fn checkbox(q: &mut UiQuads, r: Rect, on: bool, w: f32, h: f32) {
-	let bx = Rect::new(r.x + 6.0, r.y + (r.h - 11.0) / 2.0, 11.0, 11.0);
-	q.field(bx, w, h);
-	if on {
-		q.rect(Rect::new(bx.x + 2.0, bx.y + 2.0, bx.w - 4.0, bx.h - 4.0), w, h, theme::ACCENT);
-	}
+/// What a fired menu action runs, indexed by the widget item's action id.
+pub enum Act {
+	/// A command line (parsed + run by the shell).
+	Run(String),
+	/// Not built yet — echoes the backlog ticket to the console.
+	Todo(String, &'static str),
 }
 
-/// A row's shortcut hint, right-aligned and dim. The label's `label_fit`
-/// already leaves room - `items_width` budgets label + gap + hint.
-fn draw_hint(q: &mut UiQuads, hint: &Option<String>, r: Rect, w: f32, h: f32) {
-	if let Some(hint) = hint {
-		let hw = text::label_width(hint, FONT);
-		q.label_in(hint, Rect::new(r.x + r.w - PAD_X - hw, r.y, hw, r.h), 0.0, FONT, w, h, theme::INK_DIM);
-	}
+fn build_items(items: &[Item], acts: &mut Vec<Act>, toggles: &mut Vec<(u64, &'static str)>) -> Vec<wgpu_ui::MenuItem> {
+	items
+		.iter()
+		.map(|it| match it {
+			Item::Action { label, command, hint } => {
+				let id = acts.len() as u64;
+				acts.push(Act::Run(command.clone()));
+				let mut m = wgpu_ui::MenuItem::item(label.clone(), id);
+				if let Some(h) = hint {
+					m = m.shortcut(h.clone());
+				}
+				m
+			}
+			Item::Toggle { label, command, key, hint } => {
+				let id = acts.len() as u64;
+				acts.push(Act::Run(command.clone()));
+				toggles.push((id, key));
+				let mut m = wgpu_ui::MenuItem::item(label.clone(), id).checked(false);
+				if let Some(h) = hint {
+					m = m.shortcut(h.clone());
+				}
+				m
+			}
+			Item::Todo { label, ticket } => {
+				let id = acts.len() as u64;
+				acts.push(Act::Todo(label.clone(), ticket));
+				wgpu_ui::MenuItem::item(label.clone(), id)
+			}
+			Item::Disabled { label } => {
+				// Keeps an act slot (ids stay dense) but is inert - disabled rows
+				// never fire, so the slot is never dispatched.
+				let id = acts.len() as u64;
+				acts.push(Act::Todo(label.clone(), "unavailable"));
+				wgpu_ui::MenuItem::item(label.clone(), id).enabled(false)
+			}
+			Item::Sep => wgpu_ui::MenuItem::separator(),
+			Item::Sub { label, items } => wgpu_ui::MenuItem::sub(label.clone(), build_items(items, acts, toggles)),
+			Item::Columns { label, columns } => wgpu_ui::MenuItem::columns(
+				label.clone(),
+				columns.iter().map(|c| (c.header.clone(), build_items(&c.items, acts, toggles))).collect(),
+			),
+		})
+		.collect()
 }
 
-/// One dropdown panel - shared by the menu bar's dropdowns/submenus and the
-/// right-click context menu. `sub_open` keeps an open submenu's parent row lit.
-#[allow(clippy::too_many_arguments)]
-fn draw_panel(
-	q: &mut UiQuads,
-	items: &[Item],
-	panel: Rect,
-	hover: Option<usize>,
-	sub_open: Option<usize>,
-	checked: &dyn Fn(&str) -> bool,
-	w: f32,
-	h: f32,
-) {
-	q.raised(panel, w, h, theme::PANEL, 2.0);
-	for (i, item) in items.iter().enumerate() {
-		let r = item_rect(items, panel.x, panel.y, panel.w, i);
-		match item {
-			Item::Sep => {
-				q.rect(Rect::new(r.x + 6.0, r.y + r.h / 2.0, r.w - 12.0, 1.0), w, h, theme::SPLITTER);
-			}
-			Item::Action { label, hint, .. } => {
-				if hover == Some(i) {
-					q.rect(r, w, h, theme::SELECTION);
-				}
-				q.label_fit(label, r, CHECK_W, FONT, w, h, theme::INK);
-				draw_hint(q, hint, r, w, h);
-			}
-			Item::Toggle { label, key, hint, .. } => {
-				if hover == Some(i) {
-					q.rect(r, w, h, theme::SELECTION);
-				}
-				checkbox(q, r, checked(key), w, h);
-				q.label_fit(label, r, CHECK_W, FONT, w, h, theme::INK);
-				draw_hint(q, hint, r, w, h);
-			}
-			Item::Todo { label, .. } => {
-				// Placeholders are dim - visible surface, honest state.
-				if hover == Some(i) {
-					q.rect(r, w, h, theme::HOVER);
-				}
-				q.label_fit(label, r, CHECK_W, FONT, w, h, theme::INK_DIM);
-			}
-			Item::Sub { label, .. } => {
-				if hover == Some(i) || sub_open == Some(i) {
-					q.rect(r, w, h, theme::SELECTION);
-				}
-				// Keep the label clear of the submenu-arrow column.
-				let avail = Rect::new(r.x, r.y, r.w - 16.0, r.h);
-				q.label_fit(label, avail, CHECK_W, FONT, w, h, theme::INK);
-				q.label_in(">", Rect::new(r.x + r.w - 16.0, r.y, 16.0, r.h), 0.0, FONT, w, h, theme::INK_DIM);
-			}
-		}
-	}
-}
-
-/// The right-click context menu: a single dropdown panel anchored at the
-/// click, clamped to the viewport. Items are plain [`Item`]s built from the
-/// editor state at open time (`state::context_menu_items`); the shell routes
-/// presses here before everything else while it's open.
+/// The right-click context menu MODEL: an items snapshot (built from the
+/// editor state at open time - `state::context_menu_items` /
+/// `open_template_context_menu`) plus the anchor (logical px). The view is a
+/// `wgpu_ui::ContextMenu` hosted shell-side in its own `Ui`; the shell syncs
+/// it from this model and maps fired action ids back through
+/// [`build_context`]'s act table.
 pub struct ContextMenu {
-	items: Vec<Item>,
-	/// The click position (the panel's preferred top-left).
-	pos: (f32, f32),
-	hover: Option<usize>,
+	pub items: Vec<Item>,
+	/// The click position (logical px; the widget clamps on-screen).
+	pub pos: (f32, f32),
 }
 
 impl ContextMenu {
 	pub fn new(items: Vec<Item>, pos: (f32, f32)) -> Self {
-		Self { items, pos, hover: None }
+		Self { items, pos }
 	}
+}
 
-	/// The panel rect: at the click, slid left/up as needed to stay on-screen.
-	pub fn panel(&self, vw: f32, vh: f32) -> Rect {
-		let w = items_width(&self.items).min((vw - 8.0).max(60.0));
-		let h = items_height(&self.items);
-		let x = self.pos.0.min((vw - w - 4.0).max(0.0));
-		// Flip above the cursor when there's no room below (but never off-top).
-		let y = if self.pos.1 + h > vh { (self.pos.1 - h).max(0.0) } else { self.pos.1 };
-		Rect::new(x, y, w, h)
-	}
-
-	/// A press: `Run`/`Todo` for a leaf, `Consumed` for panel padding,
-	/// `None` off the panel (the shell closes it either way).
-	pub fn on_press(&self, x: f32, y: f32, vw: f32, vh: f32) -> Press {
-		let panel = self.panel(vw, vh);
-		if let Some(i) = item_at(&self.items, panel, x, y) {
-			return MenuBar::leaf_press(&self.items[i]);
-		}
-		if panel.contains(x, y) { Press::Consumed } else { Press::None }
-	}
-
-	/// Hover tracking; true when a redraw is needed.
-	pub fn on_move(&mut self, x: f32, y: f32, vw: f32, vh: f32) -> bool {
-		let hover = item_at(&self.items, self.panel(vw, vh), x, y);
-		let changed = self.hover != hover;
-		self.hover = hover;
-		changed
-	}
-
-	pub fn draw(&self, w: f32, h: f32, checked: &dyn Fn(&str) -> bool) -> UiQuads {
-		let mut q = UiQuads::default();
-		draw_panel(&mut q, &self.items, self.panel(w, h), self.hover, None, checked, w, h);
-		q
-	}
+/// Build the wgpu-ui item list + act table for a context-menu snapshot (the
+/// same sequential-id scheme as [`MenuBar::build_bar`]).
+pub fn build_context(items: &[Item]) -> (Vec<wgpu_ui::MenuItem>, Vec<Act>) {
+	let mut acts = Vec::new();
+	let mut toggles = Vec::new(); // context items carry no live toggles today
+	let built = build_items(items, &mut acts, &mut toggles);
+	(built, acts)
 }
 
 #[cfg(test)]
@@ -839,127 +652,156 @@ mod tests {
 							.unwrap_or_else(|| panic!("{path}/{label}: empty command"));
 					}
 					Item::Sub { label, items } => check(items, &format!("{path}/{label}")),
+					Item::Columns { label, columns } => {
+						for col in columns {
+							check(&col.items, &format!("{path}/{label}/{}", col.header));
+						}
+					}
 					_ => {}
 				}
 			}
 		}
 		let b = bar();
-		assert_eq!(b.menus.len(), 11, "the design's ten menus + Debug");
+		assert_eq!(
+			b.menus.iter().map(|m| m.title).collect::<Vec<_>>(),
+			["File", "Edit", "View", "Mode", "Layers", "Select", "Templates", "Tools", "Windows", "Help"],
+		);
 		for m in &b.menus {
 			check(&m.items, m.title);
 		}
 	}
 
+	/// Both save-editor entries live under File ▸ Experimental (item 7), fenced by
+	/// separators (items 6 and 8), and reach the registry actions by id.
 	#[test]
-	fn template_maps_lists_the_stock_maps() {
+	fn experimental_submenu_holds_the_save_editor_entries() {
 		let b = bar();
 		let file = &b.menus[0];
-		// items: New(0) NewImage(1) Load(2) QuickLoad(3) TemplateMaps(4) ...
-		let Item::Sub { label, items } = &file.items[4] else { panic!("Template Maps submenu") };
+		assert!(matches!(&file.items[6], Item::Sep), "separator before Experimental");
+		assert!(matches!(&file.items[8], Item::Sep), "separator after Experimental");
+		let Item::Sub { label, items } = &file.items[7] else { panic!("Experimental submenu") };
+		assert_eq!(label, "Experimental");
+		let labels: Vec<&str> = items
+			.iter()
+			.filter_map(|it| match it {
+				Item::Action { label, .. } => Some(label.as_str()),
+				_ => None,
+			})
+			.collect();
+		assert_eq!(
+			labels,
+			["Open Save File...", "New Save From Map", "Export Save File...", "Export to WRL and Save File..."]
+		);
+		assert!(
+			matches!(&items[0], Item::Action { command, .. } if command == crate::input::action_command("OpenSaveFile"))
+		);
+		assert!(
+			matches!(&items[1], Item::Action { command, .. } if command == crate::input::action_command("NewSaveFromMap"))
+		);
+		assert!(
+			matches!(&items[2], Item::Action { command, .. } if command == crate::input::action_command("ExportSaveFile"))
+		);
+		// The combo item runs the two-picker file-dialog flow.
+		assert!(matches!(&items[3], Item::Action { command, .. } if command == "file-dialog export-wrl-and-save"));
+	}
+
+	#[test]
+	fn template_maps_columns_group_the_stock_maps() {
+		let b = bar();
+		let file = &b.menus[0];
+		// items: New(0) NewImage(1) NewTerrain(2) Load(3) QuickLoad(4) TemplateMaps(5) Sep(6)
+		// Experimental(7) ...
+		let Item::Columns { label, columns } = &file.items[5] else { panic!("Template Maps columns") };
 		assert_eq!(label, "Template Maps");
-		assert!(items.len() >= 24, "the 24 converted stock maps");
-		assert!(matches!(&items[0], Item::Action { command, .. } if command.starts_with("open! ")));
+		assert_eq!(
+			columns.iter().map(|c| c.header.as_str()).collect::<Vec<_>>(),
+			["Crater", "Desert", "Green", "Snow", "Demo"],
+		);
+		let total: usize = columns.iter().map(|c| c.items.len()).sum();
+		assert!(total >= 24, "the stock maps spread across the columns");
+		// Every cell is an `open!` action.
+		for col in columns {
+			for it in &col.items {
+				assert!(matches!(it, Item::Action { command, .. } if command.starts_with("open! ")));
+			}
+		}
+		// The `*_I` maps land in the Demo column, not their terrain column.
+		let demo = columns.iter().find(|c| c.header == "Demo").unwrap();
+		assert!(demo.items.iter().any(|it| matches!(it, Item::Action { command, .. } if command.contains("_I"))));
+		let crater = columns.iter().find(|c| c.header == "Crater").unwrap();
+		assert!(
+			crater.items.iter().all(|it| matches!(it, Item::Action { command, .. } if !command.contains("_I"))),
+			"a demo map must not appear in the Crater column",
+		);
+	}
+
+	/// With no installed maps the Template Maps item degrades to a plain
+	/// submenu holding one dim placeholder (no empty five-column grid); a map
+	/// whose stem matches no terrain prefix is silently left out of the grid.
+	#[test]
+	fn template_maps_handles_no_maps_and_unknown_stems() {
+		let b = MenuBar::new(&[], &[]);
+		let Item::Sub { label, items } = &b.menus[0].items[5] else { panic!("empty entries fall back to a Sub") };
+		assert_eq!(label, "Template Maps");
+		assert!(matches!(&items[0], Item::Todo { label, .. } if label == "(no template maps)"));
+
+		// A stem outside CRATER/DESERT/GREEN/SNOW/_I lands in no column.
+		let odd = MapEntry { label: "odd".into(), note: None, path: PathBuf::from("/maps/OTHER_1.json") };
+		let b = MenuBar::new(&[odd], &[]);
+		let Item::Columns { columns, .. } = &b.menus[0].items[5] else { panic!("non-empty entries build columns") };
+		assert_eq!(columns.iter().map(|c| c.items.len()).sum::<usize>(), 0, "unknown stems are skipped");
+	}
+
+	/// `--dev` appends the DEV menu once (idempotent), with the per-tileset
+	/// Match Combinations submenu only when packs are installed; without
+	/// `--dev` the bar is untouched.
+	#[test]
+	fn set_dev_appends_the_dev_menu_once() {
+		let mut b = MenuBar::new(&[], &[]);
+		let plain = b.menus.len();
+		b.set_dev(false, &["GREEN".into()]);
+		assert_eq!(b.menus.len(), plain, "no --dev: no DEV menu");
+
+		b.set_dev(true, &["GREEN".into(), "SNOW".into()]);
+		let dev = b.menus.last().expect("DEV appended");
+		assert_eq!(dev.title, "DEV");
+		let Some(Item::Sub { label, items }) = dev.items.last() else { panic!("Match Combinations submenu") };
+		assert_eq!(label, "Match Combinations Map");
+		assert!(
+			matches!(&items[0], Item::Action { command, .. } if command == "match-combos GREEN"),
+			"one entry per installed tileset",
+		);
+		b.set_dev(true, &["GREEN".into()]);
+		assert_eq!(b.menus.iter().filter(|m| m.title == "DEV").count(), 1, "set_dev is idempotent");
+
+		// No installed packs: the DEV menu still appears, without the submenu.
+		let mut b = MenuBar::new(&[], &[]);
+		b.set_dev(true, &[]);
+		let dev = b.menus.last().unwrap();
+		assert!(!dev.items.iter().any(|i| matches!(i, Item::Sub { .. })), "no packs -> no combos submenu");
+	}
+
+	/// `set_recent` quietly does nothing on a bar without a File ▸ Quick Load
+	/// submenu (it walks past other subs rather than clobbering them).
+	#[test]
+	fn set_recent_without_a_quick_load_sub_is_a_no_op() {
+		let mut b = MenuBar { menus: vec![Menu { title: "File", items: vec![sub("Other", vec![act("A", "fit")])] }] };
+		b.set_recent(&[MapEntry { label: "m.json".into(), note: None, path: PathBuf::from("/m.json") }]);
+		let Item::Sub { label, items } = &b.menus[0].items[0] else { panic!("sub kept") };
+		assert_eq!(label, "Other", "the non-Quick-Load sub is untouched");
+		assert!(matches!(&items[0], Item::Action { label, .. } if label == "A"));
 	}
 
 	#[test]
 	fn quick_load_starts_empty_then_set_recent_fills_it() {
 		let mut b = bar();
-		let Item::Sub { label, items } = &b.menus[0].items[3] else { panic!("Quick Load submenu") };
+		let Item::Sub { label, items } = &b.menus[0].items[4] else { panic!("Quick Load submenu") };
 		assert_eq!(label, "Quick Load");
 		assert!(matches!(&items[0], Item::Todo { .. }), "empty Quick Load shows a placeholder");
 
 		b.set_recent(&[MapEntry { label: "my.json".into(), note: None, path: PathBuf::from("/maps/my.json") }]);
-		let Item::Sub { items, .. } = &b.menus[0].items[3] else { panic!("Quick Load submenu") };
+		let Item::Sub { items, .. } = &b.menus[0].items[4] else { panic!("Quick Load submenu") };
 		assert!(matches!(&items[0], Item::Action { command, .. } if command == "open! \"/maps/my.json\""));
-	}
-
-	#[test]
-	fn press_flow_open_run_close() {
-		let mut b = bar();
-		// Click "Edit" in the bar → opens.
-		let t = b.title_cell(1);
-		assert_eq!(b.on_press(t.x + 2.0, t.y + 2.0, 1280.0), Press::Consumed);
-		assert_eq!(b.open, Some(1));
-		// Click "Undo" (first item) → Run + closes.
-		let d = b.dropdown_rect(1, 1280.0);
-		let r = item_rect(&b.menus[1].items, d.x, d.y, d.w, 0);
-		assert_eq!(b.on_press(r.x + 4.0, r.y + 4.0, 1280.0), Press::Run("undo".into()));
-		assert_eq!(b.open, None);
-		// Re-open, click a Todo → Todo with its ticket + closes.
-		b.open_by_name("edit").unwrap();
-		let r = item_rect(&b.menus[1].items, d.x, d.y, d.w, 2);
-		match b.on_press(r.x + 4.0, r.y + 4.0, 1280.0) {
-			Press::Todo(label, ticket) => {
-				assert_eq!(label, "Undo History");
-				assert_eq!(ticket, "CORE-15");
-			}
-			other => panic!("expected Todo, got {other:?}"),
-		}
-		assert_eq!(b.open, None);
-		// Open, then click far away → closed + swallowed.
-		b.open_by_name("file").unwrap();
-		assert_eq!(b.on_press(900.0, 500.0, 1280.0), Press::Consumed);
-		assert_eq!(b.open, None);
-		// Nothing open: a click below the bar falls through.
-		assert_eq!(b.on_press(900.0, 500.0, 1280.0), Press::None);
-		// A bar click outside every title is swallowed only when open.
-		assert_eq!(b.on_press(5000.0, 10.0, 1280.0), Press::None);
-	}
-
-	#[test]
-	fn submenu_opens_and_runs() {
-		let mut b = bar();
-		b.open_by_name("view").unwrap();
-		// Click the "Zoom" submenu parent → opens beside.
-		let d = b.dropdown_rect(2, 1280.0);
-		let zoom = item_rect(&b.menus[2].items, d.x, d.y, d.w, 0);
-		assert_eq!(b.on_press(zoom.x + 4.0, zoom.y + 4.0, 1280.0), Press::Consumed);
-		assert_eq!(b.sub_open, Some(0));
-		let panel = b.submenu_rect(2, 0, 1280.0).unwrap();
-		let Item::Sub { items, .. } = &b.menus[2].items[0] else { unreachable!() };
-		let fit = item_rect(items, panel.x, panel.y, panel.w, 3);
-		assert_eq!(b.on_press(fit.x + 4.0, fit.y + 4.0, 1280.0), Press::Run("fit".into()));
-		assert_eq!(b.open, None, "running a leaf closes everything");
-	}
-
-	#[test]
-	fn hover_switches_menus_and_opens_submenus() {
-		let mut b = bar();
-		b.open_by_name("file").unwrap();
-		// Sliding to "Edit" on the bar switches.
-		let t = b.title_cell(1);
-		assert!(b.on_move(t.x + 2.0, t.y + 2.0, 1280.0));
-		assert_eq!(b.open, Some(1));
-		// Hovering a submenu parent opens it (View/Zoom).
-		b.open_by_name("view").unwrap();
-		let d = b.dropdown_rect(2, 1280.0);
-		let zoom = item_rect(&b.menus[2].items, d.x, d.y, d.w, 0);
-		assert!(b.on_move(zoom.x + 4.0, zoom.y + 4.0, 1280.0));
-		assert_eq!(b.sub_open, Some(0));
-		// Hovering a plain item closes the submenu again (Show Grid - index 2,
-		// after the Zoom and UI Scale submenus).
-		let grid = item_rect(&b.menus[2].items, d.x, d.y, d.w, 2);
-		assert!(b.on_move(grid.x + 4.0, grid.y + 4.0, 1280.0));
-		assert_eq!(b.sub_open, None);
-	}
-
-	#[test]
-	fn dropdowns_stay_inside_the_viewport() {
-		// A narrow window: the widest dropdown must cap its width and slide
-		// left rather than hang off the right edge.
-		let b = bar();
-		for (i, m) in b.menus.iter().enumerate() {
-			for vw in [200.0f32, 480.0, 1280.0] {
-				let d = b.dropdown_rect(i, vw);
-				assert!(d.x >= 0.0, "{}: x {} < 0 at vw {vw}", m.title, d.x);
-				assert!(d.x + d.w <= vw, "{}: right edge {} > vw {vw}", m.title, d.x + d.w);
-			}
-		}
-		// Submenus too (File ▸ Quick Load is the widest).
-		let mut b = bar();
-		b.open_by_name("file").unwrap();
-		let panel = b.submenu_rect(0, 3, 480.0).expect("Quick Load submenu");
-		assert!(panel.x >= 0.0 && panel.x + panel.w <= 480.0, "submenu off-screen: {panel:?}");
 	}
 
 	#[test]
@@ -991,7 +833,7 @@ mod tests {
 			("Load Map...", "FileDialogLoad"),
 			("Select All", "SelectAll"),
 			("Fit All", "Fit"),
-			("Show Grid", "GridToggle"),
+			("Grid", "GridToggle"),
 		] {
 			assert_eq!(
 				menu_command(label).as_deref(),
@@ -1004,7 +846,7 @@ mod tests {
 	}
 
 	#[test]
-	fn shortcuts_stamp_hints_and_widen_rows() {
+	fn shortcuts_stamp_hints_into_the_tree() {
 		let mut b = bar();
 		b.apply_shortcuts(&|command| match command {
 			"cut" => Some("Ctrl+X".into()),
@@ -1016,45 +858,21 @@ mod tests {
 		assert_eq!(hint.as_deref(), Some("Ctrl+X"));
 		let Item::Action { hint, .. } = &b.menus[1].items[5] else { panic!("Edit/Copy") };
 		assert_eq!(hint.as_deref(), None);
-		// Hints reach into submenus (View ▸ Zoom ▸ 100%).
-		let Item::Sub { items, .. } = &b.menus[2].items[0] else { panic!("View/Zoom") };
-		let Item::Action { hint, .. } = &items[0] else { panic!("Zoom/100%") };
+		// Hints reach into submenus (View ▸ Map Zoom ▸ 100%).
+		let Item::Sub { items, .. } = &b.menus[2].items[2] else { panic!("View/Map Zoom") };
+		let Item::Action { hint, .. } = &items[0] else { panic!("Map Zoom/100%") };
 		assert_eq!(hint.as_deref(), Some("1"));
-		// The dropdown budgets label + gap + hint (past the 120px floor).
-		let plain = items_width(&[act("Undo History Browser", "undo")]);
-		let hinted = items_width(&[Item::Action {
-			label: "Undo History Browser".into(),
-			command: "undo".into(),
-			hint: Some("Ctrl+Shift+Z".into()),
-		}]);
-		assert!(hinted > plain, "hint widens the panel: {hinted} vs {plain}");
+		// (Row-width budgeting for hints lives in the wgpu-ui widget now -
+		// covered by its panel-width test.)
 	}
 
 	#[test]
-	fn context_menu_resolves_presses_and_stays_on_screen() {
+	fn context_snapshot_builds_widget_items_and_acts() {
 		let items = vec![act("Select All", "select all"), Item::Sep, act("Fit Map", "fit")];
-		let cm = ContextMenu::new(items, (100.0, 100.0));
-		let panel = cm.panel(1280.0, 800.0);
-		assert_eq!((panel.x, panel.y), (100.0, 100.0), "fits: opens at the click");
-		let r = item_rect(&cm.items, panel.x, panel.y, panel.w, 0);
-		assert_eq!(cm.on_press(r.x + 4.0, r.y + 4.0, 1280.0, 800.0), Press::Run("select all".into()));
-		// Panel padding is consumed; off the panel falls out (the shell
-		// closes the menu either way).
-		assert_eq!(cm.on_press(panel.x + 2.0, panel.y + 1.0, 1280.0, 800.0), Press::Consumed);
-		assert_eq!(cm.on_press(900.0, 700.0, 1280.0, 800.0), Press::None);
-		// Near the bottom-right corner it slides left and flips above.
-		let cm = ContextMenu::new(vec![act("Fit Map", "fit")], (1275.0, 795.0));
-		let p = cm.panel(1280.0, 800.0);
-		assert!(p.x + p.w <= 1280.0 && p.y + p.h <= 800.0, "off-screen: {p:?}");
-	}
-
-	#[test]
-	fn open_by_name_validates() {
-		let mut b = bar();
-		assert!(b.open_by_name("tools").is_ok());
-		assert_eq!(b.open, Some(7));
-		assert!(b.open_by_name("off").is_ok());
-		assert_eq!(b.open, None);
-		assert!(b.open_by_name("nonsense").is_err());
+		let (built, acts) = build_context(&items);
+		assert_eq!(built.len(), 3, "every row (incl. the separator) builds");
+		assert_eq!(acts.len(), 2, "separators take no act slot");
+		assert!(matches!(&acts[0], Act::Run(c) if c == "select all"));
+		assert!(matches!(&acts[1], Act::Run(c) if c == "fit"));
 	}
 }

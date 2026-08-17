@@ -209,8 +209,25 @@ mod tests {
 		let mut c = PaletteCycler::from_rgb(&rgb);
 		c.set_ingame(true);
 		let out = c.take_if_dirty().expect("ingame toggle marks dirty");
-		assert_eq!(&out[4..8], &[0xfc, 0x7c, 0x00, 0xff], "slot 1 RGB→6-bit, alpha intact");
+		assert_eq!(&out[4..8], &[0xfc, 0x7c, 0x00, 0xff], "slot 1 RGB->6-bit, alpha intact");
 		assert!(out.iter().enumerate().all(|(i, &b)| i % 4 == 3 || b & 0x03 == 0), "all RGB low 2 bits zero");
+	}
+
+	#[test]
+	fn from_bgra_swaps_to_rgba_and_forces_slot0_transparent() {
+		// FRAMEPIC palettes arrive as [B, G, R, A] per entry; the sampler wants RGBA.
+		let mut bgra = vec![0u8; 256 * 4];
+		for i in 0..256 {
+			bgra[i * 4] = i as u8; // blue carries the slot index
+			bgra[i * 4 + 1] = 100;
+			bgra[i * 4 + 2] = 200;
+			bgra[i * 4 + 3] = 128;
+		}
+		let mut c = PaletteCycler::from_bgra(&bgra);
+		let out = c.take_if_dirty().expect("a fresh cycler uploads once");
+		assert_eq!(&out[0..4], &[200, 100, 0, 0], "slot 0: B/R swapped, alpha forced transparent");
+		assert_eq!(&out[4..8], &[200, 100, 1, 128], "slot 1: B/R swapped, source alpha kept");
+		assert_eq!(out.len(), 256 * 4);
 	}
 
 	#[test]

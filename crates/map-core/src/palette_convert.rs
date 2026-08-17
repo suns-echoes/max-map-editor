@@ -364,11 +364,11 @@ mod tests {
 		}
 		let plan = plan(&p, &usage, KEEP).expect("plan");
 		for &slot in &slots {
-			assert!(target(plan.map[slot as usize]), "{slot} → stable");
+			assert!(target(plan.map[slot as usize]), "{slot} -> stable");
 		}
 		let heavy = slot_rgb(&p, slots[0]);
 		let landed = slot_rgb(&plan.palette, plan.map[slots[0] as usize]);
-		assert!(dist(heavy, landed) <= 64, "the dominant color lands near-exactly: {heavy:?} → {landed:?}");
+		assert!(dist(heavy, landed) <= 64, "the dominant color lands near-exactly: {heavy:?} -> {landed:?}");
 		assert_eq!(plan.report.exact + plan.report.approximated, slots.len());
 	}
 

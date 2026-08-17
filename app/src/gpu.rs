@@ -17,8 +17,10 @@ impl WindowGpu {
 	pub async fn new(window: Arc<Window>) -> Self {
 		let size = window.inner_size();
 
-		let instance =
-			wgpu::Instance::new(&wgpu::InstanceDescriptor { backends: wgpu::Backends::all(), ..Default::default() });
+		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+			backends: wgpu::Backends::all(),
+			..wgpu::InstanceDescriptor::new_without_display_handle()
+		});
 
 		let surface = instance.create_surface(window).expect("create surface");
 
@@ -31,6 +33,9 @@ impl WindowGpu {
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format,
+			// `Auto` reproduces wgpu's historical behaviour: sRGB for the sRGB
+			// format picked above, which is what the shaders' linear output wants.
+			color_space: wgpu::SurfaceColorSpace::Auto,
 			width: size.width.max(1),
 			height: size.height.max(1),
 			present_mode: wgpu::PresentMode::Fifo,
@@ -55,8 +60,10 @@ impl WindowGpu {
 
 /// Device + queue without a window - the `--screenshot` path.
 pub async fn headless() -> (wgpu::Device, wgpu::Queue) {
-	let instance =
-		wgpu::Instance::new(&wgpu::InstanceDescriptor { backends: wgpu::Backends::all(), ..Default::default() });
+	let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+		backends: wgpu::Backends::all(),
+		..wgpu::InstanceDescriptor::new_without_display_handle()
+	});
 	let adapter = pick_adapter(&instance, None).await;
 	request_device(&adapter).await
 }
@@ -66,6 +73,10 @@ async fn pick_adapter(instance: &wgpu::Instance, surface: Option<&wgpu::Surface<
 		power_preference: wgpu::PowerPreference::HighPerformance,
 		compatible_surface: surface,
 		force_fallback_adapter,
+		// Bucketed limits exist to stop untrusted content fingerprinting the
+		// adapter; this is a local tool, and the tile atlas wants the real
+		// `max_texture_dimension_2d` (see `request_device` below).
+		apply_limit_buckets: false,
 	};
 	// Prefer a real GPU, but fall back to a software rasterizer (lavapipe / WARP)
 	// when there's no hardware adapter - so the headless path (`--headless` /
@@ -80,8 +91,15 @@ async fn pick_adapter(instance: &wgpu::Instance, surface: Option<&wgpu::Surface<
 }
 
 async fn request_device(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {
+	// Request the adapter's *own* limits (always grantable, since they're what it
+	// reports), not wgpu's conservative defaults - so the tile atlas can size its
+	// layers to the real `max_texture_dimension_2d` / `max_texture_array_layers`.
 	adapter
-		.request_device(&wgpu::DeviceDescriptor { label: Some("max-map-editor.device"), ..Default::default() })
+		.request_device(&wgpu::DeviceDescriptor {
+			label: Some("max-map-editor.device"),
+			required_limits: adapter.limits(),
+			..Default::default()
+		})
 		.await
 		.expect("request GPU device")
 }

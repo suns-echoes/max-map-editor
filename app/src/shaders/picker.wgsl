@@ -26,6 +26,11 @@ struct VsOut {
 @group(0) @binding(1) var palette:   texture_2d<f32>;        // Rgba8UnormSrgb 256×1
 @group(0) @binding(2) var tile_mask: texture_2d<u32>;        // R16Uint, per-tile mask+1 (0 = opaque)
 
+// The atlas packing (cols, tiles per layer), so we address tiles for whatever
+// layer size the device limits chose (matches project.wgsl's `overlay`).
+struct AtlasMeta { cols: u32, per_layer: u32, _p0: u32, _p1: u32 };
+@group(0) @binding(3) var<uniform> apack: AtlasMeta;
+
 @vertex
 fn vs_main(in: VsIn) -> VsOut {
 	var out: VsOut;
@@ -58,14 +63,16 @@ fn transformed_sub(sub: vec2<u32>, bits: u32) -> vec2<u32> {
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 	let raw = vec2<u32>(clamp(in.uv, vec2<f32>(0.0), vec2<f32>(0.99999)) * 64.0);
 	let sub = transformed_sub(raw, in.transform);
-	let layer = in.index >> 8u;
-	let slot = in.index & 255u;
-	let origin = vec2<u32>((slot % 16u) * 64u, (slot / 16u) * 64u);
+	let layer = in.index / apack.per_layer;
+	let slot = in.index % apack.per_layer;
+	let origin = vec2<u32>((slot % apack.cols) * 64u, (slot / apack.cols) * 64u);
 	let pixel = textureLoad(atlas, vec2<i32>(origin + sub), i32(layer), 0).r;
 	// The tile's family mask (0 = opaque family, else mask color + 1). A pixel
 	// equal to the mask color is transparent (the map shows water through it;
 	// here a dim translucent fill stands in). Opaque families show every pixel.
-	let mask = textureLoad(tile_mask, vec2<i32>(i32(slot), i32(layer)), 0).r;
+	// The mask table is 256-wide, indexed by the global index (independent of the
+	// atlas layer packing above).
+	let mask = textureLoad(tile_mask, vec2<i32>(i32(in.index & 255u), i32(in.index >> 8u)), 0).r;
 	if (mask != 0u && pixel == mask - 1u) {
 		return vec4<f32>(0.0, 0.0, 0.0, 0.35 * in.alpha);
 	}

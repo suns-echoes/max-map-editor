@@ -151,4 +151,25 @@ IGNORED = whatever
 		let m = parse_res_manifest(text);
 		assert_eq!(m.simple("FOO"), SimpleImageEntry::Skip);
 	}
+
+	/// `load_res_manifest` is a thin fs wrapper over the text parser: it
+	/// reads the file from disk and propagates I/O errors for a missing path.
+	#[test]
+	fn load_res_manifest_reads_from_disk() {
+		let path = std::env::temp_dir().join(format!("mme-res-manifest-{}.ini", std::process::id()));
+		std::fs::write(&path, "[simple_image]\nTAG_A = 3\n").unwrap();
+		let m = load_res_manifest(&path).unwrap();
+		assert_eq!(m.simple("TAG_A"), SimpleImageEntry::Load(SimpleImageTransparency::Index(3)));
+		let _ = std::fs::remove_file(&path);
+		assert!(load_res_manifest(&path).is_err(), "a missing file is an I/O error, not an empty manifest");
+	}
+
+	/// A line with an empty key (`= 5`) is dropped rather than stored under
+	/// the empty tag.
+	#[test]
+	fn empty_key_lines_are_ignored() {
+		let m = parse_res_manifest("[simple_image]\n= 5\nOK = 1\n");
+		assert_eq!(m.simple_image.len(), 1, "only the well-formed line lands");
+		assert_eq!(m.simple("OK"), SimpleImageEntry::Load(SimpleImageTransparency::Index(1)));
+	}
 }

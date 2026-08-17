@@ -314,7 +314,35 @@ mod tests {
 		s.select_all();
 		// Every border cell exposes its map-edge sides.
 		let edges = s.boundary_edges(0, 0, 2, 2);
-		assert_eq!(edges.len(), 12, "3×3 fully selected = 12 perimeter edges");
+		assert_eq!(edges.len(), 12, "3x3 fully selected = 12 perimeter edges");
+	}
+
+	#[test]
+	fn parse_maps_the_cli_names_and_rejects_the_rest() {
+		assert_eq!(SelectMode::parse("replace").unwrap(), SelectMode::Replace);
+		assert_eq!(SelectMode::parse("add").unwrap(), SelectMode::Add);
+		assert_eq!(SelectMode::parse("sub").unwrap(), SelectMode::Subtract);
+		let err = SelectMode::parse("union").unwrap_err();
+		assert!(err.contains("union") && err.contains("replace|add|sub"), "the error names the bad mode: {err}");
+	}
+
+	/// Two selected cells sharing one ground tile contribute a single match key
+	/// (the key list dedupes), so similar-select still finds every sibling.
+	#[test]
+	fn select_similar_dedupes_repeated_keys() {
+		use crate::project::{Project, TileRef, Transform};
+		fn assets_root() -> std::path::PathBuf {
+			std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/assets/tilepacks")
+		}
+		let mut p = Project::new(4, 4, &["GREEN".to_string()], &assets_root(), 1).unwrap();
+		let green = 1u8; // pack 0 = WATER, 1 = GREEN
+		let t = TileRef { pack: green, tile: 3, transform: Transform::default() };
+		p.place_many(&[(0, 0, LAYER_GROUND, Some(t)), (1, 0, LAYER_GROUND, Some(t)), (3, 3, LAYER_GROUND, Some(t))]);
+		let mut sel = Selection::new(4, 4);
+		sel.apply_rect(0, 0, 1, 0, SelectMode::Add); // both seeds carry the same tile
+		sel.select_similar(&p, None);
+		assert_eq!(sel.count(), 3, "the duplicate key still matches every sibling exactly once");
+		assert!(sel.contains(3, 3), "the unselected sibling joined");
 	}
 
 	#[test]

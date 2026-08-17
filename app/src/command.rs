@@ -33,10 +33,23 @@ pub enum FilePurpose {
 	ExportTemplate,
 	/// New from Image: resolves to `new-from-image PATH`.
 	NewFromImage,
+	/// Pick a PNG to use as a New Map land/water shape template - the chosen
+	/// path is poked back into the open New Map modal (no follow-up command).
+	NewMapShape,
 	/// Import a WRL onto chosen tilesets: resolves to `import-wrl PATH`.
 	ImportWrl,
+	/// Open a M.A.X. saved game (the save editor): resolves to `open-save PATH`.
+	OpenSave,
+	/// Export the opened save (`.DTA`) with the editor's edits: resolves to
+	/// `export-save PATH`.
+	ExportSave,
 	/// Export the project to a WRL at a chosen path: resolves to `export PATH`.
 	ExportWrl,
+	/// The combined "Export to WRL and Save File" convenience (experimental): pick a
+	/// WRL output and then run the Export Save File flow, so both game files are
+	/// written from one menu click. Opens the WRL picker; the save half reuses
+	/// [`Self::ExportSave`] (which itself prompts for a base on a normal map).
+	ExportWrlAndSave,
 	/// Export the open Tile Painter's tile to a PNG: resolves to `tile-export PATH`.
 	ExportTilePng,
 	/// Load a PNG into the open Tile Painter (nearest palette match): resolves
@@ -45,6 +58,22 @@ pub enum FilePurpose {
 	/// Render the explorer's selected template to a PNG: resolves to
 	/// `template-export-png PATH`.
 	ExportTemplatePng,
+	/// Bring a cut-out in - a `.scn` bundle or a `.png` to author one from:
+	/// resolves to `scenery-import PATH`, which branches on the extension.
+	ImportScenery,
+	/// Write the armed cut-out out as a `.scn`: resolves to
+	/// `scenery-export PATH`.
+	ExportScenery,
+	/// Load a PNG into the open New Scenery dialog: resolves to
+	/// `scenery-import PATH` with the dialog already open, so the image
+	/// replaces the one being tuned instead of opening a second dialog.
+	ImportSceneryPng,
+	/// Load a painted height map into the open dialog's Heightmap tab:
+	/// resolves to `scenery-height-import PATH`.
+	ImportSceneryHeightPng,
+	/// Write the open dialog's height map out to paint on: resolves to
+	/// `scenery-height-export PATH`.
+	ExportSceneryHeightPng,
 }
 
 /// Which shore pass `shore` runs. The first two only place + greedily repair
@@ -107,6 +136,87 @@ pub enum Command {
 	SetPass {
 		tile: u16,
 		value: u8,
+	},
+	/// List a scenery library's pieces (`SCENERY.md`); `None` = every library
+	/// the open project loaded.
+	SceneryList {
+		pack: Option<String>,
+	},
+	/// Place a scenery object at a footprint origin in **map pixels** (signed -
+	/// an object may hang off the map's left or top edge). `(x, y)` is where the
+	/// piece's **centre of mass** lands, not its footprint origin - the piece
+	/// rides the cursor by its middle, and a click means "here".
+	SceneryPlace {
+		pack: String,
+		piece: String,
+		x: i32,
+		y: i32,
+	},
+	/// Remove the scenery placement at `index`.
+	SceneryRemove {
+		index: usize,
+	},
+	/// Arm a scenery piece for the place tool by its panel index; `None`
+	/// disarms.
+	SceneryPick {
+		index: Option<usize>,
+	},
+	/// Set a placement's blend mode, or - with no index - the mode *new*
+	/// placements take. How a cut-out's ink meets the scenery under it.
+	SceneryBlendMode {
+		index: Option<usize>,
+		mode: map_core::SceneryBlend,
+	},
+	/// Move the scenery placement at `index` to a new footprint origin in map
+	/// pixels (the move tool's drag; one undo unit per drag).
+	SceneryMove {
+		index: usize,
+		x: i32,
+		y: i32,
+	},
+	/// Remove every scenery placement.
+	SceneryClear,
+	/// Open the New Scenery dialog (author a cut-out from an image).
+	SceneryNew,
+	/// Open the authoring dialog on a **copy** of the armed piece, under a fresh
+	/// id. The one way to start from a shipped cut-out, which is read-only.
+	SceneryClone,
+	/// Open the authoring dialog on the armed piece itself (rewritten in place;
+	/// its id and pack are fixed). Shipped pieces need `--dev`.
+	SceneryEdit,
+	/// Bring a cut-out in from `path`: a `.scn` is filed straight into the
+	/// chosen pack's user library, a `.png` opens New Scenery pre-loaded.
+	/// Pathless opens the file picker.
+	SceneryImport {
+		path: Option<PathBuf>,
+	},
+	/// Write the armed piece out as a shareable `.scn`; pathless opens the
+	/// save picker.
+	SceneryExport {
+		path: Option<PathBuf>,
+	},
+	/// Load a painted **height map** into the open authoring dialog's Heightmap
+	/// tab. Pathless opens the file picker.
+	SceneryHeightImport {
+		path: Option<PathBuf>,
+	},
+	/// Write the open dialog's height map out as a greyscale PNG - the picture
+	/// somebody paints on and brings back with `scenery-height-import`.
+	/// Pathless opens the save picker.
+	SceneryHeightExport {
+		path: Option<PathBuf>,
+	},
+	/// Commit the open New Scenery dialog with the run's defaults (the script
+	/// path - the interactive path passes the widgets' values through the shell).
+	SceneryCommit,
+	/// Delete the armed piece. Opens the confirmation; `force` (`!`) does it.
+	SceneryDelete {
+		force: bool,
+	},
+	/// Rename the armed piece's **display name**. Its id is what placements
+	/// store, so that never moves. Nameless opens the rename dialog.
+	SceneryRename {
+		name: Option<String>,
 	},
 	/// Place a pack tile (project documents): layer derives from the pack.
 	Place {
@@ -204,7 +314,9 @@ pub enum Command {
 	/// Reset Pass Table to Tileset) - reverts Pass Table Editor edits / a loaded
 	/// map's `tilepass` block. Per-cell overrides are left alone.
 	ResetTilePass,
-	/// Switch the map tool: pencil | picker.
+	/// Switch the map tool: pencil | picker | … , or `default` for the active
+	/// mode's own select tool (cells in the map/pass editors, objects in the save
+	/// editor) - what a cancelled gesture reverts to.
 	ToolSelect {
 		name: String,
 	},
@@ -246,8 +358,9 @@ pub enum Command {
 	DeleteAll,
 	/// Arm the clipboard as the ghost stamp under the cursor.
 	Paste,
-	/// Place the armed ghost stamp (paste or a picked template) with its
-	/// top-left at a cell. The stamp stays armed for repeat placing.
+	/// Place the armed ghost stamp (paste or a picked template) **centred** on
+	/// a cell (`crate::state::stamp_origin`). The stamp stays armed for repeat
+	/// placing.
 	Stamp {
 		x: u16,
 		y: u16,
@@ -320,6 +433,69 @@ pub enum Command {
 	},
 	/// Remove all unit previews.
 	UnitClear,
+	/// Auto-connect adjacent same-team buildings / connectors via their connector
+	/// masks (add-only; mirrors the game when structures are built adjacent, S4.4).
+	AutoConnect,
+	/// Select the topmost object covering a cell (footprint + z aware), or clear
+	/// the selection when the cell is empty. Not an edit - selection is view state.
+	ObjectSelect {
+		x: u16,
+		y: u16,
+	},
+	/// Eyedropper: arm the unit type + team of the topmost object at a cell for
+	/// placing (then switch to the Place tool). No-op on an empty cell.
+	ObjectPick {
+		x: u16,
+		y: u16,
+	},
+	/// Clone stamp: on a cell holding an object, take that object as the source
+	/// (type, team **and** every per-unit property); on a bare cell, stamp a copy
+	/// of the armed source there. No-op on a bare cell with nothing armed.
+	ObjectClone {
+		x: u16,
+		y: u16,
+	},
+	/// Edit one field of the currently selected object (Unit Properties panel,
+	/// S4). `field` ∈ `team|name|angle|hits|ammo|storage|connectors|orders`; `value`
+	/// is parsed per field (a team word/index, a raw name, a number, or an order slug).
+	/// Undoable. Fails when nothing is selected or the field/value is invalid.
+	ObjectEdit {
+		field: String,
+		value: String,
+	},
+	/// Edit one of the selected object's maximum stats (`UnitValues`), cloning the
+	/// shared seed into a per-unit override on first edit (S4.5). `attr` ∈
+	/// `hits|attack|armor|range|speed|scan|rounds|ammo|storage|turns|attack-radius|
+	/// move-and-fire|agent-adjust|version`; `value` is a number. Undoable. Fails
+	/// when nothing is selected or the object has no stats block.
+	ObjectValues {
+		attr: String,
+		value: u32,
+	},
+	/// Set the resource (cargo) at cell `(x, y)` of an opened save (S5):
+	/// `material` ∈ `raw|fuel|gold|none` (none/`clear` empties the cell), `amount`
+	/// 0-31 (clamped). Preserves the cell's survey flags. Undoable. No-op when no
+	/// save is attached or the cell is out of range.
+	ResourceSet {
+		x: u16,
+		y: u16,
+		material: String,
+		amount: u32,
+	},
+	/// Configure the resource brush (`Tool::ResourceBrush`, S5.3): `field` ∈
+	/// `material` (raw|fuel|gold|none), `amount` (0-31), `mode` (set|add|sub).
+	ResourceBrush {
+		field: String,
+		value: String,
+	},
+	/// Apply the current resource brush to cell `(x, y)` — the per-cell paint
+	/// during a Resource Brush drag (S5.3). Undoable (joins the open stroke).
+	ResourcePaint {
+		x: u16,
+		y: u16,
+	},
+	/// Open the resource brush's exact-amount modal (S5.4). The shell shows it.
+	ResourceAmountDialog,
 	/// Show/hide all unit previews on the map (`None` = toggle).
 	UnitsVisible {
 		on: Option<bool>,
@@ -456,11 +632,8 @@ pub enum Command {
 	ContextMenu {
 		at: Option<(f32, f32)>,
 	},
-	/// Open the Create New Map modal; `picking` jumps to the
-	/// tile-set selection stage (screenshots).
-	NewMapModal {
-		picking: bool,
-	},
+	/// Open the Create New Map dialog (the wgpu-ui overlay).
+	NewMapModal,
 	/// Show/hide a workspace panel (`None` = toggle).
 	Window {
 		id: String,
@@ -478,11 +651,38 @@ pub enum Command {
 	SaveSettings,
 	Undo,
 	Redo,
+	/// Undo `steps` actions at once (the Edit ▸ Undo History submenu).
+	UndoTo {
+		steps: usize,
+	},
+	/// Set the armed thing (stamp or single tile) to an absolute orientation -
+	/// the 8-orientation preview grid. `rot` is 0–3 clockwise quarter turns.
+	Orient {
+		rot: u8,
+		mirror: bool,
+	},
 	/// Load a project/WRL into a tab. `open` and `open!` are aliases (the load
 	/// opens its own tab, so there is no dirty guard to skip).
 	Open {
 		path: PathBuf,
 	},
+	/// Open a M.A.X. saved game (`.DTA`) into a new tab: resolve the world it
+	/// references, load that pristine stock map, and embed the save (the save
+	/// editor). Opens its own tab, so no dirty guard.
+	OpenSave {
+		path: PathBuf,
+	},
+	/// Show the experimental-feature warning before the Open Save File picker
+	/// (the save editor can corrupt real saves). Confirming runs
+	/// `file-dialog open-save`; this is what the menu item / keybinding fire.
+	OpenSaveWarn,
+	/// "Open Anyway" from the save-open confirm dialog: commit the save-editor
+	/// project already built on the fallback (stock) world (`pending_save_open`).
+	OpenSaveAnyway,
+	/// Open the Edit Save Data modal (Edit > Experimental): every non-map
+	/// setting of the embedded save — game setup, per-team stats, advanced —
+	/// validated so a corrupt value can never reach the save.
+	EditSaveData,
 	/// New from Image: decode a PNG and open the settings modal.
 	NewFromImage {
 		path: PathBuf,
@@ -550,16 +750,39 @@ pub enum Command {
 	},
 	/// Open the Resize Map modal.
 	ResizeModal,
-	/// Open the Fix Shore modal. An optional preset method word (`sweep-fix`,
-	/// `loop-fix`, `full`, ...) pre-selects it and auto-starts the run, so the
-	/// menu's one-click "+ Fix" actions show live progress + a Stop button and
-	/// never freeze the UI.
+	/// Open the (non-blocking) Fix Shore window. `fix-shore-modal go` also starts
+	/// the run immediately - live progress, Stop/Abort, stepped across frames.
 	AutoFixModal {
-		method: Option<String>,
+		/// `fix-shore-modal go` opens the window and starts the run immediately.
+		autostart: bool,
 	},
 	/// Bake a project to a game-ready WRL; `None` = project path as .wrl.
 	Export {
 		path: Option<PathBuf>,
+	},
+	/// Export the opened save (`.DTA`) with the editor's edits reconstituted onto
+	/// it (S6.1). Distinct from [`Self::Export`] (which bakes a WRL); writes a real
+	/// save file to `path`. Requires an attached save.
+	ExportSave {
+		path: PathBuf,
+	},
+	/// Synthesize a fresh save from the current map alone — no base `.DTA`
+	/// (Stage C3): the placed units become the save's units, terrain becomes
+	/// the surface map, and the result attaches like an opened save (resources
+	/// editable, Export Save File live). `world` = the stock slot the save
+	/// claims (`SNOW_1`…`DESERT_6`; the swapped-`.WRL` workflow installs the
+	/// actual map there).
+	NewSave {
+		name: String,
+		world: Option<String>,
+	},
+	/// Save a **normal map** (no save attached) as a `.DTA` by adding its placed
+	/// units onto a user-supplied **base** save, writing the result to `out`. The
+	/// base provides the game-state skeleton + terrain; placed unit types with no
+	/// template in the base are skipped (reported).
+	ExportSaveOnBase {
+		base: PathBuf,
+		out: PathBuf,
 	},
 	/// Show/hide the cell grid overlay (`None` = toggle).
 	Grid {
@@ -571,6 +794,18 @@ pub enum Command {
 	},
 	/// Show/hide the pass-value overlay (`None` = toggle).
 	PassOverlay {
+		on: Option<bool>,
+	},
+	/// Show/hide the resource-distribution overlay (`None` = toggle, S5).
+	Resources {
+		on: Option<bool>,
+	},
+	/// Outline broken / missing shore cells over the map (`None` = toggle).
+	ShoreBugs {
+		on: Option<bool>,
+	},
+	/// Outline every placed tile that violates its match rules (`None` = toggle).
+	MatchProblems {
 		on: Option<bool>,
 	},
 	/// Enable/disable palette-cycling animation (`None` = toggle).
@@ -609,7 +844,9 @@ pub enum Command {
 	},
 	/// Open the Convert to Compatible Palette modal.
 	ConvertPaletteModal,
-	/// Open the Map Preferences modal.
+	/// Open the Map Metadata modal.
+	MetadataModal,
+	/// Open the Editor Preferences modal (M.A.X. + M.A.X. Port folder paths).
 	PreferencesModal,
 	/// Open the Tile Painter on a blank new tile.
 	TilePaintNew,
@@ -640,9 +877,15 @@ pub enum Command {
 	/// Open the visual Edit Tile Match Data modal (DEV ▸ Edit Match Data,
 	/// `--dev` only) for the active map's tile packs.
 	MatchEditor,
-	/// A text-edit action from a focused field's right-click menu, routed to the
-	/// open modal's focused text field.
-	Edit(EditOp),
+	/// Open the UI Tests dialog (DEV ▸ UI Tests, `--dev` only): the chrome
+	/// font's raster at every role and a ladder of physical em sizes.
+	UiTests,
+	/// Create a new map laying out a tileset's match data as crosses (DEV ▸
+	/// Match Combinations Map, `--dev` only). `pack` is the tilepack to use, or
+	/// the active map's tileset when omitted.
+	MatchCombos {
+		pack: Option<String>,
+	},
 	/// Advance the animation clock (deterministic time for scripts).
 	Tick {
 		seconds: f32,
@@ -733,15 +976,35 @@ pub fn parse_dims(s: &str) -> Option<(u32, u32)> {
 }
 
 /// Parse one script line. `Ok(None)` for blank lines and comments.
-/// A text-edit action from a focused field's right-click menu (mapped to a
-/// [`crate::modal::ModalKey`] and routed to the open modal's focused field).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EditOp {
-	Cut,
-	Copy,
-	Paste,
-	Delete,
-	SelectAll,
+/// A human action name for the Undo History submenu, for the editing commands
+/// whose intent a content-derived label would blur (a shore run and a brush dab
+/// both change "N cells"). `None` → map-core derives the label from the patch.
+pub fn undo_label(command: &Command) -> Option<&'static str> {
+	Some(match command {
+		Command::SceneryPlace { .. } => "Place scenery",
+		Command::SceneryMove { .. } => "Move scenery",
+		Command::SceneryBlendMode { .. } => "Scenery blend",
+		Command::SceneryRemove { .. } => "Remove scenery",
+		Command::SceneryClear => "Clear scenery",
+		Command::Place { .. } | Command::Paint { .. } | Command::SetTile { .. } => "Paint",
+		Command::Erase { .. } => "Erase",
+		Command::Fill { .. } => "Fill",
+		Command::PaintMask { .. } => "Terrain brush",
+		Command::Shore { .. } => "Shore",
+		Command::Paste => "Paste",
+		Command::Delete => "Clear",
+		Command::DeleteAll => "Clear all layers",
+		Command::Generate { .. } => "Generate terrain",
+		Command::Resize { .. } => "Resize map",
+		Command::ConvertPalette { .. } => "Convert palette",
+		Command::SetPass { .. } | Command::TilePass { .. } => "Passability",
+		Command::ResetTilePass => "Reset passability",
+		Command::UnitPlace { .. } => "Place unit",
+		Command::ObjectClone { .. } => "Clone object",
+		Command::UnitErase { .. } => "Erase unit",
+		Command::UnitClear => "Clear units",
+		_ => return None,
+	})
 }
 
 pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
@@ -800,6 +1063,48 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		"fit" => Command::Fit,
 		"set-tile" => Command::SetTile { x: num(&args, 0, verb)?, y: num(&args, 1, verb)?, tile: num(&args, 2, verb)? },
 		"set-pass" => Command::SetPass { tile: num(&args, 0, verb)?, value: num(&args, 1, verb)? },
+		"scenery-list" => Command::SceneryList { pack: opt_str(&args, 0) },
+		"scenery-place" => Command::SceneryPlace {
+			pack: req_str(&args, 0, "scenery-place: missing pack")?,
+			piece: req_str(&args, 1, "scenery-place: missing piece id")?,
+			x: num(&args, 2, verb)?,
+			y: num(&args, 3, verb)?,
+		},
+		"scenery-remove" => Command::SceneryRemove { index: num(&args, 0, verb)? },
+		"scenery-pick" => Command::SceneryPick {
+			index: match args.first() {
+				None | Some(&"none") => None,
+				Some(_) => Some(num(&args, 0, verb)?),
+			},
+		},
+		"scenery-blend" => {
+			// `MODE` alone sets the armed default; `INDEX MODE` sets one placement.
+			let (index, mode) = match args.as_slice() {
+				[mode] => (None, *mode),
+				[index, mode] => {
+					(Some(index.parse::<usize>().map_err(|_| "scenery-blend: bad index".to_string())?), *mode)
+				}
+				_ => return Err("scenery-blend: usage is [INDEX] normal|brighter|darker|higher".into()),
+			};
+			let mode = map_core::SceneryBlend::parse(mode)
+				.ok_or_else(|| format!("scenery-blend: unknown mode '{mode}' (normal|brighter|darker|higher)"))?;
+			Command::SceneryBlendMode { index, mode }
+		}
+		"scenery-move" => {
+			Command::SceneryMove { index: num(&args, 0, verb)?, x: num(&args, 1, verb)?, y: num(&args, 2, verb)? }
+		}
+		"scenery-clear" => Command::SceneryClear,
+		"scenery-new" => Command::SceneryNew,
+		"scenery-clone" => Command::SceneryClone,
+		"scenery-edit" => Command::SceneryEdit,
+		"scenery-import" => Command::SceneryImport { path: opt_str(&args, 0).map(PathBuf::from) },
+		"scenery-export" => Command::SceneryExport { path: opt_str(&args, 0).map(PathBuf::from) },
+		"scenery-height-import" => Command::SceneryHeightImport { path: opt_str(&args, 0).map(PathBuf::from) },
+		"scenery-height-export" => Command::SceneryHeightExport { path: opt_str(&args, 0).map(PathBuf::from) },
+		"scenery-commit" => Command::SceneryCommit,
+		"scenery-delete" => Command::SceneryDelete { force: false },
+		"scenery-delete!" => Command::SceneryDelete { force: true },
+		"scenery-rename" => Command::SceneryRename { name: opt_str(&args, 0) },
 		"place" => Command::Place {
 			x: num(&args, 0, verb)?,
 			y: num(&args, 1, verb)?,
@@ -833,7 +1138,7 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		"brush-size" => Command::BrushSize { size: num(&args, 0, verb)? },
 		"brush-shape" => Command::BrushShape { shape: req_str(&args, 0, "brush-shape: expected square|circle")? },
 		"auto-shore" => Command::AutoShore { mode: req_str(&args, 0, "auto-shore: expected off|sweep|loop-walk")? },
-		"mode" => Command::Mode { name: req_str(&args, 0, "mode: expected map|pass|localpass")? },
+		"mode" => Command::Mode { name: req_str(&args, 0, "mode: expected map|pass|localpass|save")? },
 		"pass-pick" => Command::PassPick { value: num(&args, 0, verb)? },
 		"pass-paint" => {
 			Command::PassPaint { x: num(&args, 0, verb)?, y: num(&args, 1, verb)?, value: num(&args, 2, verb)? }
@@ -844,7 +1149,7 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		"pass-clear" => Command::PassClear { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
 		"tile-pass-reset" => Command::ResetTilePass,
 		"tool" => Command::ToolSelect {
-			name: req_str(&args, 0, "tool: expected pencil|picker|eraser|fill|unit|select|select-rect")?,
+			name: req_str(&args, 0, "tool: expected default|pencil|picker|eraser|fill|unit|select|select-rect")?,
 		},
 		"select" => Command::SelectOp { op: req_str(&args, 0, "select: expected all|clear|invert|similar")? },
 		"select-cell" => Command::SelectCell {
@@ -914,10 +1219,51 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		},
 		"unit-erase" => Command::UnitErase { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
 		"unit-clear" => Command::UnitClear,
+		"auto-connect" => Command::AutoConnect,
+		"object-select" => Command::ObjectSelect { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
+		"object-pick" => Command::ObjectPick { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
+		"object-clone" => Command::ObjectClone { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
+		"object-edit" => Command::ObjectEdit {
+			field: req_str(
+				&args,
+				0,
+				"object-edit: expected FIELD VALUE (field: team|name|angle|turret|hits|ammo|storage|connectors|orders)",
+			)?,
+			value: req_str(&args, 1, "object-edit: expected a VALUE after the field")?,
+		},
+		"object-values" => Command::ObjectValues {
+			attr: req_str(
+				&args,
+				0,
+				"object-values: expected ATTR VALUE (attr: hits|attack|armor|range|speed|scan|rounds|ammo|storage|turns|attack-radius|move-and-fire|agent-adjust|version)",
+			)?,
+			value: num(&args, 1, "object-values")?,
+		},
+		"resource-set" => Command::ResourceSet {
+			x: num(&args, 0, verb)?,
+			y: num(&args, 1, verb)?,
+			material: req_str(&args, 2, "resource-set: expected X Y MATERIAL AMOUNT (material: raw|fuel|gold|none)")?,
+			amount: num(&args, 3, "resource-set")?,
+		},
+		"resource-brush" => Command::ResourceBrush {
+			field: req_str(&args, 0, "resource-brush: expected FIELD VALUE (field: material|amount|mode)")?,
+			value: req_str(&args, 1, "resource-brush: expected a VALUE after the field")?,
+		},
+		"resource-paint" => Command::ResourcePaint { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
+		"resource-amount-dialog" => Command::ResourceAmountDialog,
 		"units" => Command::UnitsVisible { on: on_off_toggle(&args, verb)? },
 		"layer" => Command::Layer { name: req_str(&args, 0, "layer: expected water|ground")? },
 		"show-only-layer" => Command::ShowOnlyLayer { on: on_off_toggle(&args, verb)? },
 		"transform" => Command::TransformTile { op: req_str(&args, 0, "transform: expected flip-h|flip-v|cw|ccw")? },
+		"orient" => {
+			let rot: u8 = req_str(&args, 0, "orient: expected rot 0-3")?
+				.parse()
+				.ok()
+				.filter(|&r| r <= 3)
+				.ok_or("orient: rot must be 0-3")?;
+			let mirror = matches!(args.get(1), Some(&"mirror") | Some(&"flip") | Some(&"1") | Some(&"true"));
+			Command::Orient { rot, mirror }
+		}
 		"pick" => Command::Pick { x: num(&args, 0, verb)?, y: num(&args, 1, verb)? },
 		"shore" => {
 			// An optional leading mode word picks a point on the place->fix ladder.
@@ -963,6 +1309,8 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 				} else if let Some(v) = a.strip_prefix("access-mode=") {
 					p.accessibility_mode =
 						map_core::AccessibilityMode::parse(v).map_err(|e| format!("generate: {e}"))?;
+				} else if let Some(v) = a.strip_prefix("shape=") {
+					p.shape = num(v, "shape")?;
 				} else if let Some(v) = a.strip_prefix("main-islands=") {
 					p.main_islands.count = num(v, "main-islands")?;
 				} else if let Some(v) = a.strip_prefix("small-islands=") {
@@ -987,12 +1335,15 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 					return Err(format!(
 						"generate: unexpected '{a}' (symmetry= shore=sweep|loop|none seed=N accessibility=N \
 						 access-mode=random|paths|labyrinth main-islands=N small-islands=N continents=N seas=N rivers=N \
-						 lakes=N maze=N drop-zones=N obstructions=N decorations=N)",
+						 lakes=N maze=N shape=N drop-zones=N obstructions=N decorations=N)",
 					));
 				}
 			}
 			if p.accessibility > 100 {
 				return Err("generate: accessibility is 0..=100".into());
+			}
+			if p.shape > 100 {
+				return Err("generate: shape is 0..=100 (0 = round, 100 = fully random)".into());
 			}
 			Command::Generate { params: p, explicit_seed }
 		}
@@ -1073,9 +1424,10 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 			Some(&"off") => Command::ContextMenu { at: None },
 			_ => Command::ContextMenu { at: Some((num(&args, 0, verb)?, num(&args, 1, verb)?)) },
 		},
+		// `packs` (the old jump-to-pack-picker shortcut) still parses, but the
+		// single-stage overlay opens the same dialog either way.
 		"new-map" => match args.first() {
-			None => Command::NewMapModal { picking: false },
-			Some(&"packs") => Command::NewMapModal { picking: true },
+			None | Some(&"packs") => Command::NewMapModal,
 			Some(other) => return Err(format!("new-map: unexpected '{other}' (or `packs`)")),
 		},
 		"window" => {
@@ -1104,10 +1456,31 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		"save-settings" => Command::SaveSettings,
 		"undo" => Command::Undo,
 		"redo" => Command::Redo,
+		"undo-to" => Command::UndoTo {
+			steps: req_str(&args, 0, "undo-to: expected a step count")?
+				.parse()
+				.map_err(|_| "undo-to: step count must be a number".to_string())?,
+		},
 		"open" | "open!" => {
 			let path = args.first().ok_or("open: missing path")?;
 			Command::Open { path: PathBuf::from(path) }
 		}
+		"open-save" => Command::OpenSave { path: PathBuf::from(req_str(&args, 0, "open-save: missing path")?) },
+		"export-save-onto" => Command::ExportSaveOnBase {
+			base: PathBuf::from(req_str(&args, 0, "export-save-onto: missing base save path")?),
+			out: PathBuf::from(req_str(&args, 1, "export-save-onto: missing output path")?),
+		},
+		"open-save-warn" => Command::OpenSaveWarn,
+		"open-save-anyway" => Command::OpenSaveAnyway,
+		"edit-save-data" => Command::EditSaveData,
+		"export-save" => Command::ExportSave { path: PathBuf::from(req_str(&args, 0, "export-save: missing path")?) },
+		"new-save" => Command::NewSave {
+			name: req_str(&args, 0, "new-save: missing save name")?.to_string(),
+			world: args.get(1).map(|s| s.to_string()),
+		},
+		// The File-menu form: no arguments — the handler names the save after
+		// the project and claims the default slot.
+		"new-save-from-map" => Command::NewSave { name: String::new(), world: None },
 		"new-from-image" => {
 			Command::NewFromImage { path: PathBuf::from(req_str(&args, 0, "new-from-image: missing path")?) }
 		}
@@ -1134,17 +1507,28 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 				Some(&"import-palette") => FilePurpose::ImportPalette,
 				Some(&"export-palette") => FilePurpose::ExportPalette,
 				Some(&"new-from-image") => FilePurpose::NewFromImage,
+				Some(&"new-map-shape") => FilePurpose::NewMapShape,
 				Some(&"import-wrl") => FilePurpose::ImportWrl,
+				Some(&"open-save") => FilePurpose::OpenSave,
+				Some(&"export-save") => FilePurpose::ExportSave,
 				Some(&"export-wrl") => FilePurpose::ExportWrl,
+				Some(&"export-wrl-and-save") => FilePurpose::ExportWrlAndSave,
 				Some(&"import-template") => FilePurpose::ImportTemplate,
 				Some(&"export-template") => FilePurpose::ExportTemplate,
 				Some(&"export-tile-png") => FilePurpose::ExportTilePng,
 				Some(&"import-tile-png") => FilePurpose::ImportTilePng,
 				Some(&"export-template-png") => FilePurpose::ExportTemplatePng,
+				Some(&"import-scenery") => FilePurpose::ImportScenery,
+				Some(&"export-scenery") => FilePurpose::ExportScenery,
+				Some(&"import-scenery-png") => FilePurpose::ImportSceneryPng,
+				Some(&"import-scenery-height-png") => FilePurpose::ImportSceneryHeightPng,
+				Some(&"export-scenery-height-png") => FilePurpose::ExportSceneryHeightPng,
 				_ => {
 					return Err("file-dialog: expected load|save-as|save-copy|load-palette|save-palette|\
-						 new-from-image|import-wrl|export-wrl|import-template|export-template|export-tile-png|\
-						 import-tile-png|export-template-png"
+						 new-from-image|new-map-shape|import-wrl|open-save|export-save|export-wrl|\
+						 export-wrl-and-save|import-template|\
+						 export-template|export-tile-png|import-tile-png|export-template-png|\
+						 import-scenery|export-scenery|import-scenery-png"
 						.into());
 				}
 			},
@@ -1156,11 +1540,14 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 			off_y: if args.len() > 3 { num(&args, 3, verb)? } else { 0 },
 		},
 		"resize-modal" => Command::ResizeModal,
-		"fix-shore-modal" => Command::AutoFixModal { method: opt_str(&args, 0) },
+		"fix-shore-modal" => Command::AutoFixModal { autostart: args.first() == Some(&"go") },
 		"export" => Command::Export { path: args.first().map(PathBuf::from) },
 		"grid" => Command::Grid { on: on_off_toggle(&args, verb)? },
 		"status-bar" => Command::StatusBar { on: on_off_toggle(&args, verb)? },
 		"pass-overlay" => Command::PassOverlay { on: on_off_toggle(&args, verb)? },
+		"resources" => Command::Resources { on: on_off_toggle(&args, verb)? },
+		"shore-bugs" => Command::ShoreBugs { on: on_off_toggle(&args, verb)? },
+		"match-problems" => Command::MatchProblems { on: on_off_toggle(&args, verb)? },
 		"animate" => Command::Animate { on: on_off_toggle(&args, verb)? },
 		"ingame" => Command::InGame { on: on_off_toggle(&args, verb)? },
 		"crt" => Command::Crt { on: on_off_toggle(&args, verb)? },
@@ -1200,7 +1587,8 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 			Command::ConvertPalette { rasterize, water, relaxed, threshold }
 		}
 		"convert-palette-modal" => Command::ConvertPaletteModal,
-		"map-preferences" => Command::PreferencesModal,
+		"map-metadata" => Command::MetadataModal,
+		"editor-preferences" => Command::PreferencesModal,
 		"tile-new" => Command::TilePaintNew,
 		"tile-clone" => Command::TilePaintClone,
 		"tile-edit" => Command::TilePaintEdit,
@@ -1211,11 +1599,8 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, String> {
 		"bake" => Command::Bake,
 		"update-map" => Command::UpdateMap,
 		"match-editor" => Command::MatchEditor,
-		"edit-cut" => Command::Edit(EditOp::Cut),
-		"edit-copy" => Command::Edit(EditOp::Copy),
-		"edit-paste" => Command::Edit(EditOp::Paste),
-		"edit-delete" => Command::Edit(EditOp::Delete),
-		"edit-select-all" => Command::Edit(EditOp::SelectAll),
+		"ui-tests" => Command::UiTests,
+		"match-combos" => Command::MatchCombos { pack: opt_str(&args, 0) },
 		"tick" => Command::Tick { seconds: num(&args, 0, verb)? },
 		"console" => Command::Console { on: on_off_toggle(&args, verb)? },
 		"screenshot" => {
@@ -1366,6 +1751,28 @@ mod tests {
 		assert!(parse_line("ui-scale huge").is_err());
 	}
 
+	/// `undo-to N` (the Undo History submenu's command) parses its step count and
+	/// rejects a missing / non-numeric one, plus `undo_label` names key edits.
+	#[test]
+	fn undo_to_parses_and_labels() {
+		assert_eq!(parse_line("undo-to 3").unwrap().unwrap(), Command::UndoTo { steps: 3 });
+		assert!(parse_line("undo-to").is_err());
+		assert!(parse_line("undo-to lots").is_err());
+		assert_eq!(undo_label(&Command::Shore { region: None, mode: crate::command::ShoreMode::Sweep }), Some("Shore"));
+		assert_eq!(undo_label(&Command::Undo), None, "undo itself isn't a labelled edit");
+	}
+
+	/// `orient N [mirror]` (the 8-orientation grid's command) parses its rotation
+	/// and optional mirror, and rejects an out-of-range rotation.
+	#[test]
+	fn orient_parses_rotation_and_mirror() {
+		assert_eq!(parse_line("orient 2").unwrap().unwrap(), Command::Orient { rot: 2, mirror: false });
+		assert_eq!(parse_line("orient 1 mirror").unwrap().unwrap(), Command::Orient { rot: 1, mirror: true });
+		assert_eq!(parse_line("orient 3 flip").unwrap().unwrap(), Command::Orient { rot: 3, mirror: true });
+		assert!(parse_line("orient 4").is_err(), "rotation is 0-3");
+		assert!(parse_line("orient").is_err());
+	}
+
 	#[test]
 	fn fill_randomize_and_tools_parse() {
 		assert_eq!(parse_line("fill 3 7").unwrap().unwrap(), Command::Fill { x: 3, y: 7 });
@@ -1480,7 +1887,7 @@ mod tests {
 		// Keys set the selects, counts, and accessibility; sizes keep defaults.
 		let mut expect = map_core::GenParams::defaults(map_core::Generator::RiverRaid);
 		expect.symmetry = map_core::Symmetry::LeftRight;
-		expect.shore = map_core::ShoreMethod::LoopWalk;
+		expect.shore = map_core::ShoreMethod::Shore; // `loop` maps onto the unified pass
 		expect.rivers.count = 12;
 		expect.obstructions.count = 0;
 		expect.accessibility = 30;
@@ -1497,7 +1904,7 @@ mod tests {
 		assert!(parse_line("generate islands accessibility=101").is_err());
 		assert!(parse_line("generate islands 42").is_err());
 		assert!(parse_line("generate islands seed=x").is_err());
-		assert!(parse_line("generate islands shore=alt").is_err(), "shore is sweep|loop|none now");
+		assert!(parse_line("generate islands shore=alt").is_err(), "shore is shore|none now");
 		// Accessibility mode parses random|paths|labyrinth.
 		let mut maze = map_core::GenParams::defaults(map_core::Generator::Land);
 		maze.accessibility_mode = map_core::AccessibilityMode::Labyrinth;
@@ -1586,15 +1993,6 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_text_edit_commands() {
-		assert!(matches!(parse_line("edit-cut").unwrap(), Some(Command::Edit(EditOp::Cut))));
-		assert!(matches!(parse_line("edit-copy").unwrap(), Some(Command::Edit(EditOp::Copy))));
-		assert!(matches!(parse_line("edit-paste").unwrap(), Some(Command::Edit(EditOp::Paste))));
-		assert!(matches!(parse_line("edit-delete").unwrap(), Some(Command::Edit(EditOp::Delete))));
-		assert!(matches!(parse_line("edit-select-all").unwrap(), Some(Command::Edit(EditOp::SelectAll))));
-	}
-
-	#[test]
 	fn parses_palette_manager_commands() {
 		// A quoted name survives the tokenizer with its spaces.
 		assert!(
@@ -1609,6 +2007,117 @@ mod tests {
 		);
 		assert!(matches!(parse_line("palette-delete /u/p.json").unwrap(), Some(Command::PaletteDelete { .. })));
 		assert!(matches!(parse_line("palette-import /tmp/x.json").unwrap(), Some(Command::PaletteImport { .. })));
+	}
+
+	#[test]
+	fn unit_commands_parse() {
+		// `unit` needs a tag or the explicit `off`; both map to UnitSelect.
+		assert!(parse_line("unit").unwrap_err().contains("unit tag or `off`"));
+		assert_eq!(parse_line("unit off").unwrap().unwrap(), Command::UnitSelect { tag: None });
+		assert_eq!(parse_line("unit TANK").unwrap().unwrap(), Command::UnitSelect { tag: Some("TANK".into()) });
+		assert_eq!(parse_line("unit-team red").unwrap().unwrap(), Command::UnitTeam { team: "red".into() });
+		assert!(parse_line("unit-team").unwrap_err().contains("red|green|blue"));
+		assert_eq!(
+			parse_line("unit-place TANK 3 4").unwrap().unwrap(),
+			Command::UnitPlace { tag: "TANK".into(), x: 3, y: 4 }
+		);
+		assert!(parse_line("unit-place TANK 3").unwrap_err().contains("missing argument"));
+	}
+
+	#[test]
+	fn tile_pass_and_template_pick_import_parse() {
+		assert_eq!(parse_line("tile-pass 1 2 3").unwrap().unwrap(), Command::TilePass { x: 1, y: 2, value: 3 });
+		assert_eq!(
+			parse_line("template-pick \"my ridge\"").unwrap().unwrap(),
+			Command::TemplatePick { name: "my ridge".into() }
+		);
+		assert!(parse_line("template-pick").unwrap_err().contains("expected a template name"));
+		assert_eq!(
+			parse_line("template-import /tmp/t.json").unwrap().unwrap(),
+			Command::TemplateImport { path: PathBuf::from("/tmp/t.json") }
+		);
+		assert!(parse_line("template-import").unwrap_err().contains("expected a path"));
+	}
+
+	/// Every per-generator count knob sets its field (order-independent, the
+	/// rest keep the shared defaults) - one knob per generator family.
+	#[test]
+	fn generate_count_knobs_set_their_fields() {
+		let expect = |line: &str, tweak: &dyn Fn(&mut map_core::GenParams)| {
+			let generator = line.split_whitespace().nth(1).unwrap();
+			let mut p = map_core::GenParams::defaults(map_core::Generator::parse(generator).unwrap());
+			tweak(&mut p);
+			assert_eq!(
+				parse_line(line).unwrap().unwrap(),
+				Command::Generate { params: p, explicit_seed: None },
+				"{line}"
+			);
+		};
+		expect("generate islands main-islands=3", &|p| p.main_islands.count = 3);
+		expect("generate islands small-islands=9", &|p| p.small_islands.count = 9);
+		expect("generate continents continents=4", &|p| p.continents.count = 4);
+		expect("generate central-seas seas=2", &|p| p.seas.count = 2);
+		expect("generate land lakes=5", &|p| p.lakes.count = 5);
+		expect("generate land maze=2", &|p| p.maze.count = 2);
+		expect("generate land drop-zones=6", &|p| p.drop_zones.count = 6);
+		expect("generate land decorations=7", &|p| p.decorations.count = 7);
+	}
+
+	#[test]
+	fn palette_file_and_tab_commands_parse() {
+		assert_eq!(
+			parse_line("palette-save /tmp/p.json").unwrap().unwrap(),
+			Command::PaletteSave { path: PathBuf::from("/tmp/p.json") }
+		);
+		assert!(parse_line("palette-save").unwrap_err().contains("missing path"));
+		assert_eq!(
+			parse_line("palette-load /tmp/p.json").unwrap().unwrap(),
+			Command::PaletteLoad { path: PathBuf::from("/tmp/p.json") }
+		);
+		assert!(parse_line("palette-load").unwrap_err().contains("missing path"));
+		// One arg is neither the modal (none) nor a rename (two) - loud error.
+		assert!(parse_line("palette-rename onlyfrom").unwrap_err().contains("FROM TO"));
+		// The tab switch: `saved` scans, `grid`/`current` return to the grid.
+		assert_eq!(parse_line("palette-tab saved").unwrap().unwrap(), Command::PaletteTab { saved: true });
+		assert_eq!(parse_line("palette-tab grid").unwrap().unwrap(), Command::PaletteTab { saved: false });
+		assert_eq!(parse_line("palette-tab current").unwrap().unwrap(), Command::PaletteTab { saved: false });
+		assert!(parse_line("palette-tab").unwrap_err().contains("grid|saved"));
+		// `palette scroll` is the only `palette` subcommand.
+		assert_eq!(parse_line("palette scroll 42").unwrap().unwrap(), Command::PaletteScroll { to: 42.0 });
+		assert!(parse_line("palette flip").unwrap_err().contains("expected scroll"));
+	}
+
+	#[test]
+	fn new_map_and_new_from_image_parse() {
+		assert_eq!(parse_line("new-map").unwrap().unwrap(), Command::NewMapModal);
+		assert_eq!(parse_line("new-map packs").unwrap().unwrap(), Command::NewMapModal, "legacy alias still opens it");
+		assert!(parse_line("new-map bogus").unwrap_err().contains("unexpected 'bogus'"));
+		assert_eq!(
+			parse_line("new-from-image /tmp/i.png").unwrap().unwrap(),
+			Command::NewFromImage { path: PathBuf::from("/tmp/i.png") }
+		);
+		assert!(parse_line("new-from-image").unwrap_err().contains("missing path"));
+	}
+
+	/// The convert-palette option words each set their flag; a valid
+	/// `threshold=` percent lands as a fraction; anything else is rejected.
+	#[test]
+	fn convert_palette_options_parse() {
+		assert_eq!(
+			parse_line("convert-palette").unwrap().unwrap(),
+			Command::ConvertPalette { rasterize: false, water: true, relaxed: false, threshold: 0.05 },
+			"bare command keeps the defaults",
+		);
+		assert_eq!(
+			parse_line("convert-palette rasterize water=drop dedupe=relaxed threshold=10").unwrap().unwrap(),
+			Command::ConvertPalette { rasterize: true, water: false, relaxed: true, threshold: 0.1 },
+			"threshold percent becomes a fraction",
+		);
+		assert_eq!(
+			parse_line("convert-palette match water=keep dedupe=strict").unwrap().unwrap(),
+			Command::ConvertPalette { rasterize: false, water: true, relaxed: false, threshold: 0.05 },
+		);
+		assert!(parse_line("convert-palette sideways").unwrap_err().contains("unexpected 'sideways'"));
 	}
 
 	#[test]
@@ -1638,13 +2147,20 @@ mod tests {
 			("import-palette", ImportPalette),
 			("export-palette", ExportPalette),
 			("new-from-image", NewFromImage),
+			("new-map-shape", NewMapShape),
 			("import-wrl", ImportWrl),
 			("export-wrl", ExportWrl),
+			("export-wrl-and-save", ExportWrlAndSave),
 			("import-template", ImportTemplate),
 			("export-template", ExportTemplate),
 			("export-tile-png", ExportTilePng),
 			("import-tile-png", ImportTilePng),
 			("export-template-png", ExportTemplatePng),
+			("import-scenery", ImportScenery),
+			("export-scenery", ExportScenery),
+			("import-scenery-png", ImportSceneryPng),
+			("import-scenery-height-png", ImportSceneryHeightPng),
+			("export-scenery-height-png", ExportSceneryHeightPng),
 		];
 		for (word, purpose) in words {
 			assert_eq!(
@@ -1654,6 +2170,60 @@ mod tests {
 			);
 		}
 		assert!(parse_line("file-dialog bogus").is_err(), "unknown purpose word rejected");
+	}
+
+	/// The scenery-authoring verbs. Each optional argument matters: pathless
+	/// import/export open the picker, a nameless rename opens the dialog, and
+	/// the bare `scenery-delete` asks before `scenery-delete!` does it.
+	#[test]
+	fn the_scenery_authoring_verbs_parse() {
+		assert_eq!(parse_line("scenery-new").unwrap(), Some(Command::SceneryNew));
+		assert_eq!(parse_line("scenery-commit").unwrap(), Some(Command::SceneryCommit));
+		assert_eq!(parse_line("scenery-import").unwrap(), Some(Command::SceneryImport { path: None }));
+		assert_eq!(
+			parse_line("scenery-import \"temp/a b.scn\"").unwrap(),
+			Some(Command::SceneryImport { path: Some(PathBuf::from("temp/a b.scn")) }),
+		);
+		assert_eq!(parse_line("scenery-export").unwrap(), Some(Command::SceneryExport { path: None }));
+		assert_eq!(
+			parse_line("scenery-export temp/oak.scn").unwrap(),
+			Some(Command::SceneryExport { path: Some(PathBuf::from("temp/oak.scn")) }),
+		);
+		assert_eq!(parse_line("scenery-delete").unwrap(), Some(Command::SceneryDelete { force: false }));
+		assert_eq!(parse_line("scenery-delete!").unwrap(), Some(Command::SceneryDelete { force: true }));
+		assert_eq!(parse_line("scenery-rename").unwrap(), Some(Command::SceneryRename { name: None }));
+		assert_eq!(
+			parse_line("scenery-rename \"Grand Oak\"").unwrap(),
+			Some(Command::SceneryRename { name: Some("Grand Oak".into()) }),
+		);
+	}
+
+	#[test]
+	fn resource_set_parses_cell_material_and_amount() {
+		assert_eq!(
+			parse_line("resource-set 3 4 raw 15").unwrap(),
+			Some(Command::ResourceSet { x: 3, y: 4, material: "raw".into(), amount: 15 }),
+		);
+		assert_eq!(
+			parse_line("resource-set 0 0 none 0").unwrap(),
+			Some(Command::ResourceSet { x: 0, y: 0, material: "none".into(), amount: 0 }),
+		);
+		assert!(parse_line("resource-set 1 2 gold").unwrap_err().contains("resource-set"), "missing amount");
+		assert!(parse_line("resource-set 1 2").unwrap_err().contains("MATERIAL"), "missing material");
+	}
+
+	#[test]
+	fn resource_brush_and_paint_parse() {
+		assert_eq!(
+			parse_line("resource-brush material fuel").unwrap(),
+			Some(Command::ResourceBrush { field: "material".into(), value: "fuel".into() }),
+		);
+		assert_eq!(
+			parse_line("resource-brush mode add").unwrap(),
+			Some(Command::ResourceBrush { field: "mode".into(), value: "add".into() }),
+		);
+		assert_eq!(parse_line("resource-paint 5 6").unwrap(), Some(Command::ResourcePaint { x: 5, y: 6 }));
+		assert!(parse_line("resource-brush material").unwrap_err().contains("VALUE"), "missing value");
 	}
 
 	#[test]

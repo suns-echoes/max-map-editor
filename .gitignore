@@ -9,3 +9,14 @@ dist/
 target/
 node_modules/
 resources/user/
+
+# Coverage instrumentation output (llvm-cov)
+*.profraw
+
+# Visual-regression failure artifacts (baselines *.png are committed)
+*.actual.png
+*.diff.png
+
+# Inferred scenery relief, written beside its source art by
+# `cargo run -p map-core --example height_pngs`. QA output, not an asset.
+*.height.png

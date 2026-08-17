@@ -107,13 +107,8 @@ pub enum Symmetry {
 }
 
 impl Symmetry {
-	pub const ALL: [Symmetry; 5] = [
-		Symmetry::None,
-		Symmetry::LeftRight,
-		Symmetry::TopBottom,
-		Symmetry::FourCorners,
-		Symmetry::Rotate180,
-	];
+	pub const ALL: [Symmetry; 5] =
+		[Symmetry::None, Symmetry::LeftRight, Symmetry::TopBottom, Symmetry::FourCorners, Symmetry::Rotate180];
 
 	pub fn parse(s: &str) -> Result<Self, String> {
 		match s {
@@ -152,38 +147,37 @@ impl Symmetry {
 /// How coastlines between land and water are tiled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShoreMethod {
-	/// Uniform coastline (the sweep optimizer).
-	Sweep,
-	/// More varied coastline (the loop-walk pass).
-	LoopWalk,
+	/// The unified Fix Shore pass: lay the coast (loop-walk), clear any shore
+	/// stranded in the land, then resolve broken seams band-only (no terrain
+	/// destruction) - the same engine the Fix Shore tool runs.
+	Shore,
 	/// Leave coastlines untiled.
 	None,
 }
 
 impl ShoreMethod {
-	pub const ALL: [ShoreMethod; 3] = [ShoreMethod::Sweep, ShoreMethod::LoopWalk, ShoreMethod::None];
+	pub const ALL: [ShoreMethod; 2] = [ShoreMethod::Shore, ShoreMethod::None];
 
 	pub fn parse(s: &str) -> Result<Self, String> {
 		match s {
-			"sweep" => Ok(ShoreMethod::Sweep),
-			"loop" => Ok(ShoreMethod::LoopWalk),
+			// `sweep` / `loop` are the retired methods - map them onto the unified
+			// pass so old configs and scripts keep working.
+			"shore" | "sweep" | "loop" => Ok(ShoreMethod::Shore),
 			"none" => Ok(ShoreMethod::None),
-			other => Err(format!("unknown shore '{other}' (sweep|loop|none)")),
+			other => Err(format!("unknown shore '{other}' (shore|none)")),
 		}
 	}
 
 	pub fn name(self) -> &'static str {
 		match self {
-			ShoreMethod::Sweep => "sweep",
-			ShoreMethod::LoopWalk => "loop",
+			ShoreMethod::Shore => "shore",
 			ShoreMethod::None => "none",
 		}
 	}
 
 	pub fn label(self) -> &'static str {
 		match self {
-			ShoreMethod::Sweep => "Sweep",
-			ShoreMethod::LoopWalk => "Loop-walk",
+			ShoreMethod::Shore => "Shore",
 			ShoreMethod::None => "None",
 		}
 	}
@@ -204,7 +198,8 @@ pub enum AccessibilityMode {
 }
 
 impl AccessibilityMode {
-	pub const ALL: [AccessibilityMode; 3] = [AccessibilityMode::Random, AccessibilityMode::Paths, AccessibilityMode::Labyrinth];
+	pub const ALL: [AccessibilityMode; 3] =
+		[AccessibilityMode::Random, AccessibilityMode::Paths, AccessibilityMode::Labyrinth];
 
 	pub fn parse(s: &str) -> Result<Self, String> {
 		match s {
@@ -273,6 +268,10 @@ pub struct GenParams {
 	/// Maze: `count` = extra loop openings (braid), `min`/`max` = corridor width
 	/// range in cells (wall thickness is fixed). Only the Maze generator reads it.
 	pub maze: Range,
+	/// Outline roughness of the organic bodies - islands, continents, seas and
+	/// lakes - as `0..=100`: **0** is a true circle, **50** the classic look,
+	/// **100** a deeply fractal coastline. See [`Outline`].
+	pub shape: u8,
 	/// Common - drop zones: count + radius (tiles; flat, obstruction-free starts).
 	pub drop_zones: Range,
 	/// Common - obstruction patches: count + radius (tiles).
@@ -297,7 +296,7 @@ impl GenParams {
 			generator,
 			seed: 0,
 			symmetry: Symmetry::None,
-			shore: ShoreMethod::Sweep,
+			shore: ShoreMethod::Shore,
 			main_islands: Range { count: 3, min: 8, max: 16 },
 			main_dist: Span { min: 6, max: 20 },
 			small_islands: Range { count: 6, min: 3, max: 6 },
@@ -307,6 +306,7 @@ impl GenParams {
 			rivers: Range { count: 4, min: 4, max: 6 },
 			lakes: Range { count: 3, min: 2, max: 5 },
 			maze: Range { count: 2, min: 3, max: 4 },
+			shape: 50,
 			drop_zones: Range { count: 2, min: 5, max: 9 },
 			obstructions: Range { count: 4, min: 4, max: 9 },
 			accessibility: 50,
@@ -381,6 +381,51 @@ fn warped_fbm(seed: u64, fx: f32, fy: f32) -> f32 {
 	let wx = fx + AMP * (fbm(seed ^ 0x5741_5250, fx, fy) - 0.5) * 2.0; // "WARP"
 	let wy = fy + AMP * (fbm(seed ^ 0x7072_6157, fx, fy) - 0.5) * 2.0;
 	fbm(seed, wx, wy)
+}
+
+/// How ragged an organic body's outline is, from [`GenParams::shape`]
+/// (`0..=100`): **0** is a true circle, **50** the classic look, **100** a
+/// deeply fractal coastline. The value scales the radial deviation *and* the
+/// noise frequency together - so a low value gives smooth rounded ovals (few,
+/// gentle lobes) and a high one a lobed, inlet-riddled edge.
+#[derive(Clone, Copy)]
+struct Outline {
+	/// Radial deviation as a fraction of the radius, peak to peak.
+	amp: f32,
+	/// Noise frequency multiplier - higher = finer detail.
+	detail: f32,
+}
+
+impl Outline {
+	/// `base` is the body's deviation at `shape = 50`, i.e. the amplitude that
+	/// reproduces the classic look (0.8 for blobs, 0.7 for lakes).
+	fn new(shape: u8, base: f32) -> Self {
+		let s = shape.min(100) as f32 / 100.0;
+		// s(2s + 1): 0 -> 0 (a circle), 0.5 -> 1 (classic), 1 -> 3 (fractal). The
+		// curve is steep at the top because `fbm` only spans ~0.3..0.7 in
+		// practice, so a *nominal* amplitude of 3 is a real +/-50% on the radius.
+		Self { amp: base * s * (2.0 * s + 1.0), detail: 0.5 + s }
+	}
+
+	/// The noise lattice period for a body of radius `rr` (never below `floor`,
+	/// so tiny bodies keep a readable outline), tightened by `detail`.
+	fn period(self, rr: f32, floor: f32) -> f32 {
+		rr.max(floor) / self.detail
+	}
+
+	/// Half-width of the cell window to test: the widest the outline can reach,
+	/// plus a margin. Scanning the *whole* reach is what keeps a wide lobe from
+	/// being square-clipped.
+	fn reach(self, rr: f32) -> i32 {
+		(rr * (1.0 + 0.5 * self.amp)).ceil() as i32 + 2
+	}
+
+	/// The edge radius where a cell's noise sample is `nz` (in `[0, 1)`), for a
+	/// body of radius `rr`. The `0.3 * rr` floor keeps the core solid however
+	/// ragged the fringe gets.
+	fn edge(self, rr: f32, nz: f32) -> f32 {
+		(rr * (1.0 + self.amp * (nz - 0.5))).max(rr * 0.3)
+	}
 }
 
 /// Rotate a direction by `turn` steps of ~7.2°. Built from one hardcoded
@@ -477,10 +522,10 @@ struct RiverSeed {
 fn river_entry(w: usize, h: usize, rng: &mut Rng) -> (f32, f32, (f32, f32)) {
 	let perim = |rng: &mut Rng| -> (f32, f32, u8) {
 		match rng.below(4) {
-			0 => (rng.below(w as u32) as f32, 0.0, 0),                  // top
-			1 => (rng.below(w as u32) as f32, (h - 1) as f32, 1),       // bottom
-			2 => (0.0, rng.below(h as u32) as f32, 2),                  // left
-			_ => ((w - 1) as f32, rng.below(h as u32) as f32, 3),       // right
+			0 => (rng.below(w as u32) as f32, 0.0, 0),            // top
+			1 => (rng.below(w as u32) as f32, (h - 1) as f32, 1), // bottom
+			2 => (0.0, rng.below(h as u32) as f32, 2),            // left
+			_ => ((w - 1) as f32, rng.below(h as u32) as f32, 3), // right
 		}
 	};
 	let (ex, ey, edge) = perim(rng);
@@ -545,7 +590,8 @@ fn carve_rivers(mask: &mut [bool], w: usize, h: usize, spec: Range, curl: Curlin
 			queue.push(RiverSeed { px, py, base, wave, wave_speed, radius, steps: steps_full, branches: max_branches });
 			started += 1;
 		}
-		let RiverSeed { mut px, mut py, base, mut wave, wave_speed, radius, steps, mut branches } = queue.pop().unwrap();
+		let RiverSeed { mut px, mut py, base, mut wave, wave_speed, radius, steps, mut branches } =
+			queue.pop().unwrap();
 		segments += 1;
 		if segments > 512 {
 			break; // runaway guard (deltas are bounded, but be safe)
@@ -606,11 +652,10 @@ fn carve_rivers(mask: &mut [bool], w: usize, h: usize, spec: Range, curl: Curlin
 /// cells from every map edge. Centres are spread so the **edge gap** between a
 /// blob and its nearest neighbour is `dist` cells (`dist + this radius + their
 /// radius` apart, centre to centre) and never start on existing `fill`. Coasts
-/// are noise-perturbed (`warped_fbm`) for varied, non-circular shapes. `salt`
-/// decorrelates noise + centres between calls; `id_base` offsets this call's ids
-/// so a shared buffer keeps successive calls (main vs small islands)
-/// disconnected from each other too.
-#[allow(clippy::too_many_arguments)]
+/// are noise-perturbed (`warped_fbm`) for varied, non-circular shapes, as
+/// ragged as `shape` says ([`Outline`]). `salt` decorrelates noise + centres
+/// between calls; `id_base` offsets this call's ids so a shared buffer keeps
+/// successive calls (main vs small islands) disconnected from each other too.
 fn place_blobs(
 	mask: &mut [bool],
 	id: &mut [u32],
@@ -621,6 +666,7 @@ fn place_blobs(
 	id_base: u32,
 	spec: Range,
 	dist: Span,
+	shape: u8,
 	fill: bool,
 	inset: i32,
 	rng: &mut Rng,
@@ -628,6 +674,7 @@ fn place_blobs(
 	if spec.count == 0 {
 		return;
 	}
+	let outline = Outline::new(shape, 0.8);
 	let short = w.min(h) as f32;
 	let cap = (short / 2.0 - inset as f32 - 1.0).max(2.0);
 	let (min_gap, max_gap) = (dist.min.min(dist.max) as f32, dist.max.max(dist.min) as f32);
@@ -666,8 +713,8 @@ fn place_blobs(
 		centers.push((cx, cy, rr));
 		let this = id_base + k as u32;
 		let warp_seed = seed ^ salt.wrapping_mul(this as u64 + 1);
-		let freq = rr.max(4.0);
-		let reach = rr.ceil() as i32 + 2;
+		let freq = outline.period(rr, 4.0);
+		let reach = outline.reach(rr);
 		for dy in -reach..=reach {
 			for dx in -reach..=reach {
 				let (x, y) = (cx + dx, cy + dy);
@@ -675,7 +722,7 @@ fn place_blobs(
 					continue; // stay inset from the edges
 				}
 				let nz = warped_fbm(warp_seed, x as f32 / freq, y as f32 / freq);
-				let edge = rr * (0.6 + 0.8 * nz);
+				let edge = outline.edge(rr, nz);
 				if (dx * dx + dy * dy) as f32 > edge * edge {
 					continue;
 				}
@@ -705,18 +752,30 @@ fn place_blobs(
 }
 
 /// Stamp `count` lakes (water blobs) onto the land in `mask`. Each lake's radius
-/// is picked in `[min_r, max_r]` cells; the outline is noise-perturbed.
-fn place_lakes(mask: &mut [bool], w: usize, h: usize, seed: u64, count: u8, min_r: u8, max_r: u8, rng: &mut Rng) {
+/// is picked in `[min_r, max_r]` cells; the outline is noise-perturbed, as
+/// ragged as `shape` says ([`Outline`]).
+fn place_lakes(
+	mask: &mut [bool],
+	w: usize,
+	h: usize,
+	seed: u64,
+	count: u8,
+	min_r: u8,
+	max_r: u8,
+	shape: u8,
+	rng: &mut Rng,
+) {
 	if max_r == 0 {
 		return;
 	}
+	let outline = Outline::new(shape, 0.7);
 	let (lo, hi) = (min_r.min(max_r).max(1) as u32, max_r.max(min_r).max(1) as u32);
 	for k in 0..count as usize {
 		let rr = (lo + rng.below(hi - lo + 1)) as f32;
 		let (cx, cy) = (rng.below(w as u32) as i32, rng.below(h as u32) as i32);
 		let warp_seed = seed ^ 0x4c41_4b45_0000_0000u64.wrapping_mul(k as u64 + 1);
-		let freq = rr.max(3.0);
-		let reach = rr.ceil() as i32 + 2;
+		let freq = outline.period(rr, 3.0);
+		let reach = outline.reach(rr);
 		for dy in -reach..=reach {
 			for dx in -reach..=reach {
 				let (x, y) = (cx + dx, cy + dy);
@@ -724,7 +783,7 @@ fn place_lakes(mask: &mut [bool], w: usize, h: usize, seed: u64, count: u8, min_
 					continue;
 				}
 				let nz = fbm(warp_seed, x as f32 / freq, y as f32 / freq);
-				let edge = rr * (0.65 + 0.7 * nz);
+				let edge = outline.edge(rr, nz);
 				if (dx * dx + dy * dy) as f32 <= edge * edge {
 					mask[y as usize * w + x as usize] = true;
 				}
@@ -885,10 +944,8 @@ fn carve_fold_moat(mask: &mut [bool], w: usize, h: usize, sym: Symmetry) {
 				(-2i32..=2).any(|dx| {
 					let (nx, ny) = (x as i32 + dx, y as i32 + dy);
 					nx >= 0
-						&& ny >= 0
-						&& nx < w as i32
-						&& ny < h as i32
-						&& sym_source(sym, nx as usize, ny as usize, w, h).is_some()
+						&& ny >= 0 && nx < w as i32
+						&& ny < h as i32 && sym_source(sym, nx as usize, ny as usize, w, h).is_some()
 				})
 			});
 			if near_dest {
@@ -1054,7 +1111,6 @@ fn mirror_point(kind: MirrorKind, cx: i32, cy: i32, w: usize, h: usize) -> (i32,
 /// are vetoed per cell, a template is only ever placed whole - roads / mazes
 /// never erase part of an already-stamped template. `placed` accumulates across
 /// patches for the stats.
-#[allow(clippy::too_many_arguments)]
 fn stamp_patch(
 	overlay: &mut [Option<TileRef>],
 	pool: &[FeatureStamp],
@@ -1125,8 +1181,7 @@ fn stamp_patch(
 		let mirrors_ok = fs.mirrors.iter().all(|(kind, mcells)| {
 			let (mx0, my0) = kind.origin(x0, y0, fs.w, fs.h, w, h);
 			mx0 >= 0
-				&& my0 >= 0
-				&& mx0 + fs.w <= w as i32
+				&& my0 >= 0 && mx0 + fs.w <= w as i32
 				&& my0 + fs.h <= h as i32
 				&& mcells.iter().all(|&(dx, dy, _)| eligible(overlay, mx0 + dx, my0 + dy))
 		});
@@ -1182,8 +1237,16 @@ fn mark_disc(keep: &mut [bool], x: i32, y: i32, hw: i32, w: usize, h: usize, sym
 /// Meander from `a` to `b`, marking a `half`-wide keep-clear corridor (thinned
 /// to a one-cell spine inside the centre keep-zone `(cx, cy, keep_r)`, so the
 /// centre stays dense). The walk curves around the bearing, not straight.
-#[allow(clippy::too_many_arguments)]
-fn mark_corridor(keep: &mut [bool], a: (f32, f32), b: (f32, f32), half: i32, (cx, cy, keep_r): (f32, f32, f32), (w, h): (usize, usize), sym: Symmetry, rng: &mut Rng) {
+fn mark_corridor(
+	keep: &mut [bool],
+	a: (f32, f32),
+	b: (f32, f32),
+	half: i32,
+	(cx, cy, keep_r): (f32, f32, f32),
+	(w, h): (usize, usize),
+	sym: Symmetry,
+	rng: &mut Rng,
+) {
 	let (mut px, mut py) = a;
 	let (bx, by) = b;
 	let mut turn = 0i32;
@@ -1368,6 +1431,11 @@ pub struct GenSession {
 	shore_changed: usize,
 	fix: Option<crate::FixSession>,
 	fix_found: usize,
+	/// Band-only fix loop bookkeeping (the new shore re-lays + re-detects
+	/// between passes, like the Fix Shore tool): passes run and the best
+	/// (lowest) defect count seen, so the loop stops when it stops improving.
+	fix_passes: u32,
+	fix_best: usize,
 	/// `project.dirty()` at session start - restored on abort.
 	was_dirty: bool,
 	/// The stroke is open (Apply ran) - abort must roll back.
@@ -1436,6 +1504,8 @@ impl GenSession {
 			shore_changed: 0,
 			fix: None,
 			fix_found: 0,
+			fix_passes: 0,
+			fix_best: usize::MAX,
 			was_dirty: project.dirty(),
 			mutated: false,
 			stats: None,
@@ -1559,33 +1629,49 @@ impl GenSession {
 				self.phase = Phase::Shore;
 			}
 			Phase::Shore => {
-				let (shore, unresolved) = match self.p.shore {
-					ShoreMethod::Sweep => project.auto_shore(None),
-					ShoreMethod::LoopWalk => project.auto_shore_alt(None),
-					ShoreMethod::None => (0, 0),
-				};
-				self.shore_changed = shore;
-				if unresolved > 0 {
-					// The Destructive seam-fix solver: the terrain is ours to
-					// reshape, and it converges to zero broken seams where
-					// the milder passes plateau (~1% of river-heavy coast).
-					let fix = project.fix_session(None, crate::FixStrength::Destructive);
-					self.fix_found = fix.found();
-					self.fix = Some(fix);
-					self.phase = Phase::Fix;
-				} else {
+				if self.p.shore == ShoreMethod::None {
 					self.finish(project, 0, 0);
+				} else {
+					// The new shore: lay the coast (loop-walk) then clear any shore
+					// stranded in the land (e.g. a buried tile carried in from a
+					// stamped template). Broken seams are then resolved band-only.
+					let (placed, _) = project.auto_shore_alt(None);
+					self.shore_changed = placed + project.replace_orphan_shore(None);
+					let defects = project.shore_defect_cells(None).len();
+					if defects == 0 {
+						self.finish(project, 0, 0);
+					} else {
+						let fix = project.fix_session(None, crate::FixStrength::Shore);
+						self.fix_found = defects;
+						self.fix_best = defects;
+						self.fix = Some(fix);
+						self.phase = Phase::Fix;
+					}
 				}
 			}
 			Phase::Fix => {
 				let mut fix = self.fix.take().expect("fix session in Fix phase");
 				fix.step(FIX_WORK_PER_STEP);
-				if fix.is_done() {
-					let fixed = fix.apply(project);
-					self.finish(project, fixed, fix.remaining());
-				} else {
+				if !fix.is_done() {
 					self.fix = Some(fix);
 					self.phase = Phase::Fix;
+				} else {
+					// Commit the pass, re-lay any still-missing coast, clear buried
+					// tiles, and re-detect. Loop while it keeps improving (band-only,
+					// no terrain destruction); stop at clean / no-progress / the cap.
+					self.shore_changed += fix.apply(project);
+					let (placed, _) = project.auto_shore_alt(None);
+					self.shore_changed += placed + project.replace_orphan_shore(None);
+					self.fix_passes += 1;
+					let defects = project.shore_defect_cells(None).len();
+					let improved = defects < self.fix_best;
+					self.fix_best = self.fix_best.min(defects);
+					if defects == 0 || !improved || self.fix_passes >= 64 {
+						self.finish(project, 0, defects);
+					} else {
+						self.fix = Some(project.fix_session(None, crate::FixStrength::Shore));
+						self.phase = Phase::Fix;
+					}
 				}
 			}
 			Phase::Done => {}
@@ -1622,23 +1708,76 @@ impl GenSession {
 				let mut m = vec![true; n]; // all water
 				let mut id = vec![u32::MAX; n];
 				let main = self.p.main_islands;
-				place_blobs(&mut m, &mut id, w, h, seed ^ 0x1111, 0x1500_0000_0000_0000, 0, main, self.p.main_dist, false, EDGE, &mut self.rng);
 				place_blobs(
-					&mut m, &mut id, w, h, seed ^ 0x2222, 0x2600_0000_0000_0000, main.count as u32,
-					self.p.small_islands, self.p.small_dist, false, EDGE, &mut self.rng,
+					&mut m,
+					&mut id,
+					w,
+					h,
+					seed ^ 0x1111,
+					0x1500_0000_0000_0000,
+					0,
+					main,
+					self.p.main_dist,
+					self.p.shape,
+					false,
+					EDGE,
+					&mut self.rng,
+				);
+				place_blobs(
+					&mut m,
+					&mut id,
+					w,
+					h,
+					seed ^ 0x2222,
+					0x2600_0000_0000_0000,
+					main.count as u32,
+					self.p.small_islands,
+					self.p.small_dist,
+					self.p.shape,
+					false,
+					EDGE,
+					&mut self.rng,
 				);
 				m
 			}
 			Generator::Continents => {
 				let mut m = vec![true; n]; // all water
 				let mut id = vec![u32::MAX; n];
-				place_blobs(&mut m, &mut id, w, h, seed ^ 0x3333, 0x3700_0000_0000_0000, 0, self.p.continents, spread, false, EDGE, &mut self.rng);
+				place_blobs(
+					&mut m,
+					&mut id,
+					w,
+					h,
+					seed ^ 0x3333,
+					0x3700_0000_0000_0000,
+					0,
+					self.p.continents,
+					spread,
+					self.p.shape,
+					false,
+					EDGE,
+					&mut self.rng,
+				);
 				m
 			}
 			Generator::CentralSeas => {
 				let mut m = vec![false; n]; // all land
 				let mut id = vec![u32::MAX; n];
-				place_blobs(&mut m, &mut id, w, h, seed ^ 0x4444, 0x4800_0000_0000_0000, 0, self.p.seas, spread, true, EDGE, &mut self.rng);
+				place_blobs(
+					&mut m,
+					&mut id,
+					w,
+					h,
+					seed ^ 0x4444,
+					0x4800_0000_0000_0000,
+					0,
+					self.p.seas,
+					spread,
+					self.p.shape,
+					true,
+					EDGE,
+					&mut self.rng,
+				);
 				m
 			}
 			Generator::Maze => {
@@ -1658,7 +1797,7 @@ impl GenSession {
 		}
 		if matches!(self.p.generator, Generator::Islands | Generator::Continents | Generator::Land) {
 			let l = self.p.lakes;
-			place_lakes(&mut mask, w, h, seed ^ 0x5a5a, l.count, l.min, l.max, &mut self.rng);
+			place_lakes(&mut mask, w, h, seed ^ 0x5a5a, l.count, l.min, l.max, self.p.shape, &mut self.rng);
 		}
 		// Islands keep a water moat along the fold so mirrored islands stay
 		// disconnected (no global smoothing reconnects them).
@@ -1688,8 +1827,20 @@ impl GenSession {
 		self.keepclear = vec![false; n];
 		match self.p.accessibility_mode {
 			AccessibilityMode::Random => {}
-			AccessibilityMode::Paths => carve_access_paths(&mut self.keepclear, (self.w, self.h), self.p.accessibility, self.p.symmetry, &mut self.rng),
-			AccessibilityMode::Labyrinth => carve_labyrinth(&mut self.keepclear, (self.w, self.h), self.p.accessibility, self.p.symmetry, &mut self.rng),
+			AccessibilityMode::Paths => carve_access_paths(
+				&mut self.keepclear,
+				(self.w, self.h),
+				self.p.accessibility,
+				self.p.symmetry,
+				&mut self.rng,
+			),
+			AccessibilityMode::Labyrinth => carve_labyrinth(
+				&mut self.keepclear,
+				(self.w, self.h),
+				self.p.accessibility,
+				self.p.symmetry,
+				&mut self.rng,
+			),
 		}
 		self.patches = self.compute_patches(self.p.obstructions);
 		self.phase = Phase::Stamp { decorations: false };
@@ -1743,7 +1894,10 @@ impl GenSession {
 				if sym_source(self.p.symmetry, cx as usize, cy as usize, w, h).is_some() {
 					continue;
 				}
-				let score = centers.iter().map(|&(px, py)| ((cx - px).pow(2) + (cy - py).pow(2)) as f32).fold(f32::INFINITY, f32::min);
+				let score = centers
+					.iter()
+					.map(|&(px, py)| ((cx - px).pow(2) + (cy - py).pow(2)) as f32)
+					.fold(f32::INFINITY, f32::min);
 				if score > best_score {
 					best_score = score;
 					best = Some((cx, cy));
@@ -1871,7 +2025,12 @@ mod tests {
 		let mut edits = Vec::new();
 		for y in 0..n {
 			for x in 0..n {
-				edits.push((x, y, LAYER_WATER, Some(TileRef { pack: wp, tile: water, transform: Transform::default() })));
+				edits.push((
+					x,
+					y,
+					LAYER_WATER,
+					Some(TileRef { pack: wp, tile: water, transform: Transform::default() }),
+				));
 				let g = f(x, y).then_some(TileRef { pack: lp, tile: land, transform: Transform::default() });
 				edits.push((x, y, LAYER_GROUND, g));
 			}
@@ -1881,6 +2040,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(clippy::type_complexity)] // labelled fn-pointer test table, clearer inline
 	fn shore_repair_reaches_a_perfect_coast_on_gnarly_masks() {
 		use crate::FixStrength;
 		// Dense mosaics with checkerboard diagonal contacts, thin straits, and
@@ -2204,6 +2364,57 @@ mod tests {
 	}
 
 	#[test]
+	fn outline_runs_from_a_circle_through_the_classic_look_to_a_fractal_coast() {
+		// shape 0: no radial deviation at all - a true circle at every sample.
+		let round = Outline::new(0, 0.8);
+		assert_eq!(round.amp, 0.0);
+		assert_eq!(round.edge(10.0, 0.0), 10.0);
+		assert_eq!(round.edge(10.0, 0.99), 10.0);
+		// shape 50 reproduces the pre-parameter formula, `rr * (0.6 + 0.8 * nz)`.
+		let classic = Outline::new(50, 0.8);
+		assert!((classic.detail - 1.0).abs() < 1e-6, "the classic frequency is unscaled");
+		for nz in [0.0f32, 0.25, 0.5, 0.99] {
+			assert!((classic.edge(10.0, nz) - 10.0 * (0.6 + 0.8 * nz)).abs() < 1e-4, "nz {nz}");
+		}
+		// shape 100: rougher, finer, and scanned wide enough not to clip a lobe.
+		let wild = Outline::new(100, 0.8);
+		assert!(wild.amp > classic.amp && wild.detail > classic.detail);
+		assert!(wild.reach(10.0) > classic.reach(10.0));
+		assert!(wild.edge(10.0, 0.0) >= 3.0, "the core stays solid however ragged the fringe");
+		assert_eq!(Outline::new(255, 0.8).amp, wild.amp, "above 100 clamps");
+	}
+
+	#[test]
+	fn shape_turns_one_island_from_a_disc_into_a_ragged_coast() {
+		// One r=10 island: at shape 0 every land cell sits inside the nominal
+		// radius; at shape 100 the coast throws lobes well past it.
+		let island = |shape: u8| {
+			let mut q = params(Generator::Islands, 4);
+			q.main_islands = Range { count: 1, min: 10, max: 10 };
+			q.small_islands.count = 0;
+			q.rivers.count = 0;
+			q.lakes.count = 0;
+			q.shape = shape;
+			let mut proj = green();
+			let (w, h) = (proj.width as usize, proj.height as usize);
+			let land = shape_land(&mut proj, q);
+			let cells: Vec<(f32, f32)> =
+				(0..w * h).filter(|&i| land[i]).map(|i| ((i % w) as f32, (i / w) as f32)).collect();
+			let n = cells.len() as f32;
+			let (cx, cy) = cells.iter().fold((0.0, 0.0), |a, c| (a.0 + c.0 / n, a.1 + c.1 / n));
+			let far = cells.iter().map(|c| ((c.0 - cx).powi(2) + (c.1 - cy).powi(2)).sqrt()).fold(0.0f32, f32::max);
+			(cells.len(), far)
+		};
+		let (round_n, round_far) = island(0);
+		let (wild_n, wild_far) = island(100);
+		assert!(round_far <= 11.0, "shape 0 is a true circle of radius 10 (reached {round_far})");
+		let disc = std::f32::consts::PI * 100.0;
+		assert!((round_n as f32 - disc).abs() < 40.0, "shape 0 covers about pi*r^2 ({round_n} vs {disc})");
+		assert!(wild_far > round_far + 2.0, "shape 100 reaches past the radius ({wild_far} vs {round_far})");
+		assert_ne!(wild_n, round_n, "a fractal coast is not the disc");
+	}
+
+	#[test]
 	fn rivers_and_river_raid_both_cut_land_and_differ() {
 		// Both leave land dominant at a moderate count; curly vs straight rivers
 		// consume the RNG differently, so the maps differ.
@@ -2238,7 +2449,12 @@ mod tests {
 		with_dz.drop_zones = Range { count: 1, min: 22, max: 22 };
 		let (_, dz) = make(with_dz);
 		assert!(no_dz.obstructions > 0, "no obstructions placed at all");
-		assert!(dz.obstructions < no_dz.obstructions, "a drop zone should keep obstructions out ({} vs {})", dz.obstructions, no_dz.obstructions);
+		assert!(
+			dz.obstructions < no_dz.obstructions,
+			"a drop zone should keep obstructions out ({} vs {})",
+			dz.obstructions,
+			no_dz.obstructions
+		);
 	}
 
 	#[test]
@@ -2255,14 +2471,20 @@ mod tests {
 		assert!(!zones.is_empty(), "no drop zones placed");
 		let (w, h) = (s.w as i32, s.h as i32);
 		for &(cx, cy, r) in &zones {
-			assert!(cx - r >= 2 && cy - r >= 2 && cx + r < w - 1 && cy + r < h - 1, "drop zone ({cx},{cy},{r}) not inset from the edge");
+			assert!(
+				cx - r >= 2 && cy - r >= 2 && cx + r < w - 1 && cy + r < h - 1,
+				"drop zone ({cx},{cy},{r}) not inset from the edge"
+			);
 			for dy in -r..=r {
 				for dx in -r..=r {
 					if dx * dx + dy * dy > r * r {
 						continue;
 					}
 					let (x, y) = (cx + dx, cy + dy);
-					assert!(!s.mask[y as usize * s.w + x as usize], "drop zone disc cell ({x},{y}) is water, not solid land");
+					assert!(
+						!s.mask[y as usize * s.w + x as usize],
+						"drop zone disc cell ({x},{y}) is water, not solid land"
+					);
 				}
 			}
 		}
@@ -2287,7 +2509,10 @@ mod tests {
 			s.step(&mut proj); // stamp obstructions (decorations not yet placed)
 			assert!(s.keepclear.iter().any(|&k| k), "no corridors planned for {mode:?}");
 			for i in 0..s.w * s.h {
-				assert!(!(s.keepclear[i] && s.overlay[i].is_some()), "obstruction placed on a keep-clear corridor ({mode:?})");
+				assert!(
+					!(s.keepclear[i] && s.overlay[i].is_some()),
+					"obstruction placed on a keep-clear corridor ({mode:?})"
+				);
 			}
 		}
 	}
@@ -2296,7 +2521,10 @@ mod tests {
 	fn templates_classify_into_obstructions_and_decorations() {
 		let p = green();
 		let feats = green_templates();
-		assert!(feats.iter().any(|t| classify_template(t, &p) == Some(TileKind::Obstruction)), "no obstruction templates");
+		assert!(
+			feats.iter().any(|t| classify_template(t, &p) == Some(TileKind::Obstruction)),
+			"no obstruction templates"
+		);
 		assert!(feats.iter().any(|t| classify_template(t, &p) == Some(TileKind::Land)), "no decoration templates");
 	}
 
@@ -2319,7 +2547,8 @@ mod tests {
 			for x in 0..p.width {
 				let Some(t) = p.cell(x, y).unwrap()[crate::LAYER_GROUND] else { continue };
 				if t.pack == 1
-					&& pack.props.get(family_of(&pack.ids[t.tile as usize])).and_then(|fp| fp.kind) == Some(TileKind::Obstruction)
+					&& pack.props.get(family_of(&pack.ids[t.tile as usize])).and_then(|fp| fp.kind)
+						== Some(TileKind::Obstruction)
 				{
 					assert!(from_templates.contains(&t.tile), "obstruction tile {} not from a template", t.tile);
 				}
@@ -2387,21 +2616,24 @@ mod tests {
 	}
 
 	#[test]
-	fn shore_methods_differ_and_none_skips_shoring() {
+	fn shore_method_lays_a_clean_coast_and_none_skips() {
 		let feats = green_templates();
-		let run = |shore| {
-			let mut p = green();
-			let mut q = params(Generator::Continents, 9);
-			q.shore = shore;
-			let s = p.generate_terrain(&q, &feats).unwrap();
-			(p.hash(), s.shore)
-		};
-		let (sweep, sweep_shore) = run(ShoreMethod::Sweep);
-		let (loopw, _) = run(ShoreMethod::LoopWalk);
-		let (_, none_shore) = run(ShoreMethod::None);
-		assert!(sweep_shore > 0, "sweep tiles the coast");
-		assert_eq!(none_shore, 0, "None leaves the coast untiled");
-		assert_ne!(sweep, loopw, "the loop-walk pass tiles the coast differently");
+		// The unified Fix Shore pass tiles the generated coast and leaves it clean
+		// (no broken seams, no shore stranded in the land).
+		let mut p = green();
+		let mut q = params(Generator::Continents, 9);
+		q.shore = ShoreMethod::Shore;
+		let s = p.generate_terrain(&q, &feats).unwrap();
+		assert!(s.shore > 0, "the coast is tiled");
+		assert_eq!(s.unresolved, 0, "and it is a clean coast");
+		assert_eq!(p.shore_defect_cells(None).len(), 0, "the strict detector agrees");
+		// None leaves the land/water boundary untiled.
+		let mut p2 = green();
+		let mut q2 = params(Generator::Continents, 9);
+		q2.shore = ShoreMethod::None;
+		let s2 = p2.generate_terrain(&q2, &feats).unwrap();
+		assert_eq!(s2.shore, 0, "None leaves the coast untiled");
+		assert_ne!(p.hash(), p2.hash(), "shored vs unshored differ");
 	}
 
 	#[test]
@@ -2480,5 +2712,298 @@ mod tests {
 		// Structural invariants alongside the goldens.
 		assert_eq!(rotated((1.0, 0.0), 0), (1.0, 0.0), "no turn = identity");
 		assert!((0.0..1.0).contains(&value_noise(42, 1.5, 2.5)), "value noise in [0, 1)");
+	}
+
+	#[test]
+	fn a_delta_flood_of_rivers_terminates_and_reproduces() {
+		// 255 very curly rivers spawn tributary deltas far past the 512-segment
+		// runaway guard - the walk must stop early (the guard) yet stay fully
+		// seed-deterministic, so a guarded run is still a shareable recipe.
+		let (w, h) = (64usize, 64usize);
+		let spec = Range { count: 255, min: 2, max: 4 };
+		let carve = || {
+			let mut mask = vec![false; w * h];
+			let mut rng = Rng::new(0xF1000D);
+			carve_rivers(&mut mask, w, h, spec, Curliness::VeryCurly, &mut rng);
+			mask
+		};
+		let a = carve();
+		assert!(a.iter().any(|&m| m), "the flood of rivers carved water");
+		assert_eq!(a, carve(), "the guarded walk is deterministic");
+	}
+
+	#[test]
+	fn zero_radius_lakes_carve_nothing() {
+		// `lakes.max == 0` disables lakes outright - the walker never runs.
+		let (w, h) = (16usize, 16usize);
+		let mut mask = vec![false; w * h];
+		let mut rng = Rng::new(3);
+		place_lakes(&mut mask, w, h, 42, 5, 0, 0, 50, &mut rng);
+		assert!(mask.iter().all(|&m| !m), "a zero max radius must be a no-op");
+	}
+
+	#[test]
+	fn maze_needs_room_for_corridors() {
+		// The maze declines to carve rather than produce a degenerate layout.
+		let mut rng = Rng::new(1);
+		// Too small for anything inside the 2-cell edge moat.
+		let mut tiny = vec![true; 8 * 8];
+		carve_maze_land(&mut tiny, 8, 8, Range { count: 2, min: 3, max: 4 }, 2, &mut rng);
+		assert!(tiny.iter().all(|&m| m), "an 8x8 map has no room inside the moat");
+		// Room for the moat, but the corridor pitch leaves a single grid cell.
+		let mut narrow = vec![true; 9 * 9];
+		carve_maze_land(&mut narrow, 9, 9, Range { count: 2, min: 5, max: 5 }, 2, &mut rng);
+		assert!(narrow.iter().all(|&m| m), "a 1x1 maze grid carves nothing");
+	}
+
+	#[test]
+	fn invert_transformables_only_rotate_180() {
+		// `Invert` art is drawn for two orientations only: the random pick must
+		// stay within rot 0/2, never mirror, and actually use both.
+		let mut rng = Rng::new(0x1234);
+		let mut seen = [false; 2];
+		for _ in 0..32 {
+			let t = random_transform(Transformable::Invert, &mut rng);
+			assert!(!t.mirror, "Invert never mirrors");
+			assert!(t.rot == 0 || t.rot == 2, "Invert only rotates 180 deg, got rot {}", t.rot);
+			seen[(t.rot / 2) as usize] = true;
+		}
+		assert!(seen[0] && seen[1], "both orientations appear over 32 draws");
+	}
+
+	#[test]
+	fn shore_templates_are_neither_obstruction_nor_decoration() {
+		// A template whose ground tiles are shore pieces is skipped by the
+		// feature pools - the generator owns the water and its coastlines.
+		let p = green();
+		let json = r#"{"version":"1","name":"S","width":1,"height":1,
+			"use":[{"name":"WATER","version":"1.1"},{"name":"GREEN","version":"1.1"}],"map":[["WTR000,GSa001"]]}"#;
+		let t = Template::from_str(json).unwrap();
+		assert_eq!(classify_template(&t, &p), None, "a shore-only template classifies as no feature kind");
+		let pool = feature_pool(&[t], &p, TileKind::Obstruction, Symmetry::None);
+		assert!(pool.is_empty(), "no obstruction stamp from a shore template");
+	}
+
+	#[test]
+	fn stamp_patch_skips_empty_pools_zero_targets_and_oversized_templates() {
+		let (w, h) = (16usize, 16usize);
+		let mask = vec![false; w * h]; // all land
+		let keep = vec![false; w * h];
+		let mut overlay: Vec<Option<TileRef>> = vec![None; w * h];
+		let mut placed = 0usize;
+		let mut rng = Rng::new(7);
+		let patch = (8i32, 8i32, 5i32);
+		// An empty pool stamps nothing.
+		stamp_patch(&mut overlay, &[], &mask, &keep, &[], (w, h), patch, 10, 0, Symmetry::None, &mut placed, &mut rng);
+		assert!(overlay.iter().all(|c| c.is_none()) && placed == 0, "an empty pool stamps nothing");
+		let tile = TileRef { pack: 1, tile: 0, transform: Transform::default() };
+		// A template wider than the whole map can never land.
+		let big = FeatureStamp { cells: vec![(0, 0, tile)], w: w as i32 + 1, h: 1, mirrors: Vec::new() };
+		let pool = [big];
+		stamp_patch(
+			&mut overlay,
+			&pool,
+			&mask,
+			&keep,
+			&[],
+			(w, h),
+			patch,
+			10,
+			0,
+			Symmetry::None,
+			&mut placed,
+			&mut rng,
+		);
+		assert!(overlay.iter().all(|c| c.is_none()) && placed == 0, "an oversized template never stamps");
+		// A zero target means the patch is already satisfied.
+		let unit = FeatureStamp { cells: vec![(0, 0, tile)], w: 1, h: 1, mirrors: Vec::new() };
+		let pool = [unit];
+		stamp_patch(&mut overlay, &pool, &mask, &keep, &[], (w, h), patch, 0, 0, Symmetry::None, &mut placed, &mut rng);
+		assert!(overlay.iter().all(|c| c.is_none()) && placed == 0, "a zero target stamps nothing");
+		// Sanity: the same unit pool with a real target does stamp.
+		stamp_patch(&mut overlay, &pool, &mask, &keep, &[], (w, h), patch, 4, 0, Symmetry::None, &mut placed, &mut rng);
+		assert!(placed > 0, "the control stamp landed");
+	}
+
+	#[test]
+	fn symmetric_runs_mirror_drop_zones_corridors_and_features() {
+		// Under a symmetry every planned artefact mirrors: the shaped mask is
+		// exactly symmetric (drop zones included), the drop-zone list carries one
+		// mirror per fold, the keep-clear corridors are closed under the fold's
+		// mirrors, and feature templates still land (stamped with their mirrors).
+		for sym in [Symmetry::LeftRight, Symmetry::TopBottom, Symmetry::Rotate180, Symmetry::FourCorners] {
+			let mut q = params(Generator::Land, 11);
+			q.rivers.count = 0;
+			q.lakes.count = 0;
+			q.symmetry = sym;
+			q.obstructions = Range { count: 4, min: 4, max: 8 };
+			q.accessibility = 30;
+			q.accessibility_mode = AccessibilityMode::Paths;
+			q.drop_zones = Range { count: 2, min: 4, max: 6 };
+			let mut proj = green();
+			let feats = green_templates();
+			let mut s = GenSession::new(&proj, q, &feats).unwrap();
+			s.step(&mut proj); // Shape (incl. drop zones) + corridor planning
+			let (w, h) = (s.w, s.h);
+			for y in 0..h {
+				for x in 0..w {
+					if let Some((sx, sy)) = sym_source(sym, x, y, w, h) {
+						assert_eq!(s.mask[y * w + x], s.mask[sy * w + sx], "{sym:?}: mask asymmetric at ({x},{y})");
+					}
+				}
+			}
+			let kinds = mirror_kinds(sym);
+			let group = 1 + kinds.len();
+			assert!(!s.drop_zones.is_empty(), "{sym:?}: no drop zones placed");
+			assert_eq!(s.drop_zones.len() % group, 0, "{sym:?}: zones come in full mirror sets");
+			for chunk in s.drop_zones.chunks(group) {
+				let (cx, cy, r) = chunk[0];
+				for (k, &kind) in kinds.iter().enumerate() {
+					let (mx, my) = mirror_point(kind, cx, cy, w, h);
+					assert_eq!(chunk[1 + k], (mx, my, r), "{sym:?}: {kind:?} zone mirror mismatch");
+				}
+			}
+			s.step(&mut proj); // stamp obstructions (+ their mirrors)
+			assert!(s.keepclear.iter().any(|&k| k), "{sym:?}: no corridors planned");
+			for y in 0..h {
+				for x in 0..w {
+					if !s.keepclear[y * w + x] {
+						continue;
+					}
+					for &kind in kinds {
+						let (mx, my) = mirror_point(kind, x as i32, y as i32, w, h);
+						assert!(
+							s.keepclear[my as usize * w + mx as usize],
+							"{sym:?}: keep-clear not mirrored at ({x},{y})"
+						);
+					}
+				}
+			}
+			assert!(s.overlay.iter().any(|c| c.is_some()), "{sym:?}: no obstructions stamped");
+		}
+	}
+
+	#[test]
+	fn an_all_water_map_places_no_features() {
+		// With zero islands the mask is pure ocean: there is no land cell to
+		// centre a feature patch on, so requested obstructions simply don't land.
+		let mut q = params(Generator::Islands, 3);
+		q.main_islands.count = 0;
+		q.small_islands.count = 0;
+		q.rivers.count = 0;
+		q.lakes.count = 0;
+		q.obstructions = Range { count: 3, min: 3, max: 5 };
+		let (_, stats) = make(q);
+		assert_eq!(stats.land, 0, "no islands requested, no land generated");
+		assert_eq!(stats.obstructions, 0, "features need land to stand on");
+	}
+
+	#[test]
+	fn drop_zones_skip_a_map_with_no_inset_room() {
+		// On an 8x8 map even the capped radius leaves no inset centre band
+		// (disc + 2-cell edge gap), so the zone is skipped, not jammed in.
+		let p = Project::new(8, 8, &["GREEN".into()], &assets_root(), 1).unwrap();
+		let mut q = params(Generator::Land, 1);
+		q.rivers.count = 0;
+		q.lakes.count = 0;
+		q.drop_zones = Range { count: 2, min: 5, max: 5 };
+		let mut s = GenSession::new(&p, q, &[]).unwrap();
+		s.build_shape();
+		assert!(s.drop_zones.is_empty(), "no drop zone fits an 8x8 map");
+	}
+
+	#[test]
+	fn stats_progress_and_stepping_past_done() {
+		let mut p = green();
+		let q = params(Generator::Continents, 3);
+		let mut s = GenSession::new(&p, q, &[]).unwrap();
+		assert!(s.stats().is_none(), "no stats until the run finishes");
+		let mut steps = 0;
+		while !s.step(&mut p) {
+			steps += 1;
+			assert!(steps < 10_000, "session never finished");
+		}
+		assert_eq!(s.progress(), ("done", 1.0), "a finished session reports done");
+		let st = s.stats().expect("stats set when done");
+		assert_eq!(st.land + st.water, 64 * 64, "every cell is land or water");
+		let after = p.hash();
+		assert!(s.step(&mut p), "stepping a finished session stays done");
+		assert_eq!(p.hash(), after, "and touches nothing");
+	}
+
+	#[test]
+	fn empty_variant_groups_error_out() {
+		use crate::pack::FamilyProps;
+		// A variant family declared in props but with no member tiles must be
+		// reported, not generate from thin air. `AAA` sorts ahead of the real
+		// groups, so `variant_family` picks it deterministically.
+		let feats: Vec<Template> = Vec::new();
+		let mut p = green();
+		p.packs[0]
+			.props
+			.insert("AAA".into(), FamilyProps { has_variants: true, kind: Some(TileKind::Land), ..Default::default() });
+		let err = GenSession::new(&p, params(Generator::Land, 1), &feats).err().expect("an empty LAND group fails");
+		assert!(err.contains("LAND family 'AAA' has no tiles"), "got: {err}");
+		let mut p = green();
+		p.packs[0].props.insert(
+			"AAA".into(),
+			FamilyProps { has_variants: true, kind: Some(TileKind::Water), ..Default::default() },
+		);
+		let err = GenSession::new(&p, params(Generator::Land, 1), &feats).err().expect("an empty WATER group fails");
+		assert!(err.contains("WATER family 'AAA' has no tiles"), "got: {err}");
+	}
+
+	#[test]
+	fn land_components_flags_diagonal_contact_and_counts_border_blobs() {
+		// The disconnection checker the island guarantees lean on: border-hugging
+		// strips count as separate components, and 4-disconnected blobs that
+		// still touch diagonally (8-adjacent) are flagged as NOT separated.
+		let (w, h) = (8usize, 8usize);
+		let strips: Vec<bool> = (0..w * h)
+			.map(|i| {
+				let x = i % w;
+				!(2..6).contains(&x)
+			})
+			.collect();
+		let (count, separated) = land_components(&strips, w, h);
+		assert_eq!(count, 2, "two strips, two components");
+		assert!(separated, "a 2-cell water gap keeps them apart");
+		let mut diag = vec![false; w * h];
+		diag[0] = true;
+		diag[w + 1] = true;
+		let (count, separated) = land_components(&diag, w, h);
+		assert_eq!(count, 2, "diagonal contact is still two 4-connected components");
+		assert!(!separated, "but 8-adjacent contact must be flagged");
+	}
+
+	#[test]
+	fn a_hard_coast_fix_spans_multiple_steps() {
+		// A big run with many thin rivers leaves enough broken shore seams that
+		// the budgeted Fix phase cannot finish in one slice - the session must
+		// resume it across steps (the interactive per-frame path) and still
+		// converge to a clean coast. Seed-sensitive: heavy river maps may hit
+		// the fixer's no-progress stop with seams left; seed 9 is a run where
+		// the multi-slice fix does converge to zero.
+		let mut p = Project::new(128, 128, &["GREEN".into()], &assets_root(), 7).unwrap();
+		let mut q = params(Generator::Rivers, 9);
+		q.rivers = Range { count: 8, min: 1, max: 3 };
+		let mut s = GenSession::new(&p, q, &[]).unwrap();
+		let mut fix_steps = 0;
+		let mut steps = 0;
+		loop {
+			let in_fix = s.progress().0 == "shore seams";
+			let done = s.step(&mut p);
+			if in_fix {
+				fix_steps += 1;
+			}
+			steps += 1;
+			assert!(steps < 100_000, "session never finished");
+			if done {
+				break;
+			}
+		}
+		assert!(fix_steps >= 2, "the seam fix should span multiple budget slices, took {fix_steps}");
+		let st = s.stats().expect("stats set when done");
+		assert_eq!(st.unresolved, 0, "and the coast still ends clean");
 	}
 }
