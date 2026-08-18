@@ -377,6 +377,13 @@ impl LineCache {
     }
 
     pub(crate) fn x_of(&self, byte: usize) -> f32 {
+        // An unbuilt (default) cache maps every byte to x 0 — the
+        // `byte_at` twin of the same guard. A host can legitimately
+        // read caret geometry (draw of a focused field, `ime_rect`)
+        // before the widget's first `arrange` built the cache.
+        if self.xs.is_empty() {
+            return 0.0;
+        }
         match self.bytes.binary_search(&byte) {
             Ok(i) => self.xs[i],
             Err(i) => self.xs[i.saturating_sub(1).min(self.xs.len() - 1)],
@@ -2001,6 +2008,12 @@ mod tests {
             LineCache::default().byte_at(12.0),
             0,
             "an unbuilt cache maps any x to its start"
+        );
+        assert_eq!(
+            LineCache::default().x_of(3),
+            0.0,
+            "an unbuilt cache maps any byte to x 0 (a focused field can \
+             draw before its first arrange)"
         );
     }
 

@@ -22,7 +22,7 @@ jobs:
   core:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Add rustfmt + clippy
         run: rustup component add rustfmt clippy
@@ -60,15 +60,18 @@ jobs:
   app:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # winit + wgpu need these to *build* on Linux (X11/Wayland dev libs).
       # mesa-vulkan-drivers provides lavapipe (software Vulkan) so the runner
       # has an adapter at all - `gpu.rs::pick_adapter` asks for a hardware one
-      # and falls back to a software rasterizer, and the visual/golden tests
-      # render CPU-side glyphs, so they are deterministic under it. This is
-      # what wgpu-ui's own CI does. Tests that still find no adapter skip
-      # cleanly rather than fail.
+      # and falls back to a software rasterizer. This is what wgpu-ui's own CI
+      # does. Tests that still find no adapter skip cleanly rather than fail.
+      #
+      # This comment used to add "so they are deterministic under it" about the
+      # goldens. That is false and cost five red releases: the render is
+      # deterministic for a *given* rasterizer build, not across builds. See the
+      # Test step below.
       - name: Install build deps
         run: |
           sudo apt-get update
@@ -93,16 +96,27 @@ jobs:
 
       # The runners have no GPU: every test that needs an adapter self-skips
       # (wgpu-ui's own unit tests included), and the rest run.
+      #
+      # The visual goldens still RENDER here - that is what catches a panic or a
+      # missing resource on a fresh checkout - but their comparison self-skips
+      # because `CI` is set. AE=0 cannot survive a rasterizer rebuild: baselines
+      # recorded on llvmpipe LLVM 19.1.7 fail on this runner's LLVM 20.1.2
+      # across ~97% of every dialog frame (a modal dims the whole base, so one
+      # ULP in the shader's sRGB<->linear path re-rounds every dimmed pixel) and
+      # ~1% of every panel frame. That is precision, not content, and it made
+      # this job red on every release from v0.6.0 to v0.8.2 before anyone
+      # noticed - see BACKLOG 7.1, where the durable fix is a per-channel
+      # tolerance rather than this skip.
       - name: Test (workspace)
         run: cargo test --workspace
 
-      # The visual snapshots assert AE=0 against baselines rendered on a real
-      # GPU; under the runner's software rasterizer they may differ by a LSB.
-      # On a failure, ship the `<name>.actual.png` / `<name>.diff.png` pairs the
-      # harness writes so the difference can be looked at rather than guessed.
+      # Only produces anything when the comparison is forced back on with
+      # MAX_REQUIRE_SNAPSHOTS=1 (a deliberate runner check). Kept so that when
+      # someone does that, the `<name>.actual.png` / `<name>.diff.png` pairs can
+      # be looked at rather than guessed at.
       - name: Upload snapshot diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: snapshot-diffs
           path: |
