@@ -4761,7 +4761,16 @@ impl ApplicationHandler for App {
 		let passes = Passes::new(&gpu.device, &gpu.queue, gpu.config.format);
 		// The overlay shares `passes.menu_chrome`'s renderer/steel theme/fonts, so
 		// it just tracks the editor's UI scale; controls size like the chrome.
-		let overlay = Some(uikit_overlay::Overlay::new(self.editor.ui_scale as f64));
+		let overlay = Some({
+			let mut overlay = uikit_overlay::Overlay::new(self.editor.ui_scale as f64);
+			overlay.set_dialog_parent(window.clone());
+			overlay
+		});
+
+		// Own every native dialog to the window. An ownerless modal can end up
+		// behind the editor, and since it blocks the event loop the app then
+		// looks hung with no way out but the task manager.
+		self.editor.dialog_parent = Some(window.clone());
 
 		self.editor.screen = (gpu.config.width, gpu.config.height);
 		let _ = self.editor.execute(Command::Fit);

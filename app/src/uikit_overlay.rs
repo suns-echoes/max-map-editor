@@ -396,6 +396,10 @@ pub struct Overlay {
 	events: Vec<Event>,
 	visible: bool,
 	dialog: Dialog,
+	/// The window the Preferences folder pickers are parented to; see
+	/// `EditorState::dialog_parent` for why an ownerless native modal hangs
+	/// the app on Windows. `None` in tests (no window).
+	dialog_parent: Option<std::sync::Arc<winit::window::Window>>,
 	/// The current dialog's window, so the steel grain can be anchored to it
 	/// (fixed-to-window background) after layout each frame.
 	win_id: Option<WidgetId>,
@@ -518,6 +522,22 @@ impl Overlay {
 	/// Builds the overlay. It shares the menu's [`MenuChrome`] renderer / steel
 	/// theme / fonts (passed at `open_newmap`/`render` time), so the MAX font is
 	/// parsed once and the steel sheet registered once for the whole wgpu-ui side.
+	/// Own the overlay's native folder pickers to `window`. Called once, when
+	/// the shell builds the overlay; see the field for what it prevents.
+	pub fn set_dialog_parent(&mut self, window: std::sync::Arc<winit::window::Window>) {
+		self.dialog_parent = Some(window);
+	}
+
+	/// A native folder picker owned by the editor window. **Every `rfd` dialog
+	/// here must be built through this.**
+	fn folder_dialog(&self) -> rfd::FileDialog {
+		let dialog = rfd::FileDialog::new();
+		match &self.dialog_parent {
+			Some(window) => dialog.set_parent(window.as_ref()),
+			None => dialog,
+		}
+	}
+
 	pub fn new(scale: f64) -> Self {
 		Self {
 			ui: Ui::new(Label::new("")),
@@ -525,6 +545,7 @@ impl Overlay {
 			events: Vec::new(),
 			visible: false,
 			dialog: Dialog::None,
+			dialog_parent: None,
 			win_id: None,
 			packs: Vec::new(),
 			pack_ids: Vec::new(),
@@ -985,15 +1006,15 @@ impl Overlay {
 					}
 					self.hide();
 				} else if self.ui.fired(ids.max_path_browse) {
-					if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+					if let Some(dir) = self.folder_dialog().pick_folder() {
 						self.set_text(ids.max_path, &dir.display().to_string());
 					}
 				} else if self.ui.fired(ids.max_port_browse) {
-					if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+					if let Some(dir) = self.folder_dialog().pick_folder() {
 						self.set_text(ids.max_port_path, &dir.display().to_string());
 					}
 				} else if self.ui.fired(ids.max_port_data_browse) {
-					if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+					if let Some(dir) = self.folder_dialog().pick_folder() {
 						self.set_text(ids.max_port_data, &dir.display().to_string());
 					}
 				} else if self.ui.fired(ids.save) {

@@ -896,6 +896,21 @@ fn dialog_default_dir(
 	}
 }
 
+/// A write failure, phrased for the error dialog. A bare "Access is denied.
+/// (os error 5)" reads as a crash; a protected destination (`C:\Program Files`,
+/// a game dir installed there) is the usual cause and the user needs to be told
+/// to pick somewhere else. Pure policy, no io.
+fn write_error(target: &Path, e: &std::io::Error) -> String {
+	let hint = match e.kind() {
+		std::io::ErrorKind::PermissionDenied => {
+			" - this location needs administrator rights; save somewhere you own (Documents, or a non-system drive)"
+		}
+		std::io::ErrorKind::NotFound => " - the folder no longer exists",
+		_ => "",
+	};
+	format!("{}: {e}{hint}", target.display())
+}
+
 /// The pre-filled filename for a `purpose` dialog (`.json` ensured), or `None`
 /// (purposes that don't pre-fill a name). Pure policy, no rfd.
 fn dialog_suggested_name(purpose: FilePurpose, doc_path: Option<&Path>, project_name: &str) -> Option<String> {
@@ -1252,6 +1267,14 @@ pub struct EditorState {
 	pub gen_memory: crate::genform::GenMemory,
 	/// Headless run (`--headless`/`--screenshot`): native dialogs can't open.
 	pub headless: bool,
+	/// The window every native (`rfd`) dialog is parented to. An unparented
+	/// dialog is ownerless: Windows is free to place it *behind* the editor,
+	/// and because the modal blocks the event loop the window underneath can
+	/// no longer be moved, minimized or closed - the app looks hung and has to
+	/// be killed. Windows raises exactly such a nested prompt when a save
+	/// target needs elevation, which is how the freeze was first reported.
+	/// `None` in headless runs and tests (no window to own the dialog).
+	pub dialog_parent: Option<std::sync::Arc<winit::window::Window>>,
 	/// `--dev` mode: unlock editing shipped (stock) assets in the Tile Painter
 	/// and show the Bake menu item.
 	pub dev_mode: bool,
@@ -1637,6 +1660,7 @@ impl EditorState {
 			shortcut_hints: Vec::new(),
 			gen_memory: crate::genform::GenMemory::default(),
 			headless: false,
+			dialog_parent: None,
 			units: None,
 			units_loaded: false,
 			markers: None,
@@ -3811,12 +3835,23 @@ impl EditorState {
 		}
 	}
 
+	/// A native file dialog owned by the editor window. **Every `rfd` dialog
+	/// must be built through here** - see `dialog_parent` for what an
+	/// ownerless modal does to the app on Windows.
+	fn native_dialog(&self) -> rfd::FileDialog {
+		let dialog = rfd::FileDialog::new();
+		match &self.dialog_parent {
+			Some(window) => dialog.set_parent(window.as_ref()),
+			None => dialog,
+		}
+	}
+
 	/// Write the project `.json`, plus any synthetic pack (one built by
 	/// `Project::from_wrl` for an imported WRL - absent from `assets_root`) to a
 	/// sibling folder named after it, so the saved project reloads. Only the
 	/// inferable assets are dumped (see `TilePack::dump`).
 	fn write_project(&self, target: &Path) -> Result<(), String> {
-		std::fs::write(target, self.project.save_string()).map_err(|e| format!("{}: {e}", target.display()))?;
+		std::fs::write(target, self.project.save_string()).map_err(|e| write_error(target, &e))?;
 		let dir = target.parent().unwrap_or_else(|| Path::new("."));
 		for pack in &self.project.packs {
 			// User packs persist to resources/user/tilepacks on edit; stock packs
@@ -6670,7 +6705,8 @@ impl EditorState {
 				// menu click. The save half reuses ExportSave (which prompts for a base on a
 				// normal map). Cancelling the WRL pick aborts before anything is written.
 				if matches!(purpose, FilePurpose::ExportWrlAndSave) {
-					let mut d = rfd::FileDialog::new()
+					let mut d = self
+						.native_dialog()
 						.set_directory(&start)
 						.set_title("Export to WRL and Save File: choose the .WRL output")
 						.add_filter("M.A.X. WRL maps", &["wrl", "WRL"]);
@@ -6692,14 +6728,16 @@ impl EditorState {
 				// placed units (`export-save-onto`). Two dialogs — the base to build on,
 				// then the output. With a save open it falls through to the Save-As below.
 				if matches!(purpose, FilePurpose::ExportSave) && self.project.save.is_none() {
-					let base = rfd::FileDialog::new()
+					let base = self
+						.native_dialog()
 						.set_directory(&start)
 						.set_title("Export as save: choose a base save to build on")
 						.add_filter("M.A.X. saves", &["dta", "DTA"])
 						.add_filter("all files", &["*"])
 						.pick_file();
 					let Some(base) = base else { return Outcome::Redraw };
-					let mut save = rfd::FileDialog::new()
+					let mut save = self
+						.native_dialog()
 						.set_directory(&start)
 						.set_title("Export as save: choose where to write the .DTA")
 						.add_filter("M.A.X. saves", &["dta", "DTA"]);
@@ -6729,7 +6767,8 @@ impl EditorState {
 							.map(|r| r.id_text.trim())
 							.filter(|s| !s.is_empty())
 							.unwrap_or("tile");
-						let picked = rfd::FileDialog::new()
+						let picked = self
+							.native_dialog()
 							.set_directory(&start)
 							.add_filter("PNG images", &["png"])
 							.set_file_name(format!("{name}.png"))
@@ -6740,7 +6779,8 @@ impl EditorState {
 						};
 					}
 					FilePurpose::ImportTilePng => {
-						let picked = rfd::FileDialog::new()
+						let picked = self
+							.native_dialog()
 							.set_directory(&start)
 							.add_filter("PNG images", &["png"])
 							.add_filter("all files", &["*"])
@@ -6755,7 +6795,8 @@ impl EditorState {
 							return Outcome::Failed("template-export-png: no template selected".into());
 						};
 						let name = sanitize_filename(&self.templates.entries[i].name);
-						let picked = rfd::FileDialog::new()
+						let picked = self
+							.native_dialog()
 							.set_directory(&start)
 							.add_filter("PNG images", &["png"])
 							.set_file_name(format!("{name}.png"))
@@ -6770,7 +6811,7 @@ impl EditorState {
 					// thinks "bring in that thing", not "which of my two import
 					// verbs is this one".
 					FilePurpose::ImportScenery | FilePurpose::ImportSceneryPng => {
-						let d = rfd::FileDialog::new().set_directory(&start);
+						let d = self.native_dialog().set_directory(&start);
 						let d = if purpose == FilePurpose::ImportSceneryPng {
 							d.add_filter("PNG images", &["png"])
 						} else {
@@ -6783,7 +6824,8 @@ impl EditorState {
 					}
 					FilePurpose::ExportScenery => {
 						let name = self.armed_scenery().map_or_else(|| "scenery".to_string(), |(_, id)| id);
-						let picked = rfd::FileDialog::new()
+						let picked = self
+							.native_dialog()
 							.set_directory(&start)
 							.add_filter("scenery", &[map_core::SCN_EXT])
 							.set_file_name(format!("{name}.{}", map_core::SCN_EXT))
@@ -6797,7 +6839,7 @@ impl EditorState {
 					// picture - the one thing every paint program can open.
 					FilePurpose::ImportSceneryHeightPng => {
 						let picked =
-							rfd::FileDialog::new().set_directory(&start).add_filter("PNG images", &["png"]).pick_file();
+							self.native_dialog().set_directory(&start).add_filter("PNG images", &["png"]).pick_file();
 						return match picked {
 							None => Outcome::Redraw,
 							Some(path) => self.execute(Command::SceneryHeightImport { path: Some(path) }),
@@ -6810,7 +6852,8 @@ impl EditorState {
 							.map(|r| r.id_text.clone())
 							.filter(|id| !id.is_empty())
 							.unwrap_or_else(|| "scenery".to_string());
-						let picked = rfd::FileDialog::new()
+						let picked = self
+							.native_dialog()
 							.set_directory(&start)
 							.add_filter("PNG images", &["png"])
 							.set_file_name(format!("{name}.height.png"))
@@ -6824,7 +6867,7 @@ impl EditorState {
 				}
 				// Native dialog (rfd): blocks the event loop, which is fine -
 				// the dialog is modal by nature. Cancel is a quiet no-op.
-				let dialog = rfd::FileDialog::new().set_directory(&start);
+				let dialog = self.native_dialog().set_directory(&start);
 				let picked = match purpose {
 					FilePurpose::Load => dialog
 						.add_filter("M.A.X. maps", &["json", "wrl", "WRL"])

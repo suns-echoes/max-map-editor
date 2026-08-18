@@ -3870,3 +3870,25 @@ fn open_url_refuses_anything_that_is_not_http() {
 		);
 	}
 }
+
+#[test]
+fn write_error_explains_a_permission_denied_save() {
+	// The reported hang was a save into a location needing elevation. Once the
+	// dialog is owned (so it can no longer hide behind the window), the failure
+	// reaches the error modal - and must say what to do about it, not just
+	// "os error 5".
+	let target = Path::new("C:/Program Files/MAX/map.json");
+	let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+	let msg = write_error(target, &denied);
+	assert!(msg.contains("administrator rights"), "{msg}");
+	assert!(msg.contains("map.json"), "{msg}");
+
+	// A missing folder is a different, equally actionable cause.
+	let gone = std::io::Error::from(std::io::ErrorKind::NotFound);
+	assert!(write_error(target, &gone).contains("no longer exists"));
+
+	// Anything else keeps the bare io message (no invented advice).
+	let other = std::io::Error::other("disk on fire");
+	let msg = write_error(target, &other);
+	assert!(msg.ends_with("disk on fire"), "{msg}");
+}
