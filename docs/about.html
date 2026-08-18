@@ -30,64 +30,166 @@
 					Welcome back M.A.X. Commanders!
 				</p>
 				<p>
-					I present the announcement of M.A.X. Map Editor – the ultimate open-source tool
-					for crafting custom maps for the classic M.A.X.: Mechanized Assault & Exploration.
+					This is the M.A.X. Map Editor - the open-source tool for crafting
+					custom maps for the classic M.A.X.: Mechanized Assault &amp;
+					Exploration.
 				</p>
 				<p>
-					I started this project to fulfill our all-long dreams of assault and exploration
-					of an unlimited number of new planets and regions where we could try new tactics
-					and enjoy exploration like it was the first time.
+					I started this project to fulfill our all-long dreams of assault and
+					exploration of an unlimited number of new planets and regions where
+					we could try new tactics and enjoy exploration like it was the first
+					time. The original maps are great, but after almost thirty years we
+					know them a little too well.
 				</p>
 				<p>
-					The main goal of this project is to provide an intuitive and enjoyable mapping
-					experience for all M.A.X. enthusiasts.
+					The main goal has not changed: an intuitive and enjoyable mapping
+					experience for all M.A.X. enthusiasts - making a map should be a
+					pleasure, not an exercise in hex editing.
 				</p>
 				<p>
-					with 🖤 for M.A.X. | maXimum map making
+					The editor is a native Rust application (wgpu + winit) for Linux and
+					Windows. It is portable - unzip it anywhere and run it; nothing is
+					written to your system. Grab it from
+					<a href="https://github.com/suns-echoes/max-map-editor/releases" target="_blank">Releases</a>,
+					and see <a href="./index.html">NEWS</a> for what landed when.
+				</p>
+				<p>
+					with &#128420; for M.A.X. | maXimum map making
 				</p>
 			</div>
 		</section>
 
 		<section class="log">
 			<div class="log-bg log-header">
-				Features
+				What it does today
 			</div>
+
 			<div class="log-bg log-message">
-				<p>
-					The editor is a native Rust application (wgpu + winit) for
-					Linux and Windows - portable, no installation needed.
-				</p>
-				<p>
-					Working today:
-				</p>
+				<h2>Maps in, maps out</h2>
 				<ul>
-					<li>- opening original .WRL maps and exporting game-ready ones;</li>
-					<li>- layered map projects with tile packs for all five terrains;</li>
-					<li>- fluid zoom and panning, minimap, dockable workspace, tabs;</li>
-					<li>- toggleable real-time tiles animation;</li>
-					<li>- tile painting with variant randomization and flood fill;</li>
-					<li>- auto-shore - water/land transitions draw themselves;</li>
-					<li>- passability editor with overlay;</li>
-					<li>- palette editor with live color cycling and hot swap;</li>
-					<li>- in-game preview with optional CRT effect;</li>
-					<li>- new map from any image;</li>
-					<li>- full undo/redo and a scriptable command console.</li>
+					<li>- opens the original <strong>.WRL</strong> maps and exports
+						game-ready ones - a round trip is <strong>byte-exact</strong>,
+						proven against all 24 original maps;</li>
+					<li>- layered map projects with tile packs for all five terrains
+						(green, desert, snow, crater, dark snow);</li>
+					<li>- the 24 originals ship as ready-to-edit starter templates;</li>
+					<li>- imports a foreign .WRL onto the tile packs you choose, so maps
+						built elsewhere become editable projects;</li>
+					<li>- resize from any edge, and build a whole map out of any picture.</li>
+				</ul>
+			</div>
+
+			<div class="log-bg log-message">
+				<h2>Drawing the ground</h2>
+				<ul>
+					<li>- tile painting with variant randomization, flood fill, and a
+						sizable pencil and eraser (square or circle);</li>
+					<li>- the <strong>terrain brush</strong> - paint a land/water mask
+						free-hand and let the editor build the terrain under it;</li>
+					<li>- <strong>auto-shore</strong> - water/land transitions draw
+						themselves, beach and cliff ladder included;</li>
+					<li>- select, copy, cut, paste, and reusable <strong>templates</strong>
+						of anything you built - rotated and flipped on the way down;</li>
+					<li>- passability editor with an overlay, and a validator that shows
+						you the cells that would trouble the game;</li>
+					<li>- full undo/redo, all the way back.</li>
+				</ul>
+			</div>
+
+			<div class="log-bg log-message">
+				<h2>Objects that stand on it</h2>
+				<ul>
+					<li>- the <strong>Scenery</strong> library - mountains, tree stands,
+						cliffs, rocky outcrops and meadows as <strong>objects</strong>,
+						cut out of the original art with the ground removed;</li>
+					<li>- placed by <strong>pixel</strong>, not by cell; nothing snaps to
+						the grid, and neighbours share one shadow;</li>
+					<li>- four ways two objects can meet - normal, brighter, darker, and
+						<strong>higher</strong>, which interlocks a hill with a mountain's
+						flank by reading how tall each one stands;</li>
+					<li>- your own objects are welcome: draw on a transparent background
+						and the editor snaps the colours to the map's palette;</li>
+					<li>- it all composites into the .WRL export - the game just sees
+						ordinary tiles.</li>
+				</ul>
+			</div>
+
+			<div class="log-bg log-message">
+				<h2>Whole worlds from a seed</h2>
+				<ul>
+					<li>- the <strong>random terrain generator</strong>: islands,
+						continents, land masses or river-cut worlds, all from a seed you
+						can share;</li>
+					<li>- adjustable water, obstruction and decoration balance, with
+						optional symmetry for a fair start;</li>
+					<li>- obstructions arrive as whole formations - mountain ranges and
+						forests, not single tiles;</li>
+					<li>- reroll until it looks right, and abort a run mid-way.</li>
+				</ul>
+			</div>
+
+			<div class="log-bg log-message">
+				<h2>Colour, and how it will really look</h2>
+				<ul>
+					<li>- palette editor with live colour cycling, range retints, palette
+						save/load and hot swap;</li>
+					<li>- <strong>in-game preview</strong>: cycling plus 6-bit colour,
+						with an optional CRT effect for the full 1996 feeling;</li>
+					<li>- <strong>unit previews</strong> - stamp real units and buildings
+						from your game data onto the map (team colours, turrets, shadows)
+						to judge a palette against the art that will stand on it.</li>
+				</ul>
+			</div>
+
+			<div class="log-bg log-message">
+				<h2>/!\ Saved games (experimental)</h2>
+				<ul>
+					<li>- opens a <strong>.DTA saved game</strong> as an ordinary
+						editable map, with every unit, building, slab and piece of rubble
+						standing where you left it, in its own team's colours;</li>
+					<li>- the <strong>Unit Properties</strong> inspector opens a picked
+						object up: team, name, facing, orders, hits, ammo, cargo, and the
+						unit's max values;</li>
+					<li>- paint the <strong>resource distribution</strong> - raw
+						materials, fuel and gold - drawn with the game's own survey
+						markers;</li>
+					<li>- writes them back: an untouched save comes out
+						<strong>byte-identical</strong>, and an overwrite rotates the
+						previous five versions away first;</li>
+					<li>- <strong>New Save From Map</strong> synthesizes a fresh save out
+						of a map you just drew, no base save required.</li>
 				</ul>
 				<p>
-					Planned next:
+					It is flagged <strong>Experimental</strong> and it means it. Keep
+					your own backups, and tell me what breaks.
 				</p>
+			</div>
+
+			<div class="log-bg log-message">
+				<h2>The cockpit</h2>
 				<ul>
-					<li>- random map generator with customizable parameters:</li>
-					<ul>
-						<li>- seed-based generator for easy sharing of awesome maps,</li>
-						<li>- the adjustable amount and distribution of water (open ocean, sea, lakes</li>
-						  and rivers),
-						<li>- the adjustable amount of obstacles like mountains, cliffs, and trees;</li>
-					</ul>
-					<li>- terrain templates - no more headaches when drawing mountains!</li>
-					<li>- adjacent tile suggestions to boost the design process;</li>
-					<li>- support for custom tile sets;</li>
-					<li>- installing finished maps straight into the game;</li>
+					<li>- a workspace you rearrange - dockable panels, floating windows,
+						several maps open in tabs, minimap, tile explorer;</li>
+					<li>- fluid zoom and panning, and toggleable real-time tile
+						animation;</li>
+					<li>- every editor action is a typed <strong>command</strong> -
+						bindable, scriptable and replayable from a console;</li>
+					<li>- a user manual in the Help menu, and a UI that behaves like a
+						desktop application should.</li>
+				</ul>
+			</div>
+		</section>
+
+		<section class="log">
+			<div class="log-bg log-header">
+				Planned
+			</div>
+			<div class="log-bg log-message">
+				<ul>
+					<li>- terrain templates and adjacent-tile suggestions, so building
+						mountains stops being manual work;</li>
+					<li>- custom tile packs, and the tooling to build them;</li>
+					<li>- installing finished maps straight into the game.</li>
 				</ul>
 				<p>
 					... only time will tell what other features might be.

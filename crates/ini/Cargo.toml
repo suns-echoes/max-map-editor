@@ -2,6 +2,12 @@
 name = "ini"
 version = "0.1.0"
 edition = "2024"
+# `version`/`edition` stay literal - this crate is copied from the sister
+# project and tracks that upstream. `license`/`publish` are inherited anyway:
+# the copy ships in this workspace under this workspace's terms, and without a
+# license field `cargo deny check licenses` reports it as unlicensed.
+license = { workspace = true }
+publish = { workspace = true }
 
 [dependencies]
 

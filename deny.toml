@@ -1,0 +1,78 @@
+# cargo-deny policy (CI runs `cargo deny check`). This sits on top of
+# `cargo audit`, which already covers advisories: what cargo-deny adds is the
+# *license* and *source* policy, which is what the vendored-dependency plan
+# actually needs - a mirror is only auditable if every input is a known license
+# from a known registry.
+#
+# Every exception here needs a reason and a revisit condition. Keep it short.
+
+[graph]
+# Check every target the project actually ships or builds on, not just the
+# host. Windows and macOS pull in whole dependency subtrees (windows-sys,
+# objc2, core-graphics) that a Linux-only graph never sees, and a license or
+# source problem in those is still a problem in the release zip.
+targets = [
+	{ triple = "x86_64-unknown-linux-gnu" },
+	{ triple = "x86_64-pc-windows-msvc" },
+	{ triple = "aarch64-apple-darwin" },
+]
+
+[advisories]
+# Duplicated from `.cargo/audit.toml` rather than shared - the two tools have
+# no common config format. Keep them in step.
+#
+# Note the list is SHORTER by one: `.cargo/audit.toml` also ignores
+# RUSTSEC-2022-0081, the abandoned crates.io `json` crate, which cargo-audit
+# false-positives on because it matches our internal `json` by name alone.
+# cargo-deny matches by source too, so it never confuses a path crate for the
+# registry one and the ignore would be dead weight.
+ignore = [
+	# ttf-parser is unmaintained, reached only via winit -> sctk-adwaita ->
+	# ab_glyph (Wayland fallback window decorations). No patched version
+	# exists; upstream needs to migrate (e.g. to skrifa). Revisit whenever
+	# winit is bumped.
+	"RUSTSEC-2026-0192",
+]
+
+[licenses]
+# The full set present in the tree today, no more. A new license appearing is
+# something to look at deliberately, so this list is exhaustive rather than
+# permissive - adding an entry is the review.
+allow = [
+	"0BSD",
+	"Apache-2.0",
+	"Apache-2.0 WITH LLVM-exception",
+	"BSD-2-Clause",
+	"BSD-3-Clause",
+	"BSL-1.0",
+	"ISC",
+	"MIT",
+	"Unicode-3.0",
+	"Unlicense",
+	"Zlib",
+]
+# LGPL-2.1-or-later is NOT allowed and does not need to be: the only crate
+# offering it (r-efi) is `MIT OR Apache-2.0 OR LGPL-2.1-or-later`, so the SPDX
+# expression is satisfied by MIT. A crate that offered LGPL *only* would fail
+# here, which is the intent.
+confidence-threshold = 0.93
+
+[bans]
+# Transitive duplicates (bitflags 1/2, hashbrown 0.15/0.16/0.17, rustix
+# 0.38/1.1, thiserror 1/2, windows-sys 0.52/0.59/0.61) come from wgpu and winit
+# and are not ours to resolve - warn so they stay visible without failing CI on
+# an upstream's choice.
+multiple-versions = "warn"
+# The workspace exact-pins every external crate (`=1.25.1` and friends), so a
+# wildcard would be a policy break, not a convenience. Path deps are exempt:
+# internal crates carry no version requirement by design.
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+# The supply-chain clause: nothing may enter the build from a registry or a git
+# remote this file does not name. This is the check that makes a vendored
+# mirror meaningful.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

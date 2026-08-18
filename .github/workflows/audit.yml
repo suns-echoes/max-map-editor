@@ -1,19 +1,25 @@
 name: Audit
 
-# Dependency advisories (RustSec) against Cargo.lock. Runs when the lockfile
-# (or this policy) changes, plus weekly - new advisories are published against
-# crates we already lock, so waiting for the next lockfile change isn't enough.
+# Dependency policy against Cargo.lock, in two passes:
+#   cargo audit - RustSec advisories (.cargo/audit.toml)
+#   cargo deny  - license + source policy, and duplicate/wildcard bans (deny.toml)
+# They overlap on advisories and disagree by one accepted ignore; deny.toml says
+# why. Runs when the lockfile (or either policy) changes, plus weekly - new
+# advisories are published against crates we already lock, so waiting for the
+# next lockfile change isn't enough.
 on:
   push:
     branches: [rust, main, dev]
     paths:
       - "Cargo.lock"
       - ".cargo/audit.toml"
+      - "deny.toml"
       - ".github/workflows/audit.yml"
   pull_request:
     paths:
       - "Cargo.lock"
       - ".cargo/audit.toml"
+      - "deny.toml"
       - ".github/workflows/audit.yml"
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
@@ -38,3 +44,15 @@ jobs:
       # with justifications in .cargo/audit.toml.
       - name: Audit dependencies
         run: cargo audit --deny warnings
+
+      # Same rules: from source, --locked. Heavier to build than cargo-audit
+      # (~5 min cold), which is the price of not trusting a third-party action.
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      # Checks all four of advisories/bans/licenses/sources. `bans` is set to
+      # warn on duplicate versions (upstream's choice, not ours), so this fails
+      # only on a real policy break - an unallowed license, an unknown source,
+      # a wildcard version, or an unaccepted advisory.
+      - name: Check dependency policy
+        run: cargo deny check

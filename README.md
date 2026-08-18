@@ -33,13 +33,26 @@ beside the binary, nothing is written to your system.
 ## What it does today
 
 - opens the original `.WRL` maps and exports game-ready ones - round-trips
-  are byte-exact, verified against all 24 original maps;
+  are byte-exact, verified against all 24 original maps; a foreign `.WRL`
+  can be imported onto the tile packs you choose and edited as a project;
 - layered map projects with tile packs for all five terrains
   (green, desert, snow, crater, dark snow) - the 24 originals ship as
   ready-to-edit starter templates;
-- tile painting with variants randomization, flood fill, and an
-  **auto-shore** solver that draws correct water/land transitions for you;
-- passability editor - paint the movement data, see it as an overlay;
+- tile painting with variants randomization, flood fill, a sizable
+  pencil/eraser, and a **terrain brush** that turns a free-hand land/water
+  mask into terrain;
+- **auto-shore**: water/land transitions - beach and cliff ladder - draw
+  themselves;
+- **scenery objects**: mountains, tree stands, cliffs, rocky outcrops and
+  meadows placed as *objects* rather than wallpaper - by pixel, not by cell,
+  with shared shadows and four ways two of them can overlap (the `higher`
+  blend reads how tall each piece stands, so a hill interlocks with a
+  mountain's flank); your own art can join the library, snapped to the map's
+  palette. It all composites into the export - the game sees ordinary tiles;
+- selection, copy/cut/paste, and reusable **templates** of anything you
+  built, rotated and flipped on the way down;
+- passability editor - paint the movement data, see it as an overlay - plus
+  a validator that flags the cells the game would trip over;
 - palette editor with live color cycling, range retints, palette
   save/load and hot-swap;
 - **in-game preview**: palette cycling + 6-bit color, with an optional CRT
@@ -51,6 +64,13 @@ beside the binary, nothing is written to your system.
   river-cut worlds from a seed - tune water/obstruction/decoration balance,
   reroll until it looks right, abort mid-run; obstructions stamp as whole
   formations (mountain ranges, forests), not single tiles;
+- **saved games (experimental)**: a `.DTA` opens as an ordinary editable map
+  with every unit, building and slab where you left it in its team's colors;
+  an inspector edits an object in place (team, name, facing, orders, hits,
+  ammo, cargo, max values), the resource distribution is paintable and drawn
+  with the game's own survey markers, and it writes back - an untouched save
+  comes out byte-identical, an overwrite rotates the previous five away, and
+  *New Save From Map* synthesizes one from a map you just drew;
 - a workspace you can rearrange - dockable panels, floating windows,
   multiple maps open in tabs, minimap, tile explorer;
 - map from image: turn any picture into a map (quantization + dithering);
