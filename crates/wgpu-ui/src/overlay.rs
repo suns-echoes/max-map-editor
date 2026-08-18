@@ -828,6 +828,21 @@ impl Tabs {
         self.headers.get(i).copied()
     }
 
+    /// Tab header labels in order — the host/script address surface
+    /// (headers are data, not widgets; the [`MenuBar::titles`]
+    /// precedent).
+    pub fn labels(&self) -> Vec<&str> {
+        self.tabs.iter().map(|(label, _)| label.as_str()).collect()
+    }
+
+    /// The header rect for the first tab labeled `label`, valid after
+    /// layout — [`header_rect`](Tabs::header_rect)'s by-label twin
+    /// (the [`MenuBar::header_rect`] precedent).
+    pub fn header_rect_of(&self, label: &str) -> Option<Rect> {
+        let i = self.tabs.iter().position(|(l, _)| l == label)?;
+        self.header_rect(i)
+    }
+
     /// The `×` hit rect for header `i` (the right [`CLOSE_W`] of its header),
     /// when closeable.
     fn close_rect(&self, i: usize) -> Option<Rect> {

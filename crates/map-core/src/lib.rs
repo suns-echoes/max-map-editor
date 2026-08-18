@@ -34,7 +34,7 @@ pub use palette_convert::{ConvertOptions, ConvertReport};
 pub use project::{
 	ANIMATED_SLOTS, DYNAMIC_SLOTS, LAYER_GROUND, LAYER_WATER, MAX_LAYERS, MapObject, ObjectProps, PaletteReimport,
 	Project, RenderDirty, Rng, SynthesisSummary, SynthesizeSaveOptions, TileRef, Transform, UnexportedEdits, UseEntry,
-	WATER_CYCLES, WATER_SLOTS, scenery_root, transform_tile, user_scenery_root,
+	WATER_CYCLES, WATER_SLOTS, check_name_component, scenery_root, transform_tile, user_scenery_root,
 };
 pub use scenery::{
 	BLEND_BAND, CutOpts, GroundInk, HGT_EXT, HGT_MAGIC, HeightOpts, ImageBand, PASS_EMPTY, RasterOpts, SCENERY_DIR,

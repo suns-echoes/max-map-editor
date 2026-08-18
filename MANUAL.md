@@ -123,7 +123,9 @@ the next time it saves.
 ## 4. Editing
 
 - **Tile painting** - pick a tile in the Tile Explorer (or eyedrop one from
-  the map with the picker tool), then paint. The Toolbox's **brush** dropdown
+  the map with the picker tool), then paint. Picking a tile arms the **pencil**
+  and, if the Scenery layer was live, hands the editor back to the tile's own
+  layer - one click in a panel is always enough to use what you clicked. The Toolbox's **brush** dropdown
   sets the pencil/eraser footprint size and **shape** group its shape
   (square or circle). **Fill** floods
   a connected region - or, when a selection is active, fills exactly that
@@ -350,7 +352,8 @@ the next time it saves.
   open the **Templates Explorer** (Templates menu or **Windows ▸ Dockable
   Dialogs**), and press **save** - the selection becomes a template you
   can stamp on any map that uses the same tile packs. Clicking a template
-  arms it as a ghost, exactly like paste. The editor ships **stock
+  arms it as a ghost, exactly like paste - and leaves the **Scenery layer** if
+  that was live, so the click that places it is a terrain click. The editor ships **stock
   templates** (under `resources/assets/templates`) and stores yours
   in `resources/user/templates` as plain JSON - share them, import them
   (**import** / Templates ▸ Import), clone or delete from the same menu.
@@ -391,7 +394,9 @@ the next time it saves.
   Open **Windows ▸ Dockable Dialogs ▸ Scenery** for the library: a thumbnail
   grid with a name under each piece, a **pack** filter, a **size** dropdown
   (very small 48 .. very large 192, remembered across sessions - §8) and the
-  count. Clicking a piece arms it **and** selects the **Scenery layer**.
+  count. Clicking a piece arms it **and** selects the **Scenery layer**,
+  putting away an armed ghost stamp (it would take the clicks meant for the
+  piece).
   From there the tools you already know do the work: the **pencil** drops the
   armed piece where you click, the **eraser** removes the one under the
   cursor, and the **arrow** drags a placed one - a whole drag being one undo
@@ -917,7 +922,7 @@ Commonly useful:
 | `quit` / `quit!` | exit (`!` discards unsaved changes) |
 
 There are more - including `assert-*` commands used by the regression
-scripts; see them in action under `scripts/` in the repository.
+scripts; see them in action under `app/tests/scripts/` in the repository.
 
 ## 10. Command line & scripting
 

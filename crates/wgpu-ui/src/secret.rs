@@ -288,7 +288,7 @@ impl Widget for SecretInput {
 
         if self.value.is_empty() && !focused && !self.placeholder.is_empty() {
             ctx.theme
-                .text(dl, ctx.fonts, baseline, &self.placeholder, TextRole::Body);
+                .text_placeholder(dl, ctx.fonts, baseline, &self.placeholder, TextRole::Body);
         } else if self.masked {
             let display = BULLET.repeat(self.chars());
             ctx.theme

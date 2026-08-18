@@ -19,6 +19,7 @@ pub fn map_cursor(icon: CursorIcon) -> ::winit::window::CursorIcon {
     use ::winit::window::CursorIcon as W;
     match icon {
         CursorIcon::Text => W::Text,
+        CursorIcon::Pointer => W::Pointer,
         CursorIcon::Grabbing => W::Grabbing,
         CursorIcon::ResizeEW => W::EwResize,
         CursorIcon::ResizeNS => W::NsResize,
@@ -108,7 +109,10 @@ impl WinitInput {
                         mods: self.mods,
                     });
                 }
-                if pressed && let Some(t) = &event.text {
+                if pressed
+                    && text_inserts(self.mods)
+                    && let Some(t) = &event.text
+                {
                     out.push(Event::Text(t.as_str().to_string()));
                 }
             }
@@ -132,6 +136,16 @@ impl WinitInput {
             _ => {}
         }
     }
+}
+
+/// Should a key press's `text` payload become an `Event::Text`? A held Ctrl
+/// means the press is a chord, not typing — X11/Wayland still report the
+/// plain character as `text` (e.g. `"v"` for Ctrl+V), so without this filter
+/// a host that answers the chord (paste, shortcuts) sees the stray character
+/// inserted right after. Ctrl+Alt stays typeable: that combination is AltGr
+/// on many layouts and MUST produce text.
+fn text_inserts(mods: Modifiers) -> bool {
+    !(mods.ctrl && !mods.alt)
 }
 
 fn map_button(b: MouseButton) -> Option<PointerButton> {
@@ -185,7 +199,7 @@ fn map_key(k: &WKey) -> Option<Key> {
 // this) — except `KeyboardInput`, whose `winit::event::KeyEvent` has a private
 // `platform_specific` field and no public constructor. That one arm
 // (state/repeat/text plumbing) is therefore untestable here; its mapping logic
-// (`map_key`) is unit-tested directly instead.
+// (`map_key`, `text_inserts`) is unit-tested directly instead.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +237,7 @@ mod tests {
     fn map_cursor_matches_toolkit_variants() {
         use ::winit::window::CursorIcon as W;
         assert_eq!(map_cursor(CursorIcon::Text), W::Text);
+        assert_eq!(map_cursor(CursorIcon::Pointer), W::Pointer);
         assert_eq!(map_cursor(CursorIcon::Grabbing), W::Grabbing);
         assert_eq!(map_cursor(CursorIcon::ResizeEW), W::EwResize);
         assert_eq!(map_cursor(CursorIcon::ResizeNS), W::NsResize);
@@ -528,6 +543,36 @@ mod tests {
             map_key(&WKey::Character(SmolStr::new(""))),
             None,
             "empty character string"
+        );
+    }
+
+    /// A key press's `text` inserts only when it is typing, not a chord: a
+    /// held Ctrl suppresses it (the platform reports the plain character —
+    /// Ctrl+V must not insert "v"), while Ctrl+Alt (AltGr on many layouts)
+    /// and every other modifier combination keep typing.
+    #[test]
+    fn text_inserts_filters_ctrl_chords() {
+        let m = |shift, ctrl, alt, logo| Modifiers {
+            shift,
+            ctrl,
+            alt,
+            logo,
+        };
+        assert!(text_inserts(Modifiers::NONE), "plain typing");
+        assert!(text_inserts(m(true, false, false, false)), "shift types");
+        assert!(
+            text_inserts(m(false, true, true, false)),
+            "AltGr (ctrl+alt) must type"
+        );
+        assert!(text_inserts(m(false, false, true, false)), "bare alt types");
+        assert!(!text_inserts(m(false, true, false, false)), "ctrl chord");
+        assert!(
+            !text_inserts(m(true, true, false, false)),
+            "ctrl+shift chord"
+        );
+        assert!(
+            !text_inserts(m(false, true, false, true)),
+            "ctrl+logo chord"
         );
     }
 

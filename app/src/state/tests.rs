@@ -1391,6 +1391,68 @@ fn the_scenery_layer_re_points_the_pencil_eraser_and_arrow() {
 	assert!(matches!(e.execute(Command::Layer { name: "objects".into() }), Outcome::Failed(_)));
 }
 
+/// A panel click arms *what it shows*: a tile, a template or a cut-out puts the
+/// editor in that thing's mode, whatever was live before. The two ways that
+/// used to stick are covered here - the Scenery layer (where the pencil drops
+/// cut-outs, so a tile picked from the Tile Explorer would have painted
+/// nothing) and an armed ghost stamp (which takes the map click ahead of any
+/// tool, so a cut-out picked under one could never be placed).
+#[test]
+fn picking_a_tile_template_or_cut_out_switches_to_its_mode() {
+	let mut e = editor();
+	let water = {
+		let pack = &e.project.packs[e.project.water_pack.unwrap() as usize];
+		pack.ids[0].clone()
+	};
+	let arm_scenery_layer = |e: &mut EditorState, tool: &str| {
+		e.execute(Command::Layer { name: "scenery".into() });
+		e.execute(Command::ToolSelect { name: tool.into() });
+	};
+
+	// A tile from the Tile Explorer hands the pencil back, on the tile's own
+	// layer - the Scenery layer says nothing about which one tiles go on.
+	arm_scenery_layer(&mut e, "pencil");
+	assert_eq!((e.tool, e.active_layer_name()), (Tool::Scenery, "scenery"));
+	e.execute(Command::Tile { spec: Some("GLa000".into()) });
+	assert_eq!((e.tool, e.active_layer_name()), (Tool::Pencil, "ground"));
+	arm_scenery_layer(&mut e, "pencil");
+	e.execute(Command::Tile { spec: Some(water.clone()) });
+	assert_eq!((e.tool, e.active_layer_name()), (Tool::Pencil, "water"), "a water tile lands on water");
+
+	// Between the tile layers the choice is the user's own: painting a water
+	// tile onto the ground layer stays possible.
+	e.execute(Command::Layer { name: "ground".into() });
+	e.execute(Command::Tile { spec: Some(water) });
+	assert_eq!(e.active_layer_name(), "ground", "only the Scenery layer is left behind");
+
+	// A template is terrain too: the ghost arms on the ground layer with the
+	// terrain twin of whatever key was lit.
+	e.templates.entries = vec![TemplateEntry {
+		name: "T".into(),
+		path: PathBuf::from("GREEN/t.json"),
+		stock: false,
+		template: Template {
+			name: "T".into(),
+			width: 1,
+			height: 1,
+			uses: vec![("GREEN".to_string(), "1".to_string())],
+			cells: vec![String::new()],
+		},
+	}];
+	arm_scenery_layer(&mut e, "eraser");
+	assert_eq!(e.tool, Tool::SceneryEraser);
+	e.execute(Command::TemplatePick { name: "T".into() });
+	assert!(e.stamp.is_some(), "the template is armed as a ghost");
+	assert_eq!((e.tool, e.active_layer_name()), (Tool::Eraser, "ground"));
+
+	// And the mirror, with the ghost still armed: a cut-out arms the Scenery
+	// layer and its tool, and puts the stamp away so the clicks reach it.
+	assert!(crate::scenery::piece_count(&e.project) > 0, "GREEN ships cut-outs");
+	e.execute(Command::SceneryPick { index: Some(0) });
+	assert_eq!((e.tool, e.active_layer_name()), (Tool::Scenery, "scenery"));
+	assert!(e.stamp.is_none(), "the ghost would have eaten the placing clicks");
+}
+
 #[test]
 fn ctrl_click_builds_a_palette_multi_selection() {
 	let mut e = editor();
@@ -3768,4 +3830,43 @@ fn match_combos_requires_dev_mode() {
 	assert!(!e.dev_mode);
 	assert!(matches!(e.execute(Command::MatchCombos { pack: None }), Outcome::Failed(_)), "needs --dev");
 	assert!(matches!(e.execute(Command::MatchCombos { pack: Some("GREEN".into()) }), Outcome::Failed(_)));
+}
+
+/// Security regression: the palette Save As / Rename dialog rejects a name
+/// with a separator, but the dialog is not the only door - a `--script` line
+/// or a console line reaches `Command::PaletteSaveAs` directly, and
+/// `palette_io::save` runs `create_dir_all` on the parent. So the check has to
+/// live at the single mutator, or a script writes wherever it likes (an
+/// absolute name is the worse half: `Path::join` discards the base).
+#[test]
+fn palette_commands_refuse_a_name_that_escapes_the_palettes_dir() {
+	let mut e = editor();
+	for bad in ["../../../../tmp/ESCAPED", "/tmp/ESCAPED", "..", "a/b", ""] {
+		assert!(
+			matches!(e.execute(Command::PaletteSaveAs { name: bad.into() }), Outcome::Failed(m) if m.contains("illegal name")),
+			"palette-save-as must refuse {bad:?}"
+		);
+		assert!(
+			matches!(
+				e.execute(Command::PaletteRename { from: "/tmp/x.json".into(), to: bad.into() }),
+				Outcome::Failed(m) if m.contains("illegal name")
+			),
+			"palette-rename must refuse {bad:?}"
+		);
+	}
+}
+
+/// Security regression: `open-url` is a script command, so its argument is
+/// untrusted. Anything that is not http(s) is a local path, and handing an
+/// arbitrary path to `xdg-open` / `open` runs whatever handler the desktop has
+/// registered for it - a `.desktop` file is an executable.
+#[test]
+fn open_url_refuses_anything_that_is_not_http() {
+	let mut e = editor();
+	for bad in ["/home/u/evil.desktop", "file:///etc/passwd", "evil.desktop", "javascript:alert(1)", ""] {
+		assert!(
+			matches!(e.execute(Command::OpenUrl { url: bad.into() }), Outcome::Failed(m) if m.contains("only http(s)")),
+			"open-url must refuse {bad:?}"
+		);
+	}
 }

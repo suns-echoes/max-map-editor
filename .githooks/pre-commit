@@ -1,0 +1,44 @@
+#!/bin/sh
+# Keeps development off main. Installed by scripts/initialize.sh via
+# core.hooksPath.
+#
+# The branch policy:
+#
+#   ft/<topic>  where work happens; merges into dev, or is dropped
+#   dev         the integration branch; the only thing that reaches main
+#   main        the release branch, squash-built one commit per release, and
+#               the only ref pushed to the public remote
+#
+# main does legitimately receive commits - that is how a release is cut - so
+# this refuses them by default rather than absolutely. Set RELEASE=1 to make
+# cutting one a deliberate act:
+#
+#   RELEASE=1 git commit -m 'v0.9.0'
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0   # detached: not our business
+
+if [ "$branch" = 'main' ] && [ "${RELEASE:-0}" != '1' ]; then
+	echo 'pre-commit: REFUSED - main takes release commits only.' >&2
+	echo '            Work on dev or ft/<topic>, then merge into dev.' >&2
+	echo '            Cutting a release? RELEASE=1 git commit ...' >&2
+	exit 1
+fi
+
+# private/ is standing work and lives on the private-docs orphan branch. It is
+# gitignored here, so staging it takes a deliberate `add -f` - which is exactly
+# the slip worth catching, since dev is one merge away from a published main.
+if git diff --cached --name-only --diff-filter=A | grep -q '^private/'; then
+	echo 'pre-commit: REFUSED - private/ belongs on the private-docs branch.' >&2
+	echo '            Commit it from inside the worktree instead:' >&2
+	echo '              cd private && git add . && git commit' >&2
+	exit 1
+fi
+
+# main only reaches here under RELEASE=1, which is a deliberate act - no note.
+# private-docs is the standing-work branch and is edited from its own worktree.
+case "$branch" in
+	dev | ft/* | main | private-docs) ;;
+	*) echo "pre-commit: note - '$branch' is neither dev nor ft/<topic>." >&2 ;;
+esac
+
+exit 0

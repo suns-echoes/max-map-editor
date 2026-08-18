@@ -102,7 +102,7 @@ edit by hand.
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |
 | log | 0.4.29 | MIT OR Apache-2.0 |
 | memchr | 2.8.1 | Unlicense OR MIT |
-| memmap2 | 0.9.10 | MIT OR Apache-2.0 |
+| memmap2 | 0.9.11 | MIT OR Apache-2.0 |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | naga | 30.0.0 | MIT OR Apache-2.0 |
 | naga-types | 30.0.0 | MIT OR Apache-2.0 |
@@ -161,7 +161,7 @@ edit by hand.
 | proc-macro-crate | 3.5.0 | MIT OR Apache-2.0 |
 | proc-macro2 | 1.0.106 | MIT OR Apache-2.0 |
 | profiling | 1.0.18 | MIT OR Apache-2.0 |
-| quick-xml | 0.39.4 | MIT |
+| quick-xml | 0.41.0 | MIT |
 | quote | 1.0.45 | MIT OR Apache-2.0 |
 | r-efi | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later |
 | range-alloc | 0.1.5 | MIT OR Apache-2.0 |
@@ -230,7 +230,7 @@ edit by hand.
 | wayland-protocols | 0.32.12 | MIT |
 | wayland-protocols-plasma | 0.3.12 | MIT |
 | wayland-protocols-wlr | 0.3.12 | MIT |
-| wayland-scanner | 0.31.10 | MIT |
+| wayland-scanner | 0.31.11 | MIT |
 | wayland-sys | 0.31.11 | MIT |
 | web-sys | 0.3.99 | MIT OR Apache-2.0 |
 | web-time | 1.1.0 | MIT OR Apache-2.0 |
@@ -929,7 +929,7 @@ the editor draws the same text everywhere and needs nothing installed:
 - COPYING: see [license-text-69](#license-text-69)
 - LICENSE-MIT: see [license-text-70](#license-text-70)
 
-## memmap2 0.9.10
+## memmap2 0.9.11
 
 - License: MIT OR Apache-2.0
 - Source: https://github.com/RazrFalcon/memmap2-rs
@@ -1312,7 +1312,7 @@ the editor draws the same text everywhere and needs nothing installed:
 - Source: https://github.com/aclysma/profiling
 - License text: none shipped in the crate package; the terms are the SPDX license(s) named above.
 
-## quick-xml 0.39.4
+## quick-xml 0.41.0
 
 - License: MIT
 - Source: https://github.com/tafia/quick-xml
@@ -1775,7 +1775,7 @@ the editor draws the same text everywhere and needs nothing installed:
 - Source: https://github.com/smithay/wayland-rs
 - LICENSE.txt: see [license-text-112](#license-text-112)
 
-## wayland-scanner 0.31.10
+## wayland-scanner 0.31.11
 
 - License: MIT
 - Source: https://github.com/smithay/wayland-rs

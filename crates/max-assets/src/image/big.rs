@@ -30,7 +30,14 @@ pub fn parse_big_image(data: &[u8]) -> Option<ImageData> {
 
 	let mut image_data = vec![0; (width as i32 * height as i32 * 4) as usize];
 	let mut image_data_index = 0;
-	for &palette_color_index in indexed_image_data.iter() {
+	// The raster is sized from the header, but the RLE stream's decoded length
+	// is independent of it - a crafted image decodes to more indices than the
+	// raster holds, and the write below then runs off the end. `take` the
+	// raster's worth, exactly as `parse_big_image_indexed` already does; a
+	// short stream keeps leaving the tail zeroed, which is the long-standing
+	// behaviour for a truncated portrait.
+	let expected = width as usize * height as usize;
+	for &palette_color_index in indexed_image_data.iter().take(expected) {
 		let palette_slice = &palette[palette_color_index as usize * 4..palette_color_index as usize * 4 + 4];
 		image_data[image_data_index..image_data_index + 4].copy_from_slice(palette_slice);
 		image_data_index += 4;
@@ -242,5 +249,28 @@ mod tests {
 			assert!(parse_big_image(&d).is_none(), "BGRA decode must reject: {why}");
 			assert!(parse_big_image_indexed(&d).is_none(), "indexed decode must reject: {why}");
 		}
+	}
+
+	/// Security regression: the raster is allocated from the header's
+	/// `width * height`, but the RLE stream that fills it carries its own
+	/// length. A crafted portrait that decodes to more indices than the raster
+	/// holds used to walk past the end of `image_data` and panic - and with the
+	/// release profile's `panic = "abort"`, a panic here takes the process and
+	/// the open map with it. Both decoders must clamp to the raster instead.
+	#[test]
+	fn an_rle_stream_longer_than_the_raster_is_clamped_not_fatal() {
+		let mut d = Vec::new();
+		d.extend_from_slice(&0i16.to_le_bytes()); // hot_spot_x
+		d.extend_from_slice(&0i16.to_le_bytes()); // hot_spot_y
+		d.extend_from_slice(&2i16.to_le_bytes()); // width  - raster holds 4
+		d.extend_from_slice(&2i16.to_le_bytes()); // height
+		d.extend_from_slice(&[1u8; 256 * 3]); // embedded palette
+		d.extend_from_slice(&64i16.to_le_bytes()); // RLE: copy 64 indices
+		d.extend_from_slice(&[7u8; 64]);
+
+		let img = parse_big_image(&d).expect("an over-long stream decodes");
+		assert_eq!(img.data.len(), 2 * 2 * 4, "the raster stays the size the header declared");
+		let indexed = parse_big_image_indexed(&d).expect("an over-long stream decodes (indexed)");
+		assert_eq!(indexed.pixels.len(), 2 * 2, "the indexed raster stays the size the header declared");
 	}
 }

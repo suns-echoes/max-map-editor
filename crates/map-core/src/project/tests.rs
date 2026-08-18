@@ -2404,3 +2404,37 @@ fn synthesize_save_from_scratch_carries_resources_and_mining() {
 		"undo across the attach boundary must not restore the pre-attach objects"
 	);
 }
+
+/// Security regression: `check_name_component` is the one gate between a name
+/// a *document* supplies and a path component the editor joins onto a base
+/// directory. Both escapes it must stop: `..` walks out of the base, and an
+/// absolute name replaces it outright (`Path::join` discards the base when
+/// handed one), so an imported file could pick the write target.
+///
+/// It deliberately checks path shape, not a charset - a WRL-import pack is
+/// named after the file stem, so spaces and mixed case have to survive.
+#[test]
+fn check_name_component_refuses_only_what_escapes_the_directory() {
+	use super::check_name_component;
+
+	for bad in [
+		"..",
+		".",
+		"",
+		"a/b",
+		"a\\b",
+		"/etc",
+		"/home/u/.config/autostart",
+		"../../../../tmp/ESCAPED",
+		"./x",
+		"x/",
+		"a\0b",
+	] {
+		let e = check_name_component("use entry", bad).expect_err(&format!("{bad:?} must be refused"));
+		assert!(e.contains("illegal name"), "{bad:?}: {e}");
+	}
+
+	for ok in ["GREEN", "SNOW_DARK", "WATER", "My Map", "import_extra", "GREEN+DESERT", "a.b", "..x", "x..", "-x"] {
+		check_name_component("use entry", ok).unwrap_or_else(|e| panic!("{ok:?} must be accepted: {e}"));
+	}
+}

@@ -62,6 +62,10 @@ impl Project {
 		let mut packs = Vec::new();
 		for entry in field("use")?.as_array().ok_or("'use' not an array")? {
 			let name = entry.get("name").and_then(|v| v.as_str()).ok_or("use entry: no name")?;
+			// Joined onto `assets_root` / the project dir to find the pack, and
+			// onto the save target again by `write_project` - so it has to be a
+			// plain directory name, not a path out of the tree.
+			super::check_name_component("use entry", name)?;
 			let use_entry = UseEntry {
 				name: name.to_string(),
 				tileset: entry.get("tileset").and_then(|v| v.as_bool()).unwrap_or(false),

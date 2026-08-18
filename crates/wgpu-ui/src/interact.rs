@@ -65,6 +65,9 @@ pub enum CursorIcon {
     Default,
     /// The text I-beam (over editable text).
     Text,
+    /// The pointing hand (a link or other navigate-on-click surface —
+    /// NOT buttons, which keep the arrow per desktop convention).
+    Pointer,
     /// The hand of an in-progress grab (a titlebar drag).
     Grabbing,
     /// Horizontal resize (a vertical splitter / left-right edge).

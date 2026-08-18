@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version      = "0.8.1"
+version      = "0.8.2"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Aneta Suns"]
@@ -28,7 +28,11 @@ max-assets = { path = "crates/max-assets" }
 # build this workspace standalone. The mirror is generated: edit the sibling
 # checkout, then `node tools/vendor-wgpu-ui.mjs`. Because the vendored manifest
 # inherits wgpu/winit/bytemuck from the table below, those pins cannot drift.
-wgpu-ui    = { path = "crates/wgpu-ui", features = ["winit"] }
+# `default = []` upstream, so every capability is named here. `workspace` is the
+# floating-window docking the whole panel system is built on; `emoji` and `dock`
+# stay off - the first is ~20k lines of Unicode catalog for a picker the editor
+# does not show, the second is a docking paradigm it does not use.
+wgpu-ui    = { path = "crates/wgpu-ui", features = ["winit", "workspace"] }
 
 # External crates - exact-pinned, versions matched to re-max's lockfile
 # Text-only clipboard: default features dropped to avoid the `image` crate
@@ -43,15 +47,19 @@ thiserror = "=2.0.17"
 wgpu      = "=30.0.0"
 winit     = "=0.30.13"
 
-# Lint policy for the first-party crates (app, map-core, max-assets). Opt in per
-# crate with `[lints] workspace = true`. CI runs `cargo clippy … -- -D warnings`,
-# so everything is denied *except* the lints allowed here - they conflict with
-# the house style (the code favours explicit nested guards, the directional
-# `RING` index loops in shore.rs, and the wide immediate-mode quad helpers). Keep
-# this list short and justified, not a catch-all.
+# Lint policy for every first-party crate. Opt in per crate with
+# `[lints] workspace = true`. CI runs `cargo clippy … -- -D warnings`, so
+# everything is denied *except* the lints allowed here - they conflict with the
+# house style (the code favours explicit nested guards, the directional `RING`
+# index loops in shore.rs, and the wide immediate-mode quad helpers). Keep this
+# list short and justified, not a catch-all.
 #
-# `ini` is the one crate still outside the gate: it is genuinely copied from the
-# sister project and tracks that upstream. `max-assets` is NOT - whatever its
+# `ini` opted in too, so there is no longer a crate outside this table. That was
+# never a `-D warnings` hole - CI has always named `-p ini` - but leaving one
+# crate off the table meant anything added here would silently skip the parser
+# that reads `mme.ini` and the MAX.RES manifest. It is still genuinely copied
+# from the sister project and tracks that upstream, so this stanza is a
+# deliberate local diff. `max-assets` is NOT copied - whatever its
 # res/image/units decoders started as, `save/` is ~8k lines written here across
 # the save-editor stages, so it is first-party and gated like the rest. (Do not
 # "re-sync it from re-max": that would clobber all of it.)
@@ -76,9 +84,12 @@ opt-level = 2
 #                     max-assets / wgpu-ui boundaries.
 #   codegen-units = 1 one unit per crate, so nothing is hidden from the
 #                     inliner by a codegen-unit split.
-#   panic = "abort"   no landing pads and no unwind tables. Nothing in the
-#                     workspace calls `catch_unwind` or recovers from a panic,
-#                     so unwinding only ever costs code size here.
+#   panic = "abort"   no landing pads and no unwind tables. Nothing the shipped
+#                     binary runs calls `catch_unwind` or recovers from a panic,
+#                     so unwinding only ever costs code size here. (The fuzz
+#                     sweeps under `tests/` do catch panics - that is fine:
+#                     Cargo ignores `panic` for test targets, which need to
+#                     unwind for the harness to report a failure at all.)
 #   strip = "symbols" no symbol table in the shipped binary.
 #   incremental=false no incremental fragmentation of the codegen units.
 #

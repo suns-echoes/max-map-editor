@@ -387,6 +387,24 @@ pub trait Theme {
         )
     }
 
+    /// Themed **placeholder** text — the hint an empty, unfocused field shows
+    /// where its value would go. The default draws [`text_muted`]
+    /// (faded), so a placeholder never reads as a typed value out of the box;
+    /// a theme with an oblique face overrides this to slant it as well.
+    /// Returns the advance width.
+    ///
+    /// [`text_muted`]: Self::text_muted
+    fn text_placeholder(
+        &self,
+        dl: &mut DrawList,
+        fonts: &Fonts,
+        baseline: Vec2,
+        s: &str,
+        role: TextRole,
+    ) -> f32 {
+        self.text_muted(dl, fonts, baseline, s, role)
+    }
+
     /// Themed text in the **accent color** with an explicit [`Emboss`] — the
     /// "active / selected" emphasis a lit control's label uses (an active tool
     /// key, the current tab, the open menu title). Returns the advance width.

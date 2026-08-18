@@ -1,6 +1,6 @@
 //! A **dockable workspace**: four edge docks (left / right / top / bottom)
 //! around a central content "hole", plus a floating layer of in-app windows.
-//! This is a *different* docking paradigm from [`crate::dock`] (a VS-Code-style
+//! This is a *different* docking paradigm from `crate::dock` (the `dock` feature; a VS-Code-style
 //! split-tree of tabbed leaves): here panels dock to a screen edge, stack along
 //! it with resizer splitters, or float freely; dragging a titlebar past a small
 //! threshold undocks a panel into the floating layer, dragging near an edge
@@ -15,7 +15,7 @@
 //! rendered by the host into [`body_of`](Workspace::body_of), addressed by the
 //! [`Press::Body`] a press reports. This keeps a host free to interleave its own
 //! native passes and per-panel widget trees — the reason panels are not
-//! `Box<dyn Widget>` the way [`crate::dock`]'s are. A generic [`Widget`] impl
+//! `Box<dyn Widget>` the way `crate::dock`'s are. A generic [`Widget`] impl
 //! draws plain themed chrome for simple hosts; a host that owns a richer look
 //! (a textured material, an anchored grain) draws its own chrome from
 //! [`layout`](Workspace::layout) instead.
@@ -303,7 +303,7 @@ pub struct PanelLayout {
 }
 
 /// A serializable snapshot of the whole layout (the host maps this to/from its
-/// own persistence format — the boundary [`crate::dock::DockLayout`] also keeps).
+/// own persistence format — the boundary `crate::dock::DockLayout` also keeps).
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkspaceLayout {
     pub dock_size: [f32; 4],
@@ -469,23 +469,38 @@ impl Workspace {
     /// two-panel-full dock at `dock.y + 795`: still "visible" to the model,
     /// dispatched to, and entirely off the screen. So an over-subscribed dock
     /// shrinks: every panel scales toward the space there is, and one that hits
-    /// [`MIN_PANEL`] pins there while the rest re-share what is left (a dock too
-    /// small even for that splits evenly). An *under*-subscribed one is already
-    /// exact — the last panel's remainder absorbs the slack.
-    fn stack_extents(&self, ids: &[usize], avail: f32) -> Vec<f32> {
+    /// its floor pins there while the rest re-share what is left. A panel's
+    /// floor is its **own declared min** along the stacking axis (the same
+    /// bound a splitter drag stops at — never below [`MIN_PANEL`]): squeezing
+    /// under it is how a last-in-the-dock panel used to lose its header band
+    /// to the clip while its neighbours kept their full extents. Only when the
+    /// dock cannot cover even the floors do they scale down together (equal
+    /// floors degrade to the old even split). An *under*-subscribed dock is
+    /// already exact — the last panel's remainder absorbs the slack.
+    fn stack_extents(&self, ids: &[usize], avail: f32, side: usize) -> Vec<f32> {
         let n = ids.len();
+        let mut floors: Vec<f32> = ids
+            .iter()
+            .map(|&i| along_min(self.panels[i].min, side).max(MIN_PANEL))
+            .collect();
         let mut ext: Vec<f32> = ids
             .iter()
-            .map(|&i| self.panels[i].extent.max(MIN_PANEL))
+            .zip(&floors)
+            .map(|(&i, &f)| self.panels[i].extent.max(f))
             .collect();
-        // The last panel takes whatever the others leave (never below the floor).
+        // The last panel takes whatever the others leave (never below its floor).
         let fixed: f32 = ext[..n - 1].iter().sum();
-        ext[n - 1] = (avail - fixed).max(MIN_PANEL);
+        ext[n - 1] = (avail - fixed).max(floors[n - 1]);
 
-        // Water-fill down to `avail`. `floor` is MIN_PANEL unless the dock is too
-        // small to give everyone that much, in which case an even split is the
-        // best answer available and the loop reaches it in one pass.
-        let floor = MIN_PANEL.min(avail / n as f32).max(0.0);
+        // Water-fill down to `avail`. When even the floors over-fill the dock,
+        // they shrink together — the best answer available, reached in one pass.
+        let total_floor: f32 = floors.iter().sum();
+        if total_floor > avail {
+            let k = (avail / total_floor).max(0.0);
+            for f in &mut floors {
+                *f *= k;
+            }
+        }
         let mut pinned = vec![false; n];
         loop {
             let (mut held, mut flex) = (0.0, 0.0);
@@ -497,10 +512,10 @@ impl Workspace {
                 break;
             }
             let k = (avail - held).max(0.0) / flex;
-            // Pin whatever this pass would push under the floor, then re-share
+            // Pin whatever this pass would push under its floor, then re-share
             // among the rest; when none would, apply the scale and stop.
             let sinking: Vec<usize> = (0..n)
-                .filter(|&j| !pinned[j] && ext[j] * k < floor)
+                .filter(|&j| !pinned[j] && ext[j] * k < floors[j])
                 .collect();
             if sinking.is_empty() {
                 for (e, &p) in ext.iter_mut().zip(&pinned) {
@@ -511,7 +526,7 @@ impl Workspace {
                 break;
             }
             for j in sinking {
-                ext[j] = floor;
+                ext[j] = floors[j];
                 pinned[j] = true;
             }
         }
@@ -586,7 +601,7 @@ impl Workspace {
             let vertical = side == LEFT || side == RIGHT;
             let total = if vertical { dock.h } else { dock.w };
             let gaps = SPLIT * (ids.len() - 1) as f32;
-            let extents = self.stack_extents(ids, total - gaps);
+            let extents = self.stack_extents(ids, total - gaps, side);
             let mut used = 0.0;
             for (nth, (&i, &ext)) in ids.iter().zip(&extents).enumerate() {
                 let last = nth == ids.len() - 1;
@@ -1303,8 +1318,9 @@ mod tests {
     /// a right dock two panels already fill used to place it at the end of their
     /// extents — past the dock, off the screen — while the model happily called
     /// it visible, dispatched pointer events to it and persisted its place. The
-    /// stack now shrinks to fit: each panel keeps at least `MIN_PANEL`, the sum
-    /// is the dock, and nothing is left outside it.
+    /// stack now shrinks to fit: each panel keeps at least its declared min
+    /// (never below `MIN_PANEL`), the sum is the dock, and nothing is left
+    /// outside it.
     #[test]
     fn a_dock_shrinks_its_stack_instead_of_pushing_a_panel_off_the_end() {
         let mut w = ws();
@@ -1372,6 +1388,47 @@ mod tests {
                 "still inside a cramped dock: {r:?}"
             );
         }
+    }
+
+    /// **A short dock never squeezes a panel under its own declared min.**
+    /// The old floor was the global `MIN_PANEL`, and the last panel took the
+    /// whole shortage: on a short screen the Scenery panel (last in the right
+    /// dock) shrank to a sliver that clipped its header band — the blend
+    /// dropdown gone — while its neighbour kept a full 320px extent. Now the
+    /// neighbour gives ground instead, and every panel stops at the same
+    /// `bounds` min a splitter drag stops at.
+    #[test]
+    fn a_short_dock_keeps_every_panel_at_its_declared_min() {
+        let w = ws();
+        // Short enough that right-a's saved 320 leaves right-b's remainder
+        // under its 170 min, tall enough that both minimums (140 + 170) fit.
+        let h = 600.0;
+        let l = w.layout(W, h);
+        let d = l.docks[RIGHT].expect("the right dock");
+        let side: Vec<(usize, Rect)> = l
+            .panels
+            .iter()
+            .filter(|(i, _)| w.panels[*i].place == Place::Docked(RIGHT))
+            .copied()
+            .collect();
+        assert_eq!(side.len(), 2);
+        for &(i, r) in &side {
+            let floor = along_min(w.panels[i].min, RIGHT);
+            assert!(
+                r.h >= floor - 0.5,
+                "{} keeps its declared min ({floor}): {r:?}",
+                w.panels[i].id
+            );
+            assert!(
+                r.y >= d.y - 0.5 && r.bottom() <= d.bottom() + 0.5,
+                "{} stays inside the dock: {r:?}",
+                w.panels[i].id
+            );
+        }
+        assert!(
+            (side.last().expect("two panels").1.bottom() - d.bottom()).abs() < 0.5,
+            "and the stack still fills it"
+        );
     }
 
     /// `cursor_at`: dock edges resize across their axis, splitters along the

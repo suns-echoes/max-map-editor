@@ -86,24 +86,81 @@ cargo run                 # debug build, opens the starter map
 cargo run -- MAP.WRL      # open a document (.WRL or project .json)
 ```
 
+## Branches
+
+```
+ft/<topic>  ->  dev  ->  main  ->  GitHub
+```
+
+- **`ft/<topic>`** - where work happens. It either merges into `dev` or is
+  dropped; nothing else is a destination.
+- **`dev`** - integration. The only branch that reaches `main`.
+- **`main`** - the release branch, squash-built one commit per release, and the
+  only ref pushed to the public repository. Committing there needs `RELEASE=1`,
+  so cutting a release is deliberate rather than accidental.
+
+`scripts/initialize.sh` installs hooks that enforce this, and pins the public
+remote's push refspec to `main`. Re-run it after pulling changes to
+`.githooks/` - the hooks are copied into `.git/hooks` rather than referenced in
+place, because `main` does not contain `.githooks/` and a reference would
+disarm itself the moment you checked `main` out.
+
 ## Developing & testing
 
 Every edit flows through a single `Command` mutator (`EditorState::execute`),
 which makes the editor fully scriptable and headless-testable: a session is a
 list of commands, and a list of commands is a test. The interface is built
 entirely from the first-party `wgpu-ui` retained-widget toolkit vendored at
-`crates/wgpu-ui`. The scripts under `scripts/` double as the regression suite:
+`crates/wgpu-ui`. The scripts under `app/tests/scripts/` double as the
+regression suite - they sit beside the harness that replays them, the way
+`app/tests/snapshots/` sits beside the visual tests.
 
 ```sh
+scripts/initialize.sh                                  # once per machine, after cloning
+cargo fmt --all                                        # always, before committing
+cargo clippy --all-targets --no-deps -- -D warnings    # the lint gate
 cargo test --workspace                                 # everything
-cargo run -- --script scripts/smoke.script --headless  # replay one script
-cargo fmt                                              # always, before committing
+cargo run -- --script app/tests/scripts/smoke.script --headless   # replay one
 ```
 
-Tests that compare against the original game maps look for them in
-`testdata/originals/` (not in the repo - they're copyrighted game data).
-`tools/fetch-testdata.sh MAX_DIR` copies them from your own install; without
-them those tests skip and say so.
+Alongside the scripts, each parser that reads a file someone else may have
+written carries a panic-freedom sweep - deterministic, dependency-free, and
+about four seconds for the lot:
+
+```sh
+cargo test -p json --test fuzz          # JSON documents
+cargo test -p map-core --test fuzz      # templates
+cargo test -p ini --test fuzz           # mme.ini, the MAX.RES manifest
+cargo test -p max-assets --test image_fuzz --test save_fuzz  # sprites, .DTA saves
+```
+
+### Fixtures, and the one way a green run can lie
+
+The strongest proofs compare against the real game's files, which are
+copyrighted and so **not** in the repo:
+
+| suite | wants |
+|---|---|
+| 24-map equivalence proof (`map-core`) | `testdata/originals/`, or `MAX_DIR` |
+| script suite (`max-map-editor`) | `testdata/originals/GREEN_1.WRL` |
+| byte-exact save round trip + repair no-ops (`max-assets`) | saves in your `~/MAX` install |
+
+`tools/fetch-testdata.sh MAX_DIR` copies the maps out of your own install.
+
+Without them these suites skip - and a skip is reported as a **pass**. The
+notice they print goes to stderr, which the test harness captures and discards
+for passing tests, so a fresh clone shows a fully green gate with the heaviest
+proofs silently doing nothing (the script suite finishing in 0.00 s instead of
+~70 s is the only visible tell). On any machine where the files are supposed to
+exist, run:
+
+```sh
+MAX_REQUIRE_FIXTURES=1 cargo test --workspace   # a skipped proof is now a failure
+```
+
+Everything else - the visual-regression baselines, the converted maps and tile
+packs the shore proof reads - is committed, so a bare clone runs the whole rest
+of the suite green with nothing else fetched.
 
 ## License
 

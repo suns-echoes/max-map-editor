@@ -1,0 +1,69 @@
+#!/bin/sh
+# Guards the public remote. Installed by scripts/initialize.sh, which sets
+# core.hooksPath to this directory - git does not track .git/hooks, so keeping
+# the hooks here is what makes them travel to the other machine.
+#
+# Two things must never reach github.com:
+#
+#   1. anything under private/ - the standing-work documents. They live on the
+#      `private-docs` orphan branch, which shares no history with dev or main,
+#      so this is a second line of defence rather than the only one.
+#   2. any branch except main. main is the release branch and the only ref the
+#      public repository is meant to carry. Note that ci.yml lists `dev` as a
+#      push trigger, so pushing dev to GitHub is a plausible slip, not a
+#      far-fetched one.
+#
+# A push that gets this wrong cannot be taken back: deleting the ref afterwards
+# leaves the objects reachable and readable.
+#
+# stdin: <local ref> <local sha> <remote ref> <remote sha>, one line per ref.
+# $1: remote name   $2: remote URL
+
+remote_url="$2"
+zero='0000000000000000000000000000000000000000'
+
+# Match on the URL, not the remote's name - a name can be anything.
+case "$remote_url" in
+	*github.com*) public=1 ;;
+	*) public=0 ;;
+esac
+
+fail() {
+	echo "pre-push: REFUSED - $1" >&2
+	echo "          remote: $remote_url" >&2
+	echo "          (scripts/initialize.sh explains the branch policy)" >&2
+	exit 1
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+	# A deletion pushes the zero sha; there is no tree to inspect.
+	[ "$local_sha" = "$zero" ] && continue
+
+	# The private-docs branch belongs on the private remote, wherever it is
+	# pushed from - not only when the target happens to be github.
+	case "$local_ref" in
+		*private-docs*) [ "$public" -eq 1 ] && fail "private-docs must never go to a public remote" ;;
+	esac
+
+	[ "$public" -eq 0 ] && continue
+
+	# private/ is standing work; CLAUDE.md names absolute local paths and the LAN
+	# remote's address. Neither belongs in a public repository. Both normally
+	# live on private-docs and are unreachable from here - this catches the case
+	# where someone tracked one on dev by hand.
+	carried=$(git ls-tree -r --name-only "$local_sha" -- private CLAUDE.md 2>/dev/null | head -n 1)
+	if [ -n "$carried" ]; then
+		fail "$local_ref carries $carried - that is standing work, not public"
+	fi
+
+	# main, and the release tags that ride with it. A `v*.*.*` tag is what
+	# triggers release.yml and publishes the zips, so it has to be allowed -
+	# but only after the private/ check above, which every ref goes through.
+	case "$remote_ref" in
+		refs/heads/main) ;;
+		refs/tags/v[0-9]*.[0-9]*.[0-9]*) ;;
+		*) fail "only main and v*.*.* tags are published; refusing $local_ref -> $remote_ref" ;;
+	esac
+done
+
+exit 0

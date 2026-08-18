@@ -52,7 +52,16 @@ pub fn read_wrl_file(file_path: &Path) -> Result<WrlFile, WrlError> {
 
 	let tile_count = read_u16_le(&mut file)?;
 
+	// `tile_count` is a raw `u16`, and each tile is 4 KiB, so a 20-byte header
+	// claiming 65535 tiles asks for ~268 MB before a single body byte is read.
+	// The read would fail at EOF anyway - but only after the allocation. Check
+	// the file actually holds the table first, the way `read_v71_bytes` refuses
+	// to reserve for a length it has not seen.
 	let tiles_size = tile_count as usize * TILE_DATA_SIZE;
+	let remaining = file.metadata()?.len().saturating_sub(file.stream_position()?);
+	if tiles_size as u64 > remaining {
+		return Err(WrlError::Parse("tile table runs past the end of the file"));
+	}
 	let mut tiles = vec![0; tiles_size];
 	file.read_exact(&mut tiles)?;
 
@@ -189,6 +198,25 @@ mod tests {
 		assert_eq!((h.width, h.height, h.tile_count), (2, 1, 1), "dimensions and tile count from the header");
 		assert_eq!(h.minimap, vec![7, 9], "minimap bytes read in place");
 		assert_eq!((h.palette[0], h.palette[767]), (42, 43), "palette read after seeking past bigmap + tiles");
+		let _ = std::fs::remove_file(&path);
+	}
+
+	/// A `tile_count` the file cannot back is rejected before the allocation,
+	/// not after: each tile is 4 KiB, so an unchecked 65535 asks for ~268 MB
+	/// off a truncated file that has nothing to fill it with.
+	#[test]
+	fn an_unbacked_tile_count_is_rejected_before_allocating() {
+		let mut bytes = wrl_to_bytes(&valid_wrl()).unwrap();
+		// Claim 65535 tiles in a file that carries one. The field sits after
+		// 5 header + 2 width + 2 height + minimap (w*h = 2) + bigmap (w*h*2 = 4).
+		let at = 5 + 2 + 2 + 2 + 4;
+		bytes[at..at + 2].copy_from_slice(&u16::MAX.to_le_bytes());
+		let path = scratch("bigtiles");
+		std::fs::write(&path, &bytes).unwrap();
+		match read_wrl_file(&path) {
+			Err(WrlError::Parse(m)) => assert!(m.contains("past the end"), "{m}"),
+			other => panic!("expected a parse error, got {other:?}"),
+		}
 		let _ = std::fs::remove_file(&path);
 	}
 }

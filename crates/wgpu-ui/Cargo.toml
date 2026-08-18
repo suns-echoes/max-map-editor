@@ -21,6 +21,19 @@ winit = { workspace = true, optional = true }
 default = []
 # Translate winit window events into `wgpu_ui::Event`s (see `wgpu_ui::winit`).
 winit = ["dep:winit"]
+# Floating-window docking (`wgpu_ui::workspace::Workspace`). The editor's whole
+# panel system is built on it - see app/src/workspace.rs - so this is the one
+# structural feature it turns on.
+workspace = []
+# VS-Code-style docking (`wgpu_ui::dock::DockArea`). A different paradigm from
+# `workspace` and unused here, but offered so the mirrored source's `#[cfg]`s
+# are real features rather than permanently-false cfgs.
+dock = []
+# The ~4k-entry generated Unicode catalog (`wgpu_ui::emoji`) and the
+# `EmojiPicker` built on it - by far the largest chunk of the crate, and about
+# 20k lines the editor has no use for. Left OFF in the editor's dependency
+# declaration: it shows no picker, and its chrome font is ASCII-only by rule.
+emoji = []
 # Upstream's `secret` (zeroize) and `cosmic` (cosmic-text) features are NOT
 # offered here: each pulls a dependency this workspace does not vendor, and the
 # editor uses neither. Their `#[cfg]`s in the mirrored src/ are declared to the

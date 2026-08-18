@@ -298,6 +298,10 @@ impl Template {
 		if let Some(list) = root.get("use").and_then(|v| v.as_array()) {
 			for u in list {
 				let pack = u.get("name").and_then(|v| v.as_str()).ok_or("template: a use entry has no name")?;
+				// The pack names decide the templates subdirectory this template
+				// is filed under (`template_pack` joins them), so an imported
+				// file would otherwise choose the directory the editor writes to.
+				crate::project::check_name_component("template use", pack)?;
 				let version = u.get("version").and_then(|v| v.as_str()).unwrap_or("");
 				uses.push((pack.to_string(), version.to_string()));
 			}
@@ -709,5 +713,28 @@ mod tests {
 		assert!(p.cell(2, 2).unwrap()[LAYER_WATER].is_none(), "water gone");
 		// An unselected cell keeps its water.
 		assert!(p.cell(2, 4).unwrap()[LAYER_WATER].is_some(), "unselected water kept");
+	}
+
+	/// Security regression: a template's `use` names become the templates
+	/// subdirectory it is filed under (`template_pack` in the app joins them),
+	/// and `Template::save` runs `create_dir_all` on that. An imported file
+	/// therefore got to choose the directory the editor writes into - relative
+	/// (`../../..`) or, worse, absolute, since `Path::join` drops the base when
+	/// handed one. Refuse such a name at the parse boundary.
+	#[test]
+	fn from_str_refuses_a_use_name_that_is_not_one_path_component() {
+		let doc = |pack: &str| format!(r#"{{"width":1,"height":1,"use":[{{"name":"{pack}"}}],"map":[["GLa000"]]}}"#);
+		// `r"a\\b"` is the JSON escape for a single backslash - written raw so
+		// the parser hands the checker `a\b` and not the `\b` control character.
+		for pack in ["../../../../tmp/ESCAPED", "/home/u/.config/autostart", "..", ".", "a/b", r"a\\b", ""] {
+			let e = Template::from_str(&doc(pack)).err().unwrap_or_else(|| panic!("{pack:?} must be refused"));
+			assert!(e.contains("illegal name"), "{pack:?}: {e}");
+		}
+		// Real names still parse - a WRL-import pack is named after the file
+		// stem, so spaces and mixed case are legitimate.
+		for pack in ["GREEN", "SNOW_DARK", "My Map", "import_extra"] {
+			let t = Template::from_str(&doc(pack)).unwrap_or_else(|e| panic!("{pack:?} must parse: {e}"));
+			assert_eq!(t.uses[0].0, pack);
+		}
 	}
 }

@@ -711,7 +711,7 @@ impl Widget for TextInput {
             );
         } else if self.edit.text.is_empty() && !focused && !self.placeholder.is_empty() {
             ctx.theme
-                .text(dl, ctx.fonts, baseline, &self.placeholder, self.role);
+                .text_placeholder(dl, ctx.fonts, baseline, &self.placeholder, self.role);
         } else {
             ctx.theme
                 .text(dl, ctx.fonts, baseline, &self.edit.text, self.role);

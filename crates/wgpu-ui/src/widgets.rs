@@ -45,6 +45,9 @@ pub struct Button {
     flat: bool,
     /// A stencil face instead of the label — see [`icon`](Self::icon).
     icon: Option<Icon>,
+    /// A stencil badge before the label — see
+    /// [`leading_icon`](Self::leading_icon).
+    leading: Option<Icon>,
     /// A hover tooltip — see [`tooltip`](Self::tooltip).
     tooltip: Option<String>,
     /// A semantics name decoupled from the visible face — see
@@ -70,6 +73,7 @@ impl Button {
             size: None,
             flat: false,
             icon: None,
+            leading: None,
             tooltip: None,
             semantics_label: None,
             rect: Rect::ZERO,
@@ -207,6 +211,19 @@ impl Button {
         self.icon = Some(icon);
     }
 
+    /// A stencil [`Icon`] stamped **before** the label — a state badge on a
+    /// text-faced key (an encrypted container's lock on its tab), where
+    /// [`icon`](Self::icon) would *replace* the words. The badge occupies a
+    /// `control_height` square at the key's left edge (the measured width
+    /// grows by it); the label centers in the remainder, and both take the
+    /// same state-driven ink (dim when disabled or muted, accent when
+    /// selected). Ignored on an [`icon`](Self::icon)-faced key, whose face
+    /// is already a stencil.
+    pub fn leading_icon(mut self, icon: Icon) -> Self {
+        self.leading = Some(icon);
+        self
+    }
+
     /// A hover tooltip: once the `Ui` reports the pointer has **rested** on
     /// this key, the overlay pass paints `text` on a small plate under it
     /// (through [`Theme::tooltip`](crate::theme::Theme::tooltip), clamped to
@@ -327,7 +344,16 @@ impl Widget for Button {
         }
         let px = ctx.theme.font_px(self.text_role);
         let tw = ctx.fonts.measure(ctx.theme.font(), &self.label, px);
-        Size::new((tw + 2.0 * m.pad).max(m.button_min_width), m.control_height)
+        // A leading badge reserves its square in front of the words.
+        let lead = if self.leading.is_some() {
+            m.control_height
+        } else {
+            0.0
+        };
+        Size::new(
+            (tw + lead + 2.0 * m.pad).max(m.button_min_width),
+            m.control_height,
+        )
     }
 
     fn arrange(&mut self, rect: Rect, _ctx: &mut LayoutCtx) {
@@ -378,12 +404,37 @@ impl Widget for Button {
         let role = self.text_role;
         let px = ctx.theme.font_px(role);
         let tw = ctx.fonts.measure(ctx.theme.font(), &self.label, px);
-        let c = self.rect.center();
+        // The leading badge (if any) takes the left square; the label
+        // centers in what remains, in the badge's own ink discipline.
+        let lead = if self.leading.is_some() {
+            ctx.theme.metrics().control_height.min(self.rect.w)
+        } else {
+            0.0
+        };
+        let text_rect = Rect::new(
+            self.rect.x + lead,
+            self.rect.y,
+            (self.rect.w - lead).max(0.0),
+            self.rect.h,
+        );
+        let c = text_rect.center();
         let baseline = Vec2::new(c.x - tw * 0.5, c.y + px * 0.34);
         // Clipped to the face: a label too long for its key is cut off at its own
         // edge instead of painting across the button beside it (a packed key bank
         // of fixed-width keys is the case that finds this).
         dl.push_clip(self.rect);
+        if let Some(leading) = self.leading {
+            let ink = if self.disabled || self.muted {
+                ctx.theme.ink_dim()
+            } else if self.selected {
+                ctx.theme.accent()
+            } else {
+                ctx.theme.ink()
+            };
+            let badge = Rect::new(self.rect.x, self.rect.y, lead, self.rect.h);
+            let (stencil, cell) = crate::icon::fit(leading, badge, ctx.scale);
+            ctx.theme.icon(dl, cell, stencil, Emboss::Raised, ink);
+        }
         // A button is a raised face: full emboss (hilite + shadow). An active
         // (selected) command button lights its label in the accent ink; a muted
         // one dims it without touching the face (the button stays live), and a

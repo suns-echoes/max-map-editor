@@ -39,6 +39,14 @@ pub fn read_res_index(source_file: &Path) -> io::Result<ResArchive> {
 	reader.read_exact(&mut size_bytes)?;
 	let size = i32::from_le_bytes(size_bytes);
 
+	// Per-entry offsets/sizes are checked below; the *index*'s own pair was not,
+	// so a negative one sign-extended into an absurd `u64` seek. The seek fails
+	// and surfaces as an error either way - reject it here so the two checks
+	// agree and the fields can be trusted from this point on.
+	if offset < 0 || size < 0 {
+		return Err(io::Error::new(io::ErrorKind::InvalidData, "RES header has a negative index offset or size"));
+	}
+
 	reader.seek(SeekFrom::Start(offset as u64))?;
 
 	let entry_size = 8 + 4 + 4;
@@ -166,6 +174,24 @@ mod tests {
 		std::fs::write(&path, build(-5, 8)).unwrap();
 		assert!(read_res_index(&path).is_err());
 		let _ = std::fs::remove_file(&path);
+	}
+
+	/// The index's own offset/size pair gets the same check the entries get -
+	/// a negative one sign-extends into an absurd `u64` seek.
+	#[test]
+	fn rejects_a_negative_index_offset_or_size() {
+		for (offset, size) in [(-1i32, 16i32), (12, -1), (-1, -1)] {
+			let path = scratch(&format!("negidx{offset}_{size}"));
+			let mut out = Vec::new();
+			out.extend_from_slice(b"RES0");
+			out.extend_from_slice(&offset.to_le_bytes());
+			out.extend_from_slice(&size.to_le_bytes());
+			out.extend_from_slice(&[0u8; 16]);
+			std::fs::write(&path, out).unwrap();
+			let err = read_res_index(&path).unwrap_err();
+			assert_eq!(err.kind(), io::ErrorKind::InvalidData, "offset {offset}, size {size}");
+			let _ = std::fs::remove_file(&path);
+		}
 	}
 
 	/// A scratch directory path unique to this run.

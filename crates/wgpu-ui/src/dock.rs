@@ -5,7 +5,7 @@
 //! serializable for persistence.
 //!
 //! **Maturity:** experimental — exercised only by its own tests so far. It is a
-//! *different paradigm* from [`workspace`](crate::workspace) (VS-Code-style
+//! *different paradigm* from `workspace` (its own feature) (VS-Code-style
 //! split tree vs edge-dock + floating windows + center hole); `Workspace` is
 //! the battle-tested model with a production consumer. Prefer `Workspace`
 //! unless you specifically want split-tree/tabbed-leaf docking, and expect this

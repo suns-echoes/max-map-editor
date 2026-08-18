@@ -1,0 +1,15 @@
+# cargo-audit policy (CI runs `cargo audit --deny warnings`). Every advisory
+# accepted here needs a reason and a revisit condition - keep this list short.
+
+[advisories]
+ignore = [
+	# crates/json is our internal path crate (workspace-versioned); cargo-audit
+	# matches it by NAME against the abandoned crates.io `json` crate. False
+	# positive - drop this if the internal crate is ever renamed.
+	"RUSTSEC-2022-0081",
+	# ttf-parser is unmaintained, reached only via winit -> sctk-adwaita ->
+	# ab_glyph (Wayland fallback window decorations). No patched version
+	# exists; upstream needs to migrate (e.g. to skrifa). Revisit whenever
+	# winit is bumped.
+	"RUSTSEC-2026-0192",
+]

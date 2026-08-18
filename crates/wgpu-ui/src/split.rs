@@ -6,7 +6,7 @@
 //! user move the boundary. The extent — not a ratio — is the retained state:
 //! a sidebar keeps its 240 px when the window grows, exactly the way every
 //! panel/document layout wants it (a ratio-based split like
-//! [`DockArea`](crate::DockArea)'s interior widens the sidebar with the
+//! `DockArea` (the `dock` feature)'s interior widens the sidebar with the
 //! window, which is right for a workspace of peer panels and wrong for
 //! chrome-beside-content).
 //!

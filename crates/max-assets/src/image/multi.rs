@@ -76,7 +76,11 @@ pub fn parse_multi_image_all_frames(data: &[u8]) -> Result<Option<Vec<ImageData>
 }
 
 fn parse_frames(data: &[u8], offset: usize) -> Option<ImageData> {
-	if data.len() < offset + 8 {
+	// `offset` is a raw `i32` from the file, sign-extended by the caller's
+	// `as usize`. A negative one becomes ~2^64, so `offset + 8` overflows -
+	// which, with the release profile's `overflow-checks`, aborts the process
+	// instead of rejecting the frame. Add checked so a bad offset is just None.
+	if data.len() < offset.checked_add(8)? {
 		return None;
 	}
 
@@ -91,7 +95,7 @@ fn parse_frames(data: &[u8], offset: usize) -> Option<ImageData> {
 
 	let mut row_offsets: Vec<i32> = Vec::new();
 	for i in 0..height {
-		let start_offset = offset + 8 + i as usize * 4;
+		let start_offset = offset.checked_add(8)?.checked_add(i as usize * 4)?;
 		let row_offset = i32::from_le_bytes(data.get(start_offset..start_offset + 4)?.try_into().ok()?);
 		row_offsets.push(row_offset);
 	}
@@ -295,7 +299,9 @@ pub fn decode_multi_image_indexed(data: &[u8]) -> Result<Vec<IndexedFrame>, Stri
 /// short / out-of-range / truncated header. Shared by the indexed body and
 /// shadow decoders, whose row-RLE bodies differ but whose headers are identical.
 fn read_multi_header(data: &[u8], offset: usize) -> Option<(i16, i16, i32, i32, Vec<i32>)> {
-	if data.len() < offset + 8 {
+	// Checked for the same reason as `parse_frames` - a negative frame offset
+	// out of the file sign-extends, and the bare `+ 8` would abort the process.
+	if data.len() < offset.checked_add(8)? {
 		return None;
 	}
 	let width = i16::from_le_bytes(data[offset..offset + 2].try_into().ok()?);
@@ -307,7 +313,7 @@ fn read_multi_header(data: &[u8], offset: usize) -> Option<(i16, i16, i32, i32, 
 	}
 	let mut row_offsets: Vec<i32> = Vec::with_capacity(height as usize);
 	for i in 0..height {
-		let s = offset + 8 + i as usize * 4;
+		let s = offset.checked_add(8)?.checked_add(i as usize * 4)?;
 		row_offsets.push(i32::from_le_bytes(data.get(s..s + 4)?.try_into().ok()?));
 	}
 	Some((width, height, hot_spot_x, hot_spot_y, row_offsets))
@@ -665,5 +671,35 @@ mod tests {
 
 		let frames = decode_multi_image_indexed(&d).expect("indexed decode succeeds");
 		assert_eq!(frames[0].pixels, vec![0, 0x2a], "raw palette indices preserved");
+	}
+
+	/// Security regression: only frame-offset entry 0 is checked against the
+	/// header, so entries 1.. arrive raw. A negative one sign-extends through
+	/// `as usize` to ~2^64, and the header readers' `offset + 8` then overflows,
+	/// which aborts the process (the release profile sets `overflow-checks` and
+	/// `panic = "abort"`) rather than rejecting the frame. A crafted `MAX.RES`
+	/// reaches this through the unit-sprite loader, whose `else { continue }`
+	/// cannot catch a panic. Every decoder must simply decline the frame.
+	#[test]
+	fn a_negative_frame_offset_is_declined_not_fatal() {
+		let count: i16 = 2;
+		let mut d = Vec::new();
+		d.extend_from_slice(&count.to_le_bytes());
+		d.extend_from_slice(&(2 + 4 * count as i32).to_le_bytes()); // entry 0: valid
+		d.extend_from_slice(&(-1i32).to_le_bytes()); // entry 1: unchecked
+		d.resize(64, 0);
+
+		assert!(parse_multi_image(&d).unwrap().is_none(), "first-frame decode declines");
+		assert!(parse_multi_image_all_frames(&d).unwrap().is_none(), "all-frames decode declines");
+		assert!(decode_multi_image_indexed(&d).is_err(), "indexed decode declines");
+		assert!(decode_multi_image_shadow_indexed(&d).is_err(), "shadow decode declines");
+
+		// i32::MIN and i32::MAX are the other two ends of the same hazard.
+		for bad in [i32::MIN, i32::MAX] {
+			let mut d = d.clone();
+			d[6..10].copy_from_slice(&bad.to_le_bytes());
+			assert!(parse_multi_image_all_frames(&d).unwrap().is_none(), "offset {bad} declines");
+			assert!(decode_multi_image_indexed(&d).is_err(), "offset {bad} declines (indexed)");
+		}
 	}
 }

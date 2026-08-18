@@ -16,8 +16,20 @@
 //! reverse — but with retained widget objects that own their state.
 
 pub mod color;
+/// VS-Code-style docking: split trees + tabbed leaves (enable the `dock`
+/// feature).
+#[cfg(feature = "dock")]
 pub mod dock;
 pub mod draw;
+/// The emoji catalog + font-coverage probe (enable the `emoji` feature).
+#[cfg(feature = "emoji")]
+pub mod emoji;
+#[cfg(feature = "emoji")]
+#[doc(hidden)]
+mod emoji_data;
+/// The emoji picker popup (enable the `emoji` feature).
+#[cfg(feature = "emoji")]
+pub mod emoji_picker;
 pub mod event;
 pub mod geom;
 pub mod gpu;
@@ -40,6 +52,8 @@ pub mod ui;
 pub mod widget;
 pub mod widgets;
 pub mod window;
+/// Floating-window docking (enable the `workspace` feature).
+#[cfg(feature = "workspace")]
 pub mod workspace;
 
 /// winit event translation (enable the `winit` feature).
@@ -51,8 +65,11 @@ pub mod winit;
 pub mod app;
 
 pub use color::Rgba;
+#[cfg(feature = "dock")]
 pub use dock::{DockArea, DockLayout, Zone};
 pub use draw::{DrawCmd, DrawList, IdleGate, TexRect, TextureId};
+#[cfg(feature = "emoji")]
+pub use emoji_picker::EmojiPicker;
 pub use event::{BlurCause, Event, Key, Modifiers, PointerButton, ScrollDelta};
 pub use geom::{Insets, Rect, Size, Vec2};
 pub use gpu::{FrameError, HeadlessRenderer, RenderError, Renderer, UiRenderer};
@@ -84,6 +101,7 @@ pub use widgets::{
     Radio, RadioGroup, Separator, Slider, Toggle, Well,
 };
 pub use window::Window;
+#[cfg(feature = "workspace")]
 pub use workspace::{Workspace, WorkspaceError, WorkspaceLayout};
 
 #[cfg(feature = "winit")]

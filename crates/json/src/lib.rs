@@ -115,12 +115,14 @@ impl<'a> Scanner<'a> {
 	}
 
 	/// Enter a nested container, erroring past [`MAX_DEPTH`] (the recursion
-	/// guard). Paired with [`Scanner::leave`] on the way out.
+	/// guard). Paired with [`Scanner::leave`] on the way out. The check runs
+	/// *before* the increment so a refusal does not leave the counter raised -
+	/// the same reason `leave` is unconditional below.
 	fn enter(&mut self) -> Result<(), String> {
-		self.depth += 1;
-		if self.depth > MAX_DEPTH {
+		if self.depth >= MAX_DEPTH {
 			return Err(format!("nesting deeper than {MAX_DEPTH} levels at byte {}", self.pos));
 		}
+		self.depth += 1;
 		Ok(())
 	}
 
@@ -128,14 +130,24 @@ impl<'a> Scanner<'a> {
 		self.depth -= 1;
 	}
 
+	/// The container parsers below split into an `enter` / body / `leave`
+	/// wrapper and the body itself. Inlining the body would let its `?` returns
+	/// skip `leave`, leaving `depth` permanently raised. Nothing observes that
+	/// today - the first error aborts the whole parse - but a counter that is
+	/// only correct when nothing goes wrong is a trap for the next caller.
 	fn parse_object(&mut self) -> Result<JsonValue, String> {
 		self.expect(b'{')?;
 		self.enter()?;
+		let parsed = self.parse_object_body();
+		self.leave();
+		parsed
+	}
+
+	fn parse_object_body(&mut self) -> Result<JsonValue, String> {
 		let mut items = Vec::new();
 		self.skip_ws();
 		if self.peek() == Some(b'}') {
 			self.bump();
-			self.leave();
 			return Ok(JsonValue::Object(items));
 		}
 		loop {
@@ -146,10 +158,7 @@ impl<'a> Scanner<'a> {
 			self.skip_ws();
 			match self.bump() {
 				Some(b',') => continue,
-				Some(b'}') => {
-					self.leave();
-					return Ok(JsonValue::Object(items));
-				}
+				Some(b'}') => return Ok(JsonValue::Object(items)),
 				other => return Err(format!("expected ',' or '}}' got {:?}", other.map(|b| b as char))),
 			}
 		}
@@ -158,11 +167,16 @@ impl<'a> Scanner<'a> {
 	fn parse_array(&mut self) -> Result<JsonValue, String> {
 		self.expect(b'[')?;
 		self.enter()?;
+		let parsed = self.parse_array_body();
+		self.leave();
+		parsed
+	}
+
+	fn parse_array_body(&mut self) -> Result<JsonValue, String> {
 		let mut items = Vec::new();
 		self.skip_ws();
 		if self.peek() == Some(b']') {
 			self.bump();
-			self.leave();
 			return Ok(JsonValue::Array(items));
 		}
 		loop {
@@ -170,10 +184,7 @@ impl<'a> Scanner<'a> {
 			self.skip_ws();
 			match self.bump() {
 				Some(b',') => continue,
-				Some(b']') => {
-					self.leave();
-					return Ok(JsonValue::Array(items));
-				}
+				Some(b']') => return Ok(JsonValue::Array(items)),
 				other => return Err(format!("expected ',' or ']' got {:?}", other.map(|b| b as char))),
 			}
 		}
@@ -234,7 +245,16 @@ impl<'a> Scanner<'a> {
 			}
 		}
 		let s = std::str::from_utf8(&self.src[start..self.pos]).map_err(|e| e.to_string())?;
-		s.parse::<f64>().map_err(|e| e.to_string())
+		let n = s.parse::<f64>().map_err(|e| e.to_string())?;
+		// `str::parse` saturates an out-of-range exponent to infinity, and
+		// `write_number` turns a non-finite back into `null` - so `1e999` used to
+		// round-trip into a missing field, losing the value without a word. JSON
+		// has no infinity, so refuse it here and let the loss surface as an error
+		// on the file that actually contains it.
+		if !n.is_finite() {
+			return Err(format!("number out of range at byte {start}: {s}"));
+		}
+		Ok(n)
 	}
 }
 
@@ -487,5 +507,42 @@ mod tests {
 		}
 		let doc = JsonValue::Object(vec![("a".into(), JsonValue::Number(f64::NAN))]);
 		assert!(parse(&doc.to_pretty()).is_ok(), "whatever we write, we must be able to read");
+	}
+
+	/// An exponent past `f64`'s range used to parse as infinity, which
+	/// `write_number` then wrote back as `null` - so re-saving a file silently
+	/// replaced the number with a missing field. The pair was self-consistent
+	/// and completely lossy. Refuse it at the parse boundary instead, so the
+	/// error names the file that has the problem.
+	#[test]
+	fn an_out_of_range_number_is_refused_rather_than_silently_becoming_null() {
+		for src in ["1e999", "-1e999", "1e400", "[1e999]", r#"{"a":1e999}"#] {
+			let e = parse(src).expect_err("{src} must be refused");
+			assert!(e.contains("out of range"), "{src}: {e}");
+		}
+		// The largest representable double still parses - the check is for
+		// values that saturate, not for merely large ones.
+		assert_eq!(parse("1.7976931348623157e308").unwrap().as_f64(), Some(f64::MAX));
+	}
+
+	/// Pins the guard's boundary at exactly [`MAX_DEPTH`], both directions.
+	///
+	/// `enter` checks before incrementing rather than after, so that a refusal
+	/// leaves `depth` where it was - the counterpart to `leave` now running on
+	/// the error path. That rewrite is easy to get off by one, and this is the
+	/// part of it a caller can actually see. (The error-path restoration itself
+	/// is not observable from out here: the first error aborts the whole parse
+	/// and every `parse` gets a fresh scanner. It is hygiene for the next
+	/// caller, not a live bug.)
+	#[test]
+	fn the_nesting_guard_admits_exactly_max_depth_levels() {
+		let nest = |n: u32| format!("{}{}", "[".repeat(n as usize), "]".repeat(n as usize));
+		assert!(parse(&nest(MAX_DEPTH)).is_ok(), "{MAX_DEPTH} levels is inside the guard");
+		let e = parse(&nest(MAX_DEPTH + 1)).expect_err("one more level is not");
+		assert!(e.contains("nesting deeper than"), "{e}");
+
+		// Siblings nest independently - depth is a stack, not a running total.
+		let wide = format!("[{},{}]", nest(MAX_DEPTH - 1), nest(MAX_DEPTH - 1));
+		assert!(parse(&wide).is_ok(), "two {}-level siblings under one array still fit", MAX_DEPTH - 1);
 	}
 }

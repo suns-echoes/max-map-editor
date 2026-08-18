@@ -2089,6 +2089,25 @@ impl EditorState {
 		self.active_layer == LAYER_SCENERY
 	}
 
+	/// Arming a *terrain* thing - a tile from the Tile Explorer or the
+	/// eyedropper, a template from its explorer - while the Scenery layer is live
+	/// hands the editor back to `layer`, the mirror of [`Command::SceneryPick`]
+	/// arming the Scenery layer with its piece: one click in a panel is enough to
+	/// use what was clicked, whatever was live before. The tool rides along
+	/// ([`terrain_twin`]), so the scenery pencil becomes the pencil again instead
+	/// of dropping cut-outs at a tile the user just picked.
+	///
+	/// Only from the Scenery layer: between water and ground the active layer is
+	/// the user's own choice (a water tile painted on ground is a real move), and
+	/// only in Map mode - the pass and save editors own their tools.
+	fn leave_scenery_layer(&mut self, layer: usize) {
+		if self.mode != EditorMode::Map || !self.on_scenery_layer() {
+			return;
+		}
+		self.active_layer = layer.min(LAYER_GROUND);
+		self.tool = terrain_twin(self.tool);
+	}
+
 	/// Which layers the map view composites, as a bitmask (bit `n` = layer `n`).
 	/// All layers normally; only the active layer when "show only selected" is
 	/// on. Consumed by the project shader.
@@ -2289,6 +2308,17 @@ impl EditorState {
 		self.stamp = Some(t.clone());
 		self.stamp_base = Some(t);
 		self.stamp_xform = map_core::Transform::default();
+	}
+
+	/// Put the ghost stamp away (`Esc`, `stamp cancel`) - and whatever else the
+	/// user arms instead, because the stamp takes the map click before the tool
+	/// does: leaving one armed would swallow the very clicks the new thing was
+	/// picked for.
+	fn disarm_stamp(&mut self) {
+		self.stamp = None;
+		self.stamp_base = None;
+		self.stamp_xform = map_core::Transform::default();
+		self.stamp_orients = std::array::from_fn(|_| None);
 	}
 
 	/// Whether the armed thing (stamp or single tile) may take orientation `t` -
@@ -4106,9 +4136,12 @@ impl EditorState {
 				self.active_scenery = index;
 				// Arming a piece arms the layer and the tool, the way picking a tile
 				// arms the pencil - one click in the panel should be enough to place.
+				// A template ghost armed before it would eat those clicks (it takes
+				// the map click ahead of any tool), so it goes away too.
 				if index.is_some() && self.mode == EditorMode::Map {
 					self.active_layer = LAYER_SCENERY;
 					self.tool = Tool::Scenery;
+					self.disarm_stamp();
 				}
 				Outcome::Redraw
 			}
@@ -4230,6 +4263,10 @@ impl EditorState {
 							let line = format!("active tile: {s} ({})", ["water", "ground"][layer]);
 							self.console.push_line(line);
 							self.active_tile = Some(s.to_string());
+							// Picking a tile is a terrain edit: off the Scenery layer, onto
+							// the one the tile belongs to (the layer choice the user made
+							// there says nothing about tiles).
+							self.leave_scenery_layer(layer);
 							Outcome::Redraw
 						}
 						Err(e) => Outcome::Failed(format!("tile: {e}")),
@@ -4580,7 +4617,10 @@ impl EditorState {
 				let line = format!("active tile: {top} (picked {x} {y})");
 				self.console.push_line(line);
 				self.active_tile = Some(top.to_string());
-				// The eyedropper hands back to the pencil - pick, then paint.
+				// The eyedropper hands back to the pencil - pick, then paint - and
+				// off the Scenery layer, onto the picked tile's own.
+				let layer = self.project.resolve_ref(top).map_or(LAYER_GROUND, |(_, l)| l);
+				self.leave_scenery_layer(layer);
 				self.tool = Tool::Pencil;
 				// Reveal the picked tile in the Tile Explorer (if it's open).
 				self.reveal_active_tile_in_explorer();
@@ -4758,15 +4798,29 @@ impl EditorState {
 					Err(e) => Outcome::Failed(format!("palette-load: {e}")),
 				}
 			}
+			// The name becomes a file in `user/palettes`, so it has to be one
+			// path component. The Save/Rename dialog checks this too, for the
+			// nicer inline message - but the dialog is not the only caller: a
+			// `--script` line or a console line reaches the command directly,
+			// and `palette_io::save` runs `create_dir_all` on the parent. The
+			// check belongs here, at the single mutator, not only at one door.
 			Command::PaletteSaveAs { name } => {
-				let path = self.user_palettes_dir().join(format!("{}.json", name.trim()));
-				match crate::palette_io::save(&path, &self.project.palette, name.trim()) {
+				let name = name.trim();
+				if let Err(e) = map_core::check_name_component("palette-save-as", name) {
+					return Outcome::Failed(e);
+				}
+				let path = self.user_palettes_dir().join(format!("{name}.json"));
+				match crate::palette_io::save(&path, &self.project.palette, name) {
 					Ok(()) => self.palette_saved(format!("palette saved -> {}", path.display()), Some(path)),
 					Err(e) => Outcome::Failed(format!("palette-save-as: {e}")),
 				}
 			}
 			Command::PaletteRename { from, to } => {
-				let target = self.user_palettes_dir().join(format!("{}.json", to.trim()));
+				let to = to.trim();
+				if let Err(e) = map_core::check_name_component("palette-rename", to) {
+					return Outcome::Failed(e);
+				}
+				let target = self.user_palettes_dir().join(format!("{to}.json"));
 				match crate::palette_io::rename(&from, &target) {
 					Ok(()) => self.palette_saved(format!("palette renamed -> {}", target.display()), Some(target)),
 					Err(e) => Outcome::Failed(format!("palette-rename: {e}")),
@@ -5801,10 +5855,7 @@ impl EditorState {
 				}
 			}
 			Command::StampCancel => {
-				self.stamp = None;
-				self.stamp_base = None;
-				self.stamp_xform = map_core::Transform::default();
-				self.stamp_orients = std::array::from_fn(|_| None);
+				self.disarm_stamp();
 				Outcome::Redraw
 			}
 			Command::TemplateSave { name } => {
@@ -5867,6 +5918,10 @@ impl EditorState {
 					));
 				}
 				self.arm_stamp(t);
+				// A stamp is terrain: leave the Scenery layer (a template spans both
+				// tile layers, so ground - the one it is edited on) or the click that
+				// places the ghost would look like a scenery click on the toolbox.
+				self.leave_scenery_layer(LAYER_GROUND);
 				self.templates.sel = Some(i);
 				self.console.push_line(format!("template armed: {name} (click the map to place, Esc cancels)"));
 				Outcome::Redraw
@@ -6426,6 +6481,14 @@ impl EditorState {
 			// Help ▸ Go to Website / Project GitHub - hand the URL to the OS browser.
 			Command::OpenUrl { url } => {
 				self.menu().close();
+				// The menu only ever passes the two https links, but `open-url`
+				// is a script command, so the argument is untrusted. Anything
+				// else is a local path, and handing an arbitrary path to
+				// `xdg-open` / `open` runs whatever handler the desktop has
+				// registered for it - a `.desktop` file is an executable.
+				if !(url.starts_with("https://") || url.starts_with("http://")) {
+					return Outcome::Failed(format!("open-url: only http(s) URLs, got '{url}'"));
+				}
 				match crate::browser::open(&url) {
 					Ok(()) => Outcome::Ok,
 					Err(e) => Outcome::Failed(e),

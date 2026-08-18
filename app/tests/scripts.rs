@@ -1,5 +1,10 @@
-//! Regression suite: run every `scripts/*.script` headless through the real
-//! binary and check its exit. The scripts already carry their own assertions
+//! Regression suite: run every `app/tests/scripts/*.script` headless through
+//! the real binary and check its exit. They sit beside this harness for the
+//! same reason `app/tests/snapshots/` does - the data a test target reads
+//! belongs next to the target, not at the repo root. (The root `scripts/` is
+//! the developer-tooling directory; `initialize.sh` lives there.)
+//!
+//! The scripts already carry their own assertions
 //! (`assert-cell` / `assert-hash` / `assert-dirty`), so the exit code *is* the
 //! check - this turns the hand-written scripts into golden tests.
 //!
@@ -12,7 +17,7 @@
 //!     gated (used to park scripts whose golden `assert-hash` values have gone
 //!     stale after an intentional algorithm change, pending a refresh).
 //!
-//! Runs from the workspace root so `resources/` and `scripts/` resolve. The
+//! Runs from the workspace root so `resources/` and `testdata/` resolve. The
 //! headless renderer needs a GPU adapter and several scripts load the default
 //! map, so the suite **self-skips** when it can't run (CI without a GPU, or the
 //! default map absent) rather than failing - run it locally for coverage.
@@ -68,6 +73,16 @@ fn scripts_pass_headless() {
 	}
 	let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("workspace root");
 	if !root.join(DEFAULT_MAP).exists() {
+		// libtest captures this and discards it for a passing test, so on a
+		// machine without fixtures the suite reports "1 passed" in 0.00 s and is
+		// indistinguishable from the ~70 s real run. `MAX_REQUIRE_FIXTURES=1`
+		// turns that into a failure - the same switch the 24-map equivalence
+		// proof uses. Set it on any machine the fixtures are supposed to be on.
+		assert!(
+			std::env::var_os("MAX_REQUIRE_FIXTURES").is_none_or(|v| v != "1"),
+			"MAX_REQUIRE_FIXTURES=1, but the script suite skipped: no base map at {}",
+			root.join(DEFAULT_MAP).display()
+		);
 		eprintln!("SKIPPED: script suite - base map {DEFAULT_MAP} not present");
 		eprintln!("         run tools/fetch-testdata.sh (or set MAX_DIR) to restore this coverage");
 		return;
@@ -76,13 +91,15 @@ fn scripts_pass_headless() {
 	let bin = env!("CARGO_BIN_EXE_max-map-editor");
 	std::fs::create_dir_all(root.join("temp")).expect("temp dir");
 
-	let mut scripts: Vec<PathBuf> = std::fs::read_dir(root.join("scripts"))
-		.expect("scripts dir")
+	// Beside this file, not at the repo root - see the module doc.
+	let script_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/scripts");
+	let mut scripts: Vec<PathBuf> = std::fs::read_dir(&script_dir)
+		.unwrap_or_else(|e| panic!("read {}: {e}", script_dir.display()))
 		.filter_map(|e| e.ok().map(|e| e.path()))
 		.filter(|p| p.extension().is_some_and(|e| e == "script"))
 		.collect();
 	scripts.sort();
-	assert!(!scripts.is_empty(), "no scripts found under scripts/");
+	assert!(!scripts.is_empty(), "no scripts found under {}", script_dir.display());
 
 	let mut failures = Vec::new();
 	for script in &scripts {

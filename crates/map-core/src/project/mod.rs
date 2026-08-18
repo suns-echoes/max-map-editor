@@ -102,6 +102,29 @@ pub(crate) fn check_map_size(width: u16, height: u16) -> Result<(), String> {
 	Ok(())
 }
 
+/// Validate a name a document supplies that will become **one path component** -
+/// a pack name out of a project or template file, a palette name off a command
+/// line. Such a name is joined onto a base directory, so anything that is not a
+/// single ordinary component escapes it: `..` walks out, and an absolute name is
+/// worse still, because `Path::join` *discards* the base when handed one.
+///
+/// The rule is path safety, not a charset: a synthetic WRL-import pack is named
+/// after the file stem (`Project::from_wrl`), so real names carry spaces and
+/// mixed case and must keep loading. Only separators, the traversal names, and
+/// non-single-component forms are refused. `\` is refused on every platform
+/// because a project file is portable and it separates on Windows.
+pub fn check_name_component(what: &str, name: &str) -> Result<(), String> {
+	let single_ordinary = {
+		let mut parts = Path::new(name).components();
+		matches!(parts.next(), Some(std::path::Component::Normal(part)) if part == std::ffi::OsStr::new(name))
+			&& parts.next().is_none()
+	};
+	if !single_ordinary || name.contains(['/', '\\', '\0']) {
+		return Err(format!("{what}: illegal name {name:?} (must be a single path component)"));
+	}
+	Ok(())
+}
+
 /// Encode a `width`×`height` cell grid as JSON rows (`[[String; width]; height]`),
 /// each cell rendered by `cell(x, y)` - the shared map-body writer for the
 /// project file and templates.
